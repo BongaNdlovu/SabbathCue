@@ -54,18 +54,43 @@ function isZip(bytes: Uint8Array): boolean {
   )
 }
 
-async function unzip(
-  zipPath: string,
-  destDir: string,
-  exclude: string[] = []
-): Promise<void> {
-  const args = ["unzip", "-o", zipPath, "-d", destDir]
-  if (exclude.length > 0) args.push("-x", ...exclude)
-  const proc = Bun.spawn(args, { stdout: "inherit", stderr: "inherit" })
-  const exitCode = await proc.exited
-  if (exitCode !== 0) {
-    throw new Error(`unzip failed (exit ${exitCode}) for ${zipPath}`)
+async function spawnChecked(cmd: string[]): Promise<number> {
+  const proc = Bun.spawn(cmd, { stdout: "inherit", stderr: "inherit" })
+  return proc.exited
+}
+
+/** Extract a zip without requiring the Unix `unzip` binary (missing on Windows by default). */
+async function extractZip(zipPath: string, destDir: string): Promise<void> {
+  // `tar` ships with Windows 10+, macOS, and most Linux distros.
+  try {
+    const tarExit = await spawnChecked(["tar", "-xf", zipPath, "-C", destDir])
+    if (tarExit === 0) return
+  } catch {
+    // tar not on PATH — try fallbacks below
   }
+
+  try {
+    const unzipExit = await spawnChecked(["unzip", "-o", zipPath, "-d", destDir])
+    if (unzipExit === 0) return
+  } catch {
+    // unzip not on PATH
+  }
+
+  if (process.platform === "win32") {
+    const escapedZip = zipPath.replace(/'/g, "''")
+    const escapedDest = destDir.replace(/'/g, "''")
+    const psExit = await spawnChecked([
+      "powershell",
+      "-NoProfile",
+      "-Command",
+      `Expand-Archive -LiteralPath '${escapedZip}' -DestinationPath '${escapedDest}' -Force`,
+    ])
+    if (psExit === 0) return
+  }
+
+  throw new Error(
+    `Failed to extract ${zipPath}. Ensure tar, unzip, or PowerShell Expand-Archive is available.`,
+  )
 }
 
 async function downloadSourcesZip(): Promise<void> {
@@ -95,9 +120,7 @@ async function downloadSourcesZip(): Promise<void> {
   }
 
   console.log("  📦 Extracting sources.zip...")
-  // Exclude macOS resource-fork files (`__MACOSX/`, `._*`) that appear when the
-  // zip was created on macOS Finder.
-  await unzip(zipDest, DATA_DIR, ["__MACOSX/*", "*/.*"])
+  await extractZip(zipDest, DATA_DIR)
   await rm(zipDest, { force: true })
   await rm(join(DATA_DIR, "__MACOSX"), { recursive: true, force: true })
 
@@ -122,7 +145,7 @@ async function downloadCrossRefs(): Promise<void> {
 
   const zipDest = join(CROSS_REFS_DIR, "cross-references.zip")
   await downloadFile(CROSS_REFS_URL, zipDest)
-  await unzip(zipDest, CROSS_REFS_DIR)
+  await extractZip(zipDest, CROSS_REFS_DIR)
   await rm(zipDest, { force: true })
 }
 
