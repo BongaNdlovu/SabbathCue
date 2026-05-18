@@ -49,6 +49,7 @@ import { useAssets } from "@/hooks/use-assets"
 import { useTutorialStore } from "@/stores/tutorial-store"
 import { useSettingsDialogStore } from "@/lib/settings-dialog"
 import type { DeviceInfo } from "@/types/audio"
+import { APP_DISPLAY_NAME } from "@/lib/app-brand"
 
 /* -------------------------------------------------------------------------- */
 /*  Nav definition                                                            */
@@ -841,7 +842,7 @@ function HelpSection() {
     <div className="space-y-6">
       <div className="space-y-1">
         <p className="text-sm text-muted-foreground">
-          Resources to help you get the most out of SabbathCue.
+          Resources to help you get the most out of {APP_DISPLAY_NAME}.
         </p>
       </div>
 

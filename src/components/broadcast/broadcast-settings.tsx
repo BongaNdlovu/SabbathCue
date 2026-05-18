@@ -22,6 +22,10 @@ import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
 import { useBroadcastStore } from "@/stores"
+import {
+  DEFAULT_NDI_ALT_SOURCE_NAME,
+  DEFAULT_NDI_SOURCE_NAME,
+} from "@/lib/app-brand"
 import type { NdiAlphaMode, NdiFrameRate, NdiResolution, NdiSessionInfo, NdiStartRequest } from "@/types"
 import {
   MonitorIcon,
@@ -80,7 +84,7 @@ export function BroadcastSettings({
   const [monitors, setMonitors] = useState<Monitor[]>([])
   const [selectedMonitor, setSelectedMonitor] = useState("0")
   const [isPreviewOpen, setIsPreviewOpen] = useState(false)
-  const [ndiSourceName, setNdiSourceName] = useState("SabbathCue Output")
+  const [ndiSourceName, setNdiSourceName] = useState(DEFAULT_NDI_SOURCE_NAME)
   const [ndiResolution, setNdiResolution] = useState<NdiResolution>("r1080p")
   const [ndiFrameRate, setNdiFrameRate] = useState<NdiFrameRate>("fps24")
   const [ndiAlphaMode, setNdiAlphaMode] = useState<NdiAlphaMode>("straightAlpha")
@@ -94,7 +98,7 @@ export function BroadcastSettings({
   const [altOutputType, setAltOutputType] = useState<OutputType>("ndi")
   const [altSelectedMonitor, setAltSelectedMonitor] = useState("0")
   const [altIsPreviewOpen, setAltIsPreviewOpen] = useState(false)
-  const [altNdiSourceName, setAltNdiSourceName] = useState("SabbathCue Alt")
+  const [altNdiSourceName, setAltNdiSourceName] = useState(DEFAULT_NDI_ALT_SOURCE_NAME)
   const [altNdiResolution, setAltNdiResolution] = useState<NdiResolution>("r1080p")
   const [altNdiFrameRate, setAltNdiFrameRate] = useState<NdiFrameRate>("fps24")
   const [altNdiAlphaMode, setAltNdiAlphaMode] = useState<NdiAlphaMode>("straightAlpha")
@@ -599,7 +603,7 @@ export function BroadcastSettings({
                   <Input
                     value={ndiSourceName}
                     onChange={(e) => setNdiSourceName(e.target.value)}
-                    placeholder="SabbathCue Output"
+                    placeholder={DEFAULT_NDI_SOURCE_NAME}
                   />
                 </div>
                 <Button
@@ -745,7 +749,7 @@ export function BroadcastSettings({
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-xs text-muted-foreground">Source Name</label>
-                  <Input value={altNdiSourceName} onChange={(e) => setAltNdiSourceName(e.target.value)} placeholder="SabbathCue Alt" />
+                  <Input value={altNdiSourceName} onChange={(e) => setAltNdiSourceName(e.target.value)} placeholder={DEFAULT_NDI_ALT_SOURCE_NAME} />
                 </div>
                 <Button
                   variant="outline"

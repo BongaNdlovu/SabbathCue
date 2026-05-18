@@ -1,4 +1,5 @@
 import type { Step } from "react-joyride"
+import { APP_DISPLAY_NAME } from "@/lib/app-brand"
 
 const STEP_DEFAULTS = {
   disableBeacon: true,
@@ -36,7 +37,7 @@ export const TUTORIAL_STEPS: Step[] = [
     target: '[data-tour="context-search"]',
     title: "Context Search",
     content:
-      "Search by phrase or topic. SabbathCue uses AI to find matching verses.",
+      `Search by phrase or topic. ${APP_DISPLAY_NAME} uses AI to find matching verses.`,
     placement: "bottom",
     spotlightPadding: 2,
   },

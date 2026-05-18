@@ -9,6 +9,7 @@ import { ThemeDesigner } from "@/components/broadcast/theme-designer"
 import { BroadcastSettings } from "@/components/broadcast/broadcast-settings"
 import { useAudioStore, useTranscriptStore, useBroadcastStore } from "@/stores"
 import { useTheme } from "@/components/theme-provider"
+import { APP_DISPLAY_NAME } from "@/lib/app-brand"
 
 export function TransportBar() {
   const { theme, setTheme } = useTheme()
@@ -24,7 +25,7 @@ export function TransportBar() {
       {/* Left: Logo + Plan Badge */}
       <div className="flex items-center gap-2.5">
         <span className="text-sm font-semibold tracking-tight text-foreground">
-          SabbathCue
+          {APP_DISPLAY_NAME}
         </span>
         <Badge variant="outline" className="text-[0.5625rem] uppercase">
           Free

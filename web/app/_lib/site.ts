@@ -1,5 +1,7 @@
+import { APP_DISPLAY_NAME } from "./app-brand";
+
 export const SITE = {
-  name: "SabbathCue",
+  name: APP_DISPLAY_NAME,
   legalName: "BongaNdlovu",
   tagline: "Your Pastor speaks. SabbathCue finds the verse.",
   shortDescription:
