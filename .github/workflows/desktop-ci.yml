@@ -40,6 +40,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
@@ -47,6 +52,18 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+
+      - name: Install frontend dependencies
+        run: bun install
+
+      - name: Download Bible source data
+        run: bun run download:bible-data
+
+      - name: Build public Bible DB
+        run: bun run build:bible:public
+
+      - name: Verify public Bible DB
+        run: bun run verify:bible:public
 
       - name: Check workspace
         working-directory: src-tauri

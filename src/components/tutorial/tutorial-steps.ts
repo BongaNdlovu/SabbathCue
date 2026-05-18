@@ -2,7 +2,6 @@ import type { Step } from "react-joyride"
 import { APP_DISPLAY_NAME } from "@/lib/app-brand"
 
 const STEP_DEFAULTS = {
-  disableBeacon: true,
   skipBeacon: true,
 } as const satisfies Partial<Step>
 

@@ -64,8 +64,6 @@ const PERSISTED_KEYS = [
   "sttProvider",
 ] as const satisfies readonly (keyof SettingsState)[]
 
-type PersistedKey = (typeof PERSISTED_KEYS)[number]
-
 let tauriStore: Store | null = null
 let hydrationPromise: Promise<void> | null = null
 
