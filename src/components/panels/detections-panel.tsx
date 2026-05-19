@@ -1,11 +1,14 @@
 import { PanelHeader } from "@/components/ui/panel-header"
 import { ConfidenceDot } from "@/components/ui/confidence-dot"
 import { Button } from "@/components/ui/button"
-import { PlayIcon, PlusIcon } from "lucide-react"
+import { EyeIcon, PlayIcon, PlusIcon } from "lucide-react"
 import { useDetection, detectionActions } from "@/hooks/use-detection"
-import { bibleActions } from "@/hooks/use-bible"
-import { useQueueStore, useBroadcastStore, useBibleStore } from "@/stores"
-import { toVerseRenderData } from "@/hooks/use-broadcast"
+import { useBibleStore, useQueueStore } from "@/stores"
+import {
+  detectionToVerse,
+  presentVerse,
+  selectPreviewVerse,
+} from "@/lib/presentation-workflow"
 import type { DetectionResult } from "@/types"
 
 const SOURCE_COLORS: Record<string, { bg: string; text: string; label: string }> = {
@@ -23,37 +26,14 @@ function SourceBadge({ source }: { source: string }) {
 }
 
 function DetectionCard({ detection }: { detection: DetectionResult }) {
+  const verse = detectionToVerse(detection)
+
+  const handlePreview = () => {
+    selectPreviewVerse(verse, { navigate: true })
+  }
+
   const handlePresent = () => {
-    // Select this verse for preview
-    bibleActions.selectVerse({
-      id: 0,
-      translation_id: useBibleStore.getState().activeTranslationId,
-      book_number: detection.book_number,
-      book_name: detection.book_name,
-      book_abbreviation: "",
-      chapter: detection.chapter,
-      verse: detection.verse,
-      text: detection.verse_text,
-    })
-    // Navigate book search panel to this verse
-    if (detection.book_number > 0) {
-      bibleActions.navigateToVerse(
-        detection.book_number,
-        detection.chapter,
-        detection.verse
-      )
-    }
-    // Set broadcast live verse
-    const translation = useBibleStore.getState().translations
-      .find(t => t.id === useBibleStore.getState().activeTranslationId)?.abbreviation ?? "KJV"
-    useBroadcastStore.getState().setLiveVerse(
-      toVerseRenderData({
-        id: 0, translation_id: useBibleStore.getState().activeTranslationId,
-        book_number: detection.book_number, book_name: detection.book_name,
-        book_abbreviation: "", chapter: detection.chapter,
-        verse: detection.verse, text: detection.verse_text,
-      }, translation)
-    )
+    presentVerse(verse, { navigate: true })
   }
 
   return (
@@ -73,6 +53,10 @@ function DetectionCard({ detection }: { detection: DetectionResult }) {
       )}
 
       <div className="mt-2 flex gap-2">
+        <Button size="sm" variant="outline" className="gap-1" onClick={handlePreview}>
+          <EyeIcon className="size-3" />
+          Preview
+        </Button>
         <Button size="sm" className="gap-1" onClick={handlePresent}>
           <PlayIcon className="size-3" />
           Present
@@ -84,16 +68,7 @@ function DetectionCard({ detection }: { detection: DetectionResult }) {
           onClick={() => {
             useQueueStore.getState().addOrFlashItem({
               id: crypto.randomUUID(),
-              verse: {
-                id: 0,
-                translation_id: useBibleStore.getState().activeTranslationId,
-                book_number: detection.book_number,
-                book_name: detection.book_name,
-                book_abbreviation: "",
-                chapter: detection.chapter,
-                verse: detection.verse,
-                text: detection.verse_text,
-              },
+              verse,
               reference: detection.verse_ref,
               confidence: detection.confidence,
               source: detection.source === "direct" ? "ai-direct" : "ai-semantic",

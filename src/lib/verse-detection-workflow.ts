@@ -1,12 +1,15 @@
-import { bibleActions } from "@/hooks/use-bible"
+import {
+  previewVerseAndMaybeAutoLive,
+  selectPreviewVerse,
+} from "@/lib/presentation-workflow"
 import {
   useBibleStore,
   useDetectionStore,
   useQueueStore,
 } from "@/stores"
-import type { DetectionResult, ReadingAdvance } from "@/types"
+import type { DetectionResult, ReadingAdvance, Verse } from "@/types"
 
-function selectDetectedVerse({
+function detectionLikeToVerse({
   book_number,
   book_name,
   chapter,
@@ -18,8 +21,8 @@ function selectDetectedVerse({
   chapter: number
   verse: number
   verse_text: string
-}) {
-  bibleActions.selectVerse({
+}): Verse {
+  return {
     id: 0,
     translation_id: useBibleStore.getState().activeTranslationId,
     book_number,
@@ -28,11 +31,22 @@ function selectDetectedVerse({
     chapter,
     verse,
     text: verse_text,
-  })
+  }
+}
+
+function selectDetectedVerse(args: {
+  book_number: number
+  book_name: string
+  chapter: number
+  verse: number
+  verse_text: string
+}) {
+  const verse = detectionLikeToVerse(args)
+  selectPreviewVerse(verse)
   useBibleStore.getState().setPendingNavigation({
-    bookNumber: book_number,
-    chapter,
-    verse,
+    bookNumber: args.book_number,
+    chapter: args.chapter,
+    verse: args.verse,
   })
 }
 
@@ -90,11 +104,21 @@ export function handleVerseDetections(detections: DetectionResult[]) {
 export function handleReadingAdvance(advance: ReadingAdvance) {
   if (advance.book_number <= 0) return
 
-  selectDetectedVerse({
+  const verse = detectionLikeToVerse({
     book_number: advance.book_number,
     book_name: advance.book_name,
     chapter: advance.chapter,
     verse: advance.verse,
     verse_text: advance.verse_text,
+  })
+
+  previewVerseAndMaybeAutoLive(verse, {
+    autoLiveWhenAlreadyOn: true,
+  })
+
+  useBibleStore.getState().setPendingNavigation({
+    bookNumber: advance.book_number,
+    chapter: advance.chapter,
+    verse: advance.verse,
   })
 }

@@ -1,4 +1,5 @@
 import { TransportBar } from "@/components/controls/transport-bar"
+import { OperatorStatusStrip } from "@/components/layout/operator-status-strip"
 import { TranscriptPanel } from "@/components/panels/transcript-panel"
 import { PreviewPanel } from "@/components/panels/preview-panel"
 import { LiveOutputPanel } from "@/components/panels/live-output-panel"
@@ -13,7 +14,7 @@ export function Dashboard() {
         position: "fixed",
         inset: "0px",
         display: "grid",
-        gridTemplateRows: "56px minmax(0, 2fr) minmax(0, 3fr)",
+        gridTemplateRows: "56px 32px minmax(0, 2fr) minmax(0, 3fr)",
         overflow: "hidden",
       }}
       className="bg-background"
@@ -21,6 +22,10 @@ export function Dashboard() {
       {/* Row 1: Transport Bar */}
       <div className="col-span-4">
         <TransportBar />
+      </div>
+
+      <div className="col-span-4">
+        <OperatorStatusStrip />
       </div>
 
       {/* Row 2: 4 panels */}

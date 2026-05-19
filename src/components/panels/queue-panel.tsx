@@ -4,13 +4,16 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import {
+  EyeIcon,
   PlayIcon,
   XIcon,
   GripVerticalIcon,
 } from "lucide-react"
-import { useQueueStore, useBroadcastStore, useBibleStore } from "@/stores"
-import { toVerseRenderData } from "@/hooks/use-broadcast"
-import { bibleActions } from "@/hooks/use-bible"
+import { useQueueStore } from "@/stores"
+import {
+  presentVerse,
+  selectPreviewVerse,
+} from "@/lib/presentation-workflow"
 import type { QueueItem } from "@/types"
 
 function QueueItemRow({
@@ -36,12 +39,14 @@ function QueueItemRow({
   onDragEnd: () => void
   onDrop: (index: number) => void
 }) {
+  const handlePreview = () => {
+    useQueueStore.getState().setActive(index)
+    selectPreviewVerse(item.verse)
+  }
+
   const handlePresent = () => {
     useQueueStore.getState().setActive(index)
-    bibleActions.selectVerse(item.verse)
-    const translation = useBibleStore.getState().translations
-      .find(t => t.id === useBibleStore.getState().activeTranslationId)?.abbreviation ?? "KJV"
-    useBroadcastStore.getState().setLiveVerse(toVerseRenderData(item.verse, translation))
+    presentVerse(item.verse)
   }
 
   const handleRemove = () => {
@@ -53,12 +58,13 @@ function QueueItemRow({
       <Badge variant="outline" className="shrink-0 text-[0.5rem]">
         Manual
       </Badge>
+    ) : item.source === "ai-semantic" ? (
+      <Badge className="shrink-0 bg-indigo-500/15 text-[0.5rem] text-indigo-300 hover:bg-indigo-500/15">
+        Semantic
+      </Badge>
     ) : (
-      <Badge
-        variant="default"
-        className="shrink-0 bg-ai-direct/15 text-[0.5rem] text-ai-direct hover:bg-ai-direct/15"
-      >
-        AI
+      <Badge className="shrink-0 bg-green-500/15 text-[0.5rem] text-green-600 hover:bg-green-500/15">
+        Direct
       </Badge>
     )
 
@@ -106,11 +112,29 @@ function QueueItemRow({
 
       {sourceBadge}
 
-      <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-        <Button variant="ghost" size="icon-xs" onClick={handlePresent}>
+      <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          onClick={handlePreview}
+          title="Preview"
+        >
+          <EyeIcon className="size-2.5" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          onClick={handlePresent}
+          title="Present live"
+        >
           <PlayIcon className="size-2.5" />
         </Button>
-        <Button variant="ghost" size="icon-xs" onClick={handleRemove}>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          onClick={handleRemove}
+          title="Remove"
+        >
           <XIcon className="size-2.5" />
         </Button>
       </div>

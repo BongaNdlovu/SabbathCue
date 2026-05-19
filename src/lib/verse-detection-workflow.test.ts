@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { handleReadingAdvance, handleVerseDetections } from "./verse-detection-workflow"
-import { useBibleStore, useDetectionStore, useQueueStore } from "@/stores"
+import { useBibleStore, useBroadcastStore, useDetectionStore, useQueueStore } from "@/stores"
 import type { DetectionResult, QueueItem, ReadingAdvance } from "@/types"
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -188,5 +188,90 @@ describe("verse detection workflow", () => {
     expect(useBibleStore.getState().selectedVerse).toBeNull()
     expect(useBibleStore.getState().pendingNavigation).toBeNull()
     expect(useQueueStore.getState().items).toHaveLength(0)
+  })
+
+  it("does not auto-live normal direct detections", () => {
+    const detection = {
+      verse_ref: "John 3:16",
+      verse_text: "For God so loved the world.",
+      book_name: "John",
+      book_number: 43,
+      chapter: 3,
+      verse: 16,
+      confidence: 0.95,
+      source: "direct" as const,
+      auto_queued: false,
+      transcript_snippet: "John 3:16",
+      is_chapter_only: false,
+    }
+
+    useBroadcastStore.setState({
+      isLive: true,
+      liveVerse: {
+        reference: "Romans 8:1 (KJV)",
+        segments: [{ verseNumber: 1, text: "There is therefore now no condemnation." }],
+      },
+    })
+
+    handleVerseDetections([detection])
+
+    expect(useBibleStore.getState().selectedVerse).toMatchObject({
+      book_name: "John",
+      chapter: 3,
+      verse: 16,
+    })
+    expect(useBroadcastStore.getState().liveVerse?.reference).toBe("Romans 8:1 (KJV)")
+  })
+
+  it("auto-updates live output for reading mode when already live", () => {
+    useBroadcastStore.setState({
+      isLive: true,
+      liveVerse: {
+        reference: "John 3:16 (KJV)",
+        segments: [{ verseNumber: 16, text: "For God so loved the world." }],
+      },
+    })
+
+    handleReadingAdvance({
+      book_number: 43,
+      book_name: "John",
+      chapter: 3,
+      verse: 17,
+      verse_text: "For God sent not his Son into the world to condemn the world.",
+      reference: "John 3:17",
+      confidence: 0.9,
+    })
+
+    expect(useBibleStore.getState().selectedVerse).toMatchObject({
+      book_name: "John",
+      chapter: 3,
+      verse: 17,
+    })
+    expect(useBroadcastStore.getState().liveVerse?.reference).toBe("John 3:17 (KJV)")
+  })
+
+  it("does not turn live output on for reading mode when hidden", () => {
+    useBroadcastStore.setState({
+      isLive: false,
+      liveVerse: null,
+    })
+
+    handleReadingAdvance({
+      book_number: 43,
+      book_name: "John",
+      chapter: 3,
+      verse: 17,
+      verse_text: "For God sent not his Son into the world to condemn the world.",
+      reference: "John 3:17",
+      confidence: 0.9,
+    })
+
+    expect(useBibleStore.getState().selectedVerse).toMatchObject({
+      book_name: "John",
+      chapter: 3,
+      verse: 17,
+    })
+    expect(useBroadcastStore.getState().isLive).toBe(false)
+    expect(useBroadcastStore.getState().liveVerse).toBeNull()
   })
 })

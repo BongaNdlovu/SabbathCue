@@ -5,7 +5,7 @@ import { useBroadcastStore } from "@/stores/broadcast-store"
 import { useBibleStore } from "@/stores/bible-store"
 import { useQueueStore } from "@/stores/queue-store"
 import { useSettingsStore } from "@/stores/settings-store"
-import { toVerseRenderData } from "@/hooks/use-broadcast"
+import { presentVerse } from "@/lib/presentation-workflow"
 import type { Verse } from "@/types"
 
 /**
@@ -170,16 +170,7 @@ async function presentQueueItem(index: number) {
 
     const verseToPresent = fullVerse ?? verse
 
-    const bibleState = useBibleStore.getState()
-    const translation =
-      bibleState.translations.find(
-        (t) => t.id === bibleState.activeTranslationId
-      )?.abbreviation ?? "KJV"
-
-    bibleState.selectVerse(verseToPresent)
-    useBroadcastStore
-      .getState()
-      .setLiveVerse(toVerseRenderData(verseToPresent, translation))
+    presentVerse(verseToPresent)
   } catch (e) {
     console.warn("[remote-control] presentQueueItem failed:", e)
   }
