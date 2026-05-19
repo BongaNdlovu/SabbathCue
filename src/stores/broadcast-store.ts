@@ -296,6 +296,7 @@ export function hydrateBroadcastThemes(): Promise<void> {
       const customThemes = (await store.get("customThemes")) as BroadcastTheme[] | undefined
       const activeId = (await store.get("activeThemeId")) as string | undefined
       const altActiveId = (await store.get("altActiveThemeId")) as string | undefined
+      const readingModeAutoLive = (await store.get("readingModeAutoLive")) as boolean | undefined
 
       const patch: Partial<BroadcastState> = {}
       if (customThemes && Array.isArray(customThemes) && customThemes.length > 0) {
@@ -303,6 +304,9 @@ export function hydrateBroadcastThemes(): Promise<void> {
       }
       if (activeId) patch.activeThemeId = activeId
       if (altActiveId) patch.altActiveThemeId = altActiveId
+      if (typeof readingModeAutoLive === "boolean") {
+        patch.readingModeAutoLive = readingModeAutoLive
+      }
 
       if (Object.keys(patch).length > 0) {
         useBroadcastStore.setState(patch)
@@ -313,7 +317,8 @@ export function hydrateBroadcastThemes(): Promise<void> {
         const changed =
           state.themes !== prevState.themes ||
           state.activeThemeId !== prevState.activeThemeId ||
-          state.altActiveThemeId !== prevState.altActiveThemeId
+          state.altActiveThemeId !== prevState.altActiveThemeId ||
+          state.readingModeAutoLive !== prevState.readingModeAutoLive
         if (!changed) return
         if (saveTimer) clearTimeout(saveTimer)
         saveTimer = setTimeout(() => {
@@ -341,6 +346,7 @@ async function persistBroadcastThemes(state: BroadcastState): Promise<void> {
     await store.set("customThemes", customThemes)
     await store.set("activeThemeId", state.activeThemeId)
     await store.set("altActiveThemeId", state.altActiveThemeId)
+    await store.set("readingModeAutoLive", state.readingModeAutoLive)
     await store.save()
   } catch {
     console.warn("[broadcast] Failed to persist themes")

@@ -41,6 +41,7 @@ describe("presentation workflow", () => {
 
   it("commitPreviewToLive sends the selected verse live", async () => {
     const { useBibleStore, useBroadcastStore } = await import("@/stores")
+    const { toVerseRenderData } = await import("@/hooks/use-broadcast")
     const { commitPreviewToLive } = await import("./presentation-workflow")
 
     useBibleStore.setState({
@@ -59,10 +60,18 @@ describe("presentation workflow", () => {
     })
 
     const committed = commitPreviewToLive()
+    const previewPayload = toVerseRenderData(sampleVerse, "KJV")
 
     expect(committed).toBe(true)
     expect(useBroadcastStore.getState().isLive).toBe(true)
-    expect(useBroadcastStore.getState().liveVerse?.reference).toBe("John 3:16 (KJV)")
+    expect(useBroadcastStore.getState().liveVerse).toEqual(previewPayload)
+    expect(emitToMock).toHaveBeenCalledWith(
+      "broadcast",
+      "broadcast:verse-update",
+      expect.objectContaining({
+        verse: previewPayload,
+      }),
+    )
   })
 
   it("commitPreviewToLive returns false when no verse is staged", async () => {

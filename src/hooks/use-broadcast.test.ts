@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import type { Verse } from "@/types"
-import { deriveLiveVerse } from "./use-broadcast"
+import { toVerseRenderData } from "./use-broadcast"
 
 const sampleVerse: Verse = {
   id: 1,
@@ -13,28 +13,13 @@ const sampleVerse: Verse = {
   text: "The earth was without form and void.",
 }
 
-describe("deriveLiveVerse", () => {
-  it("returns null when live output is off", () => {
-    const result = deriveLiveVerse({
-      isLive: false,
-      selectedVerse: sampleVerse,
-      translation: "NKJV",
+describe("toVerseRenderData", () => {
+  it("formats a verse for preview and live rendering", () => {
+    const result = toVerseRenderData(sampleVerse, "NKJV")
+
+    expect(result).toEqual({
+      reference: "Genesis 1:2 (NKJV)",
+      segments: [{ verseNumber: 2, text: "The earth was without form and void." }],
     })
-
-    expect(result).toBeNull()
-  })
-
-  it("returns verse render data when live output is on", () => {
-    const result = deriveLiveVerse({
-      isLive: true,
-      selectedVerse: sampleVerse,
-      translation: "NKJV",
-    })
-
-    expect(result).toEqual(
-      expect.objectContaining({
-        reference: "Genesis 1:2 (NKJV)",
-      }),
-    )
   })
 })

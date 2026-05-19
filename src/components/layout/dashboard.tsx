@@ -1,4 +1,10 @@
-import { useCallback, useRef, useState, type PointerEvent as ReactPointerEvent } from "react"
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from "react"
 import { Button } from "@/components/ui/button"
 import { TransportBar } from "@/components/controls/transport-bar"
 import { OperatorStatusStrip } from "@/components/layout/operator-status-strip"
@@ -11,25 +17,32 @@ import { DetectionsPanel } from "@/components/panels/detections-panel"
 import {
   DASHBOARD_LAYOUT_PRESETS,
   clampNumber,
+  layoutStateFromPreset,
+  loadDashboardLayoutState,
+  saveDashboardLayoutState,
   type DashboardViewMode,
 } from "@/lib/dashboard-layout"
 
 function ResizeHandle({
   axis,
+  label,
   onPointerDown,
 }: {
   axis: "x" | "y"
+  label: string
   onPointerDown: (event: ReactPointerEvent<HTMLDivElement>) => void
 }) {
   return (
     <div
       role="separator"
+      aria-label={label}
       aria-orientation={axis === "x" ? "vertical" : "horizontal"}
+      title={label}
       onPointerDown={onPointerDown}
       className={
         axis === "x"
-          ? "cursor-col-resize rounded-sm bg-border/40 transition-colors hover:bg-primary/50"
-          : "cursor-row-resize rounded-sm bg-border/40 transition-colors hover:bg-primary/50"
+          ? "relative cursor-col-resize rounded-sm bg-border/40 transition-colors hover:bg-primary/50 after:absolute after:inset-y-1 after:left-1/2 after:w-px after:-translate-x-1/2 after:bg-muted-foreground/40"
+          : "relative cursor-row-resize rounded-sm bg-border/40 transition-colors hover:bg-primary/50 after:absolute after:left-1 after:right-1 after:top-1/2 after:h-px after:-translate-y-1/2 after:bg-muted-foreground/40"
       }
     />
   )
@@ -37,27 +50,33 @@ function ResizeHandle({
 
 export function Dashboard() {
   const contentRef = useRef<HTMLDivElement>(null)
-  const [viewMode, setViewMode] = useState<DashboardViewMode>("balanced")
-  const [topHeightPercent, setTopHeightPercent] = useState(
-    DASHBOARD_LAYOUT_PRESETS.balanced.topHeightPercent
+  const [windowWidth, setWindowWidth] = useState(() =>
+    typeof window === "undefined" ? 1920 : window.innerWidth
   )
-  const [transcriptWidth, setTranscriptWidth] = useState(
-    DASHBOARD_LAYOUT_PRESETS.balanced.transcriptWidth
-  )
-  const [queueWidth, setQueueWidth] = useState(
-    DASHBOARD_LAYOUT_PRESETS.balanced.queueWidth
-  )
-  const [detectionsWidth, setDetectionsWidth] = useState(
-    DASHBOARD_LAYOUT_PRESETS.balanced.detectionsWidth
-  )
+  const [layout, setLayout] = useState(loadDashboardLayoutState)
+  const isCompact = windowWidth < 1400
+  const viewMode = layout.viewMode
+  const topHeightPercent = layout.topHeightPercent
+  const transcriptWidth = layout.transcriptWidth
+  const queueWidth = layout.queueWidth
+  const detectionsWidth = layout.detectionsWidth
+
+  useEffect(() => {
+    const onResize = () => setWindowWidth(window.innerWidth)
+    window.addEventListener("resize", onResize)
+    return () => window.removeEventListener("resize", onResize)
+  }, [])
+
+  useEffect(() => {
+    saveDashboardLayoutState(layout)
+  }, [layout])
 
   const applyViewMode = (mode: DashboardViewMode) => {
-    const preset = DASHBOARD_LAYOUT_PRESETS[mode]
-    setViewMode(mode)
-    setTopHeightPercent(preset.topHeightPercent)
-    setTranscriptWidth(preset.transcriptWidth)
-    setQueueWidth(preset.queueWidth)
-    setDetectionsWidth(preset.detectionsWidth)
+    setLayout(layoutStateFromPreset(mode))
+  }
+
+  const resetLayout = () => {
+    setLayout(layoutStateFromPreset("balanced"))
   }
 
   const startTopResize = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
@@ -68,7 +87,10 @@ export function Dashboard() {
     const rect = content.getBoundingClientRect()
     const onMove = (moveEvent: PointerEvent) => {
       const next = ((moveEvent.clientY - rect.top) / rect.height) * 100
-      setTopHeightPercent(clampNumber(next, 34, 68))
+      setLayout((current) => ({
+        ...current,
+        topHeightPercent: clampNumber(next, 34, 68),
+      }))
     }
     const onUp = () => {
       window.removeEventListener("pointermove", onMove)
@@ -83,7 +105,10 @@ export function Dashboard() {
     const startX = event.clientX
     const startWidth = transcriptWidth
     const onMove = (moveEvent: PointerEvent) => {
-      setTranscriptWidth(clampNumber(startWidth + moveEvent.clientX - startX, 240, 520))
+      setLayout((current) => ({
+        ...current,
+        transcriptWidth: clampNumber(startWidth + moveEvent.clientX - startX, 240, 520),
+      }))
     }
     const onUp = () => {
       window.removeEventListener("pointermove", onMove)
@@ -98,7 +123,10 @@ export function Dashboard() {
     const startX = event.clientX
     const startWidth = queueWidth
     const onMove = (moveEvent: PointerEvent) => {
-      setQueueWidth(clampNumber(startWidth - (moveEvent.clientX - startX), 240, 520))
+      setLayout((current) => ({
+        ...current,
+        queueWidth: clampNumber(startWidth - (moveEvent.clientX - startX), 240, 520),
+      }))
     }
     const onUp = () => {
       window.removeEventListener("pointermove", onMove)
@@ -113,7 +141,10 @@ export function Dashboard() {
     const startX = event.clientX
     const startWidth = detectionsWidth
     const onMove = (moveEvent: PointerEvent) => {
-      setDetectionsWidth(clampNumber(startWidth - (moveEvent.clientX - startX), 360, 760))
+      setLayout((current) => ({
+        ...current,
+        detectionsWidth: clampNumber(startWidth - (moveEvent.clientX - startX), 360, 760),
+      }))
     }
     const onUp = () => {
       window.removeEventListener("pointermove", onMove)
@@ -141,8 +172,16 @@ export function Dashboard() {
           </Button>
         ))}
         <span className="ml-2 text-xs text-muted-foreground">
-          Drag the dividers to resize panels
+          Drag labeled dividers to resize panels
         </span>
+        <Button
+          size="xs"
+          variant="ghost"
+          onClick={resetLayout}
+          className="ml-auto"
+        >
+          Reset layout
+        </Button>
       </div>
 
       <div ref={contentRef} className="flex min-h-0 flex-1 flex-col gap-1.5 p-3">
@@ -150,27 +189,59 @@ export function Dashboard() {
           className="grid min-h-0 gap-1.5 *:min-h-0"
           style={{
             height: `${topHeightPercent}%`,
-            gridTemplateColumns: `${transcriptWidth}px 6px minmax(280px, 1fr) minmax(280px, 1fr) 6px ${queueWidth}px`,
+            gridTemplateColumns: isCompact
+              ? `minmax(0, 1fr) minmax(0, 1fr)`
+              : `${transcriptWidth}px 6px minmax(280px, 1fr) minmax(280px, 1fr) 6px ${queueWidth}px`,
+            gridTemplateRows: isCompact ? `minmax(0, 1fr) minmax(0, 0.8fr)` : undefined,
           }}
         >
-          <TranscriptPanel />
-          <ResizeHandle axis="x" onPointerDown={startTranscriptResize} />
+          <div className={isCompact ? "min-h-0" : "contents"}>
+            <TranscriptPanel />
+          </div>
+          {!isCompact && (
+            <ResizeHandle
+              axis="x"
+              label="Resize transcript panel"
+              onPointerDown={startTranscriptResize}
+            />
+          )}
           <PreviewPanel />
           <LiveOutputPanel />
-          <ResizeHandle axis="x" onPointerDown={startQueueResize} />
-          <QueuePanel />
+          {!isCompact && (
+            <ResizeHandle
+              axis="x"
+              label="Resize queue panel"
+              onPointerDown={startQueueResize}
+            />
+          )}
+          <div className={isCompact ? "min-h-0" : "contents"}>
+            <QueuePanel />
+          </div>
         </div>
 
-        <ResizeHandle axis="y" onPointerDown={startTopResize} />
+        <ResizeHandle
+          axis="y"
+          label="Resize top and bottom dashboard sections"
+          onPointerDown={startTopResize}
+        />
 
         <div
           className="grid min-h-0 flex-1 gap-1.5"
           style={{
-            gridTemplateColumns: `minmax(0, 1fr) 6px ${detectionsWidth}px`,
+            gridTemplateColumns: isCompact
+              ? "minmax(0, 1fr)"
+              : `minmax(0, 1fr) 6px ${detectionsWidth}px`,
+            gridTemplateRows: isCompact ? "minmax(0, 1fr) minmax(220px, 0.55fr)" : undefined,
           }}
         >
           <SearchPanel />
-          <ResizeHandle axis="x" onPointerDown={startDetectionsResize} />
+          {!isCompact && (
+            <ResizeHandle
+              axis="x"
+              label="Resize recent detections panel"
+              onPointerDown={startDetectionsResize}
+            />
+          )}
           <DetectionsPanel />
         </div>
       </div>
