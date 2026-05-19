@@ -11,7 +11,9 @@ use std::time::Duration;
 
 use crossbeam_channel::Receiver;
 use tokio::sync::mpsc;
-use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperState};
+use whisper_rs::{
+    FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperState,
+};
 
 use crate::error::SttError;
 use crate::provider::SttProvider;
@@ -24,15 +26,15 @@ const MAX_BUFFER_SAMPLES: usize = 16_000 * 10;
 /// Whisper warns "input is too short" below 1s.
 const MIN_BUFFER_SAMPLES: usize = 16_000;
 
-#[derive(Debug, Clone, Copy)]
-enum WhisperProfile {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum WhisperProfile {
     Fast,
     Balanced,
     Accurate,
 }
 
 impl WhisperProfile {
-    fn from_name(name: Option<&str>) -> Self {
+    pub(crate) fn from_name(name: Option<&str>) -> Self {
         match name {
             Some("fast") => Self::Fast,
             Some("accurate") => Self::Accurate,
@@ -40,7 +42,7 @@ impl WhisperProfile {
         }
     }
 
-    const fn live_chunk_samples(self) -> usize {
+    pub(crate) const fn live_chunk_samples(self) -> usize {
         match self {
             Self::Fast => 16_000,
             Self::Balanced => 16_000 * 2,
@@ -48,7 +50,7 @@ impl WhisperProfile {
         }
     }
 
-    const fn audio_ctx(self) -> i32 {
+    pub(crate) const fn audio_ctx(self) -> i32 {
         match self {
             Self::Fast => 256,
             Self::Balanced => 384,
@@ -56,7 +58,7 @@ impl WhisperProfile {
         }
     }
 
-    const fn max_tokens(self) -> i32 {
+    pub(crate) const fn max_tokens(self) -> i32 {
         match self {
             Self::Fast => 64,
             Self::Balanced => 96,
@@ -65,7 +67,11 @@ impl WhisperProfile {
     }
 }
 
-fn queue_inference(inference_tx: &mpsc::Sender<Vec<i16>>, audio_buffer: &mut Vec<i16>, reason: &str) {
+fn queue_inference(
+    inference_tx: &mpsc::Sender<Vec<i16>>,
+    audio_buffer: &mut Vec<i16>,
+    reason: &str,
+) {
     if audio_buffer.len() < MIN_BUFFER_SAMPLES {
         audio_buffer.clear();
         return;
@@ -88,7 +94,10 @@ fn i16_to_f32(samples: &[i16]) -> Vec<f32> {
 }
 
 /// Extract transcript text, words, and average confidence from Whisper state.
-#[expect(clippy::cast_precision_loss, reason = "timestamps and word counts are small enough")]
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "timestamps and word counts are small enough"
+)]
 fn extract_segments(state: &WhisperState) -> (String, Vec<Word>, f64) {
     let n_segments = state.full_n_segments();
     let mut full_text = String::new();
@@ -96,7 +105,9 @@ fn extract_segments(state: &WhisperState) -> (String, Vec<Word>, f64) {
     let mut total_confidence: f64 = 0.0;
 
     for i in 0..n_segments {
-        let Some(segment) = state.get_segment(i) else { continue; };
+        let Some(segment) = state.get_segment(i) else {
+            continue;
+        };
         let text = segment.to_str_lossy().unwrap_or_default().to_string();
         let start_ts = segment.start_timestamp();
         let end_ts = segment.end_timestamp();
@@ -178,7 +189,10 @@ impl std::fmt::Debug for WhisperProvider {
 
 #[async_trait::async_trait]
 impl SttProvider for WhisperProvider {
-    #[expect(clippy::too_many_lines, reason = "spawns two blocking tasks with setup; splitting would obscure the pipeline flow")]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "spawns two blocking tasks with setup; splitting would obscure the pipeline flow"
+    )]
     async fn start(
         &self,
         audio_rx: Receiver<Vec<i16>>,
@@ -228,17 +242,24 @@ impl SttProvider for WhisperProvider {
 
                 match audio_rx.recv_timeout(Duration::from_millis(50)) {
                     Ok(samples) => {
-                        let frame = AudioFrame { samples, timestamp_ms: 0 };
+                        let frame = AudioFrame {
+                            samples,
+                            timestamp_ms: 0,
+                        };
                         let result = vad.process(&frame);
 
                         if let Some(transition) = result.transition {
                             match transition {
                                 VadTransition::SpeechStarted => {
-                                    let _ = vad_event_tx
-                                        .blocking_send(TranscriptEvent::SpeechStarted);
+                                    let _ =
+                                        vad_event_tx.blocking_send(TranscriptEvent::SpeechStarted);
                                 }
                                 VadTransition::SpeechEnded => {
-                                    queue_inference(&inference_tx, &mut audio_buffer, "SpeechEnded");
+                                    queue_inference(
+                                        &inference_tx,
+                                        &mut audio_buffer,
+                                        "SpeechEnded",
+                                    );
                                 }
                             }
                         }
@@ -287,9 +308,9 @@ impl SttProvider for WhisperProvider {
                 Ok(ctx) => ctx,
                 Err(e) => {
                     log::error!("[Whisper] Failed to load model: {e}");
-                    let _ = inf_event_tx.blocking_send(TranscriptEvent::Error(
-                        format!("Failed to load Whisper model: {e}"),
-                    ));
+                    let _ = inf_event_tx.blocking_send(TranscriptEvent::Error(format!(
+                        "Failed to load Whisper model: {e}"
+                    )));
                     return;
                 }
             };
@@ -298,14 +319,16 @@ impl SttProvider for WhisperProvider {
                 Ok(s) => s,
                 Err(e) => {
                     log::error!("[Whisper] Failed to create state: {e}");
-                    let _ = inf_event_tx.blocking_send(TranscriptEvent::Error(
-                        format!("Failed to create Whisper state: {e}"),
-                    ));
+                    let _ = inf_event_tx.blocking_send(TranscriptEvent::Error(format!(
+                        "Failed to create Whisper state: {e}"
+                    )));
                     return;
                 }
             };
 
-            log::info!("[Whisper] Model loaded, ready for inference");
+            log::info!(
+                "[Whisper] Model loaded, ready for inference: profile={profile:?}, threads={n_threads}"
+            );
 
             while let Some(audio_i16) = inference_rx.blocking_recv() {
                 if inf_cancelled.load(Ordering::SeqCst) {
@@ -315,9 +338,7 @@ impl SttProvider for WhisperProvider {
                 let audio_f32 = i16_to_f32(&audio_i16);
 
                 let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
-                params.set_language(Some(
-                    language.as_deref().unwrap_or("en"),
-                ));
+                params.set_language(Some(language.as_deref().unwrap_or("en")));
                 params.set_n_threads(n_threads);
                 params.set_print_progress(false);
                 params.set_print_special(false);
@@ -335,9 +356,9 @@ impl SttProvider for WhisperProvider {
                 let start = std::time::Instant::now();
                 if let Err(e) = state.full(params, &audio_f32) {
                     log::error!("[Whisper] Inference error: {e}");
-                    let _ = inf_event_tx.blocking_send(TranscriptEvent::Error(
-                        format!("Whisper inference error: {e}"),
-                    ));
+                    let _ = inf_event_tx.blocking_send(TranscriptEvent::Error(format!(
+                        "Whisper inference error: {e}"
+                    )));
                     continue;
                 }
                 let elapsed = start.elapsed();
@@ -377,5 +398,33 @@ impl SttProvider for WhisperProvider {
 
     fn name(&self) -> &'static str {
         "whisper"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unknown_profile_defaults_to_balanced() {
+        assert_eq!(WhisperProfile::from_name(None), WhisperProfile::Balanced);
+        assert_eq!(
+            WhisperProfile::from_name(Some("not-a-profile")),
+            WhisperProfile::Balanced
+        );
+    }
+
+    #[test]
+    fn profiles_trade_latency_for_context_and_tokens() {
+        let fast = WhisperProfile::Fast;
+        let balanced = WhisperProfile::Balanced;
+        let accurate = WhisperProfile::Accurate;
+
+        assert!(fast.live_chunk_samples() < balanced.live_chunk_samples());
+        assert!(balanced.live_chunk_samples() < accurate.live_chunk_samples());
+        assert!(fast.audio_ctx() < balanced.audio_ctx());
+        assert!(balanced.audio_ctx() < accurate.audio_ctx());
+        assert!(fast.max_tokens() < balanced.max_tokens());
+        assert!(balanced.max_tokens() < accurate.max_tokens());
     }
 }

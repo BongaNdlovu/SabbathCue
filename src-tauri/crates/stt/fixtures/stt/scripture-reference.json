@@ -1,0 +1,6 @@
+{
+  "name": "scripture-reference",
+  "expected": "Please open John chapter three verse sixteen.",
+  "scripture_terms": ["John", "chapter three", "verse sixteen"],
+  "actual": "Please open John chapter three verse sixteen."
+}

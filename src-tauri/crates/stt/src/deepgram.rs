@@ -19,6 +19,9 @@ const MAX_RECONNECT_ATTEMPTS: u32 = 5;
 const RECONNECT_DELAY: Duration = Duration::from_secs(1);
 /// Batch up to 100ms of audio before sending (at 16kHz, that is 1600 samples).
 const BATCH_SAMPLES: usize = 1600;
+pub(crate) const DEEPGRAM_ENDPOINTING_MS: &str = "300";
+pub(crate) const DEEPGRAM_UTTERANCE_END_MS: &str = "1000";
+pub(crate) const MAX_DEEPGRAM_KEYTERMS: usize = 100;
 
 pub struct DeepgramClient {
     config: SttConfig,
@@ -48,50 +51,15 @@ impl DeepgramClient {
 
         {
             let mut q = url.query_pairs_mut();
-            q.append_pair("model", &self.config.model);
-            q.append_pair("encoding", &self.config.encoding);
-            q.append_pair("sample_rate", &self.config.sample_rate.to_string());
-            q.append_pair("channels", "1");
-            q.append_pair("punctuate", "true");
-            q.append_pair("smart_format", "true");
+            append_deepgram_base_query(&mut q, &self.config);
             q.append_pair("interim_results", "true");
-            q.append_pair("endpointing", "300");
-            q.append_pair("utterance_end_ms", "1000");
+            q.append_pair("endpointing", DEEPGRAM_ENDPOINTING_MS);
+            q.append_pair("utterance_end_ms", DEEPGRAM_UTTERANCE_END_MS);
             q.append_pair("vad_events", "true");
-
-            if let Some(ref lang) = self.config.language {
-                q.append_pair("language", lang);
-            }
-
-            // Deepgram Nova-3 keyword boosting: uses `keyterm` (not `keywords`).
-            // Each keyterm is a separate query param. Max 100 per request.
-            let core_terms = vec![
-                "Jesus".to_string(),
-                "Christ".to_string(),
-                "God".to_string(),
-                "Lord".to_string(),
-                "Holy Spirit".to_string(),
-            ];
-            let bible_terms = bible_keyterms();
-
-            // Deduplicate: core terms first, then bible_keyterms(), capped at 100.
-            let mut seen = std::collections::HashSet::new();
-            let mut all_keyterms: Vec<String> = Vec::new();
-            for term in core_terms.into_iter().chain(bible_terms.into_iter()) {
-                if seen.insert(term.clone()) {
-                    all_keyterms.push(term);
-                }
-                if all_keyterms.len() >= 100 {
-                    break;
-                }
-            }
-
-            for term in &all_keyterms {
-                q.append_pair("keyterm", term);
-            }
+            append_deepgram_keyterms(&mut q);
             log::info!(
                 "Deepgram keyterm boosting: {} keyterms added",
-                all_keyterms.len()
+                deepgram_keyterms().len()
             );
         }
 
@@ -349,6 +317,54 @@ impl DeepgramClient {
     }
 }
 
+pub(crate) fn append_deepgram_base_query(
+    q: &mut url::form_urlencoded::Serializer<'_, url::UrlQuery<'_>>,
+    config: &SttConfig,
+) {
+    q.append_pair("model", &config.model);
+    q.append_pair("encoding", &config.encoding);
+    q.append_pair("sample_rate", &config.sample_rate.to_string());
+    q.append_pair("channels", "1");
+    q.append_pair("punctuate", "true");
+    q.append_pair("smart_format", "true");
+
+    if let Some(ref lang) = config.language {
+        q.append_pair("language", lang);
+    }
+}
+
+pub(crate) fn append_deepgram_keyterms(
+    q: &mut url::form_urlencoded::Serializer<'_, url::UrlQuery<'_>>,
+) {
+    for term in deepgram_keyterms() {
+        q.append_pair("keyterm", &term);
+    }
+}
+
+pub(crate) fn deepgram_keyterms() -> Vec<String> {
+    let core_terms = vec![
+        "Jesus".to_string(),
+        "Christ".to_string(),
+        "God".to_string(),
+        "Lord".to_string(),
+        "Holy Spirit".to_string(),
+    ];
+    let bible_terms = bible_keyterms();
+
+    let mut seen = std::collections::HashSet::new();
+    let mut all_keyterms: Vec<String> = Vec::new();
+    for term in core_terms.into_iter().chain(bible_terms.into_iter()) {
+        if seen.insert(term.clone()) {
+            all_keyterms.push(term);
+        }
+        if all_keyterms.len() >= MAX_DEEPGRAM_KEYTERMS {
+            break;
+        }
+    }
+
+    all_keyterms
+}
+
 /// Parse a Deepgram JSON response and send the corresponding `TranscriptEvent`.
 async fn parse_and_send(
     text: &str,
@@ -558,6 +574,41 @@ mod tests {
         let (tx, mut rx) = mpsc::channel(4);
         parse_and_send(payload, &tx).await.unwrap();
         rx.try_recv().ok()
+    }
+
+    #[tokio::test]
+    async fn websocket_url_preserves_accuracy_and_latency_params() {
+        let client = DeepgramClient::new(SttConfig {
+            api_key: "test".into(),
+            model: "nova-3".into(),
+            sample_rate: 16_000,
+            encoding: "linear16".into(),
+            language: Some("en".into()),
+        });
+
+        let url = client.build_url().unwrap();
+        let pairs = url.query_pairs().collect::<Vec<_>>();
+
+        assert!(pairs.contains(&("model".into(), "nova-3".into())));
+        assert!(pairs.contains(&("encoding".into(), "linear16".into())));
+        assert!(pairs.contains(&("sample_rate".into(), "16000".into())));
+        assert!(pairs.contains(&("channels".into(), "1".into())));
+        assert!(pairs.contains(&("interim_results".into(), "true".into())));
+        assert!(pairs.contains(&("endpointing".into(), DEEPGRAM_ENDPOINTING_MS.into())));
+        assert!(pairs.contains(&("utterance_end_ms".into(), DEEPGRAM_UTTERANCE_END_MS.into())));
+        assert!(pairs.contains(&("language".into(), "en".into())));
+        assert!(pairs.contains(&("keyterm".into(), "Jesus".into())));
+    }
+
+    #[tokio::test]
+    async fn keyterms_are_deduplicated_and_capped() {
+        let terms = deepgram_keyterms();
+
+        let unique = terms.iter().collect::<std::collections::HashSet<_>>();
+        assert_eq!(terms.len(), unique.len());
+        assert!(terms.len() <= MAX_DEEPGRAM_KEYTERMS);
+        assert_eq!(terms.first().map(String::as_str), Some("Jesus"));
+        assert!(terms.iter().any(|term| term == "John"));
     }
 
     #[tokio::test]

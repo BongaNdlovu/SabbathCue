@@ -37,3 +37,7 @@ whisper = ["dep:whisper-rs", "rhema-audio"]
 name = "whisper_smoke"
 path = "examples/whisper_smoke.rs"
 required-features = ["whisper"]
+
+[[example]]
+name = "transcription_bench"
+path = "examples/transcription_bench.rs"
