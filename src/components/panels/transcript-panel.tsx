@@ -4,16 +4,13 @@ import { LevelMeter } from "@/components/ui/level-meter"
 import { Button } from "@/components/ui/button"
 import { ApiKeyPrompt } from "@/components/ui/api-key-prompt"
 import { MicIcon, MicOffIcon } from "lucide-react"
-import {
-  useAudioStore,
-  useDetectionStore,
-  useQueueStore,
-  useBibleStore,
-  useTranscriptStore,
-} from "@/stores"
+import { useAudioStore, useBibleStore, useTranscriptStore } from "@/stores"
 import { useTauriEvent } from "@/hooks/use-tauri-event"
 import { useTranscription } from "@/hooks/use-transcription"
-import { bibleActions } from "@/hooks/use-bible"
+import {
+  handleReadingAdvance,
+  handleVerseDetections,
+} from "@/lib/verse-detection-workflow"
 import type { DetectionResult, ReadingAdvance } from "@/types"
 
 /**
@@ -76,98 +73,14 @@ export function TranscriptPanel() {
 
   // Listen for detection results from the backend (batch replaces previous detections)
   useTauriEvent<DetectionResult[]>("verse_detections", (detections) => {
-    useDetectionStore.getState().addDetections(detections)
-
-    // Auto-navigate book search + select verse for preview/live
-    const directHit = detections.find(
-      (d) => d.source === "direct" && !d.is_chapter_only
-    )
-    if (directHit && directHit.book_number > 0) {
-      // Select verse immediately so preview/live panels update
-      bibleActions.selectVerse({
-        id: 0,
-        translation_id: useBibleStore.getState().activeTranslationId,
-        book_number: directHit.book_number,
-        book_name: directHit.book_name,
-        book_abbreviation: "",
-        chapter: directHit.chapter,
-        verse: directHit.verse,
-        text: directHit.verse_text,
-      })
-      // Navigate book search panel to this verse
-      useBibleStore
-        .getState()
-        .setPendingNavigation({
-          bookNumber: directHit.book_number,
-          chapter: directHit.chapter,
-          verse: directHit.verse,
-        })
-    }
-
-    // Auto-queue high-confidence detections
-    for (const d of detections) {
-      // Check if this detection refines an existing chapter-only queue item
-      if (
-        !d.is_chapter_only &&
-        d.source === "direct" &&
-        useQueueStore
-          .getState()
-          .updateEarlyRef(
-            d.book_number,
-            d.chapter,
-            d.verse,
-            d.verse_ref,
-            d.verse_text,
-          )
-      ) {
-        continue
-      }
-
-      if (d.auto_queued) {
-        const queue = useQueueStore.getState()
-        queue.addOrFlashDetectionItem({
-          id: crypto.randomUUID(),
-          verse: {
-            id: 0,
-            translation_id: useBibleStore.getState().activeTranslationId,
-            book_number: d.book_number,
-            book_name: d.book_name,
-            book_abbreviation: "",
-            chapter: d.chapter,
-            verse: d.verse,
-            text: d.verse_text,
-          },
-          reference: d.verse_ref,
-          confidence: d.confidence,
-          source: d.source === "direct" ? "ai-direct" : "ai-semantic",
-          added_at: Date.now(),
-          is_chapter_only: d.is_chapter_only,
-        })
-      }
-    }
+    handleVerseDetections(detections)
   })
 
   // Reading mode navigation: auto-navigate book panel when reading mode
   // advances to a new verse (chapter commands, verse commands, text matching).
   // Does NOT add to queue — only direct/semantic feed the queue.
   useTauriEvent<ReadingAdvance>("reading_mode_verse", (advance) => {
-    if (advance.book_number > 0) {
-      bibleActions.selectVerse({
-        id: 0,
-        translation_id: useBibleStore.getState().activeTranslationId,
-        book_number: advance.book_number,
-        book_name: advance.book_name,
-        book_abbreviation: "",
-        chapter: advance.chapter,
-        verse: advance.verse,
-        text: advance.verse_text,
-      })
-      useBibleStore.getState().setPendingNavigation({
-        bookNumber: advance.book_number,
-        chapter: advance.chapter,
-        verse: advance.verse,
-      })
-    }
+    handleReadingAdvance(advance)
   })
 
   // Auto-scroll on segment additions. Partial-driven scrolling lives in
