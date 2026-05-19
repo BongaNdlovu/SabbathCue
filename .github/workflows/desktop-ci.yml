@@ -65,6 +65,15 @@ jobs:
       - name: Verify public Bible DB
         run: bun run verify:bible:public
 
+      - name: Cache Whisper model
+        uses: actions/cache@v4
+        with:
+          path: models/whisper/ggml-large-v3-turbo-q8_0.bin
+          key: whisper-ggml-large-v3-turbo-q8-0
+
+      - name: Download Whisper model
+        run: bun run download:whisper
+
       - name: Check workspace
         working-directory: src-tauri
         run: cargo check --workspace

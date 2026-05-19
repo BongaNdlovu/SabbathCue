@@ -18,6 +18,7 @@ Run these from the repo root unless noted:
 - [ ] `bun install`
 - [ ] `bun run build:bible:public`
 - [ ] `bun run verify:bible:public`
+- [ ] `bun run download:whisper`
 - [ ] `bun run typecheck`
 - [ ] `bun run test -- --run`
 - [ ] `bun run build`

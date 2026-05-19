@@ -21,12 +21,13 @@ To build the public release version with only redistributable content:
 
 ```bash
 bun run build:bible:public
+bun run download:whisper
 bun run tauri build
 ```
 
 This creates an installer that includes only public-domain Bible translations
 (KJV, Reina-Valera 1909, J.N. Darby French 1885, Biblia Livre) and defaults
-to local Whisper speech recognition.
+to local Whisper speech recognition with the local model bundled.
 
 ## Features
 
