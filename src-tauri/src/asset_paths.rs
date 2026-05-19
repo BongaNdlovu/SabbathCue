@@ -191,3 +191,42 @@ pub fn embedding_ids_path(app: &AppHandle) -> PathBuf {
             .join("kjv-qwen3-0.6b-ids.bin")
     })
 }
+
+pub fn ndi_library_path(app: &AppHandle) -> PathBuf {
+    let sdk_dir = |root: PathBuf| root.join("sdk").join("ndi");
+
+    let library_candidates = |base: PathBuf| -> Vec<PathBuf> {
+        let sdk = sdk_dir(base);
+        if cfg!(target_os = "windows") {
+            vec![sdk.join("windows").join("Processing.NDI.Lib.x64.dll")]
+        } else if cfg!(target_os = "macos") {
+            vec![sdk.join("macos").join("libndi.dylib")]
+        } else {
+            vec![
+                sdk.join("linux").join("libndi.so"),
+                sdk.join("linux").join("x86_64").join("libndi.so.6"),
+                sdk.join("linux").join("libndi.so.6"),
+            ]
+        }
+    };
+
+    let mut candidates = Vec::new();
+    if let Ok(path) = app_data_dir(app) {
+        candidates.extend(library_candidates(path));
+    }
+    if let Ok(path) = app.path().resource_dir() {
+        candidates.extend(library_candidates(path));
+    }
+    candidates.extend(library_candidates(dev_root()));
+
+    first_existing(candidates).unwrap_or_else(|| {
+        let sdk = sdk_dir(dev_root());
+        if cfg!(target_os = "windows") {
+            sdk.join("windows").join("Processing.NDI.Lib.x64.dll")
+        } else if cfg!(target_os = "macos") {
+            sdk.join("macos").join("libndi.dylib")
+        } else {
+            sdk.join("linux").join("libndi.so")
+        }
+    })
+}

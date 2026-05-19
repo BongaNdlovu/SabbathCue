@@ -9,6 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { Badge } from "@/components/ui/badge"
 import {
   Select,
   SelectContent,
@@ -21,6 +22,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
+import { useAssets } from "@/hooks/use-assets"
 import { useBroadcastStore } from "@/stores"
 import {
   DEFAULT_NDI_ALT_SOURCE_NAME,
@@ -72,6 +74,43 @@ function ndiFrameRateToNumber(frameRate: NdiFrameRate): number {
   }
 }
 
+function NdiSdkStatus({
+  installed,
+  loading,
+  onRefresh,
+}: {
+  installed: boolean
+  loading: boolean
+  onRefresh: () => void
+}) {
+  return (
+    <div className="rounded-md border border-border bg-muted/30 p-2">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs text-muted-foreground">NDI SDK</span>
+        <div className="flex items-center gap-1.5">
+          <Badge variant={installed ? "default" : "secondary"} className="text-[0.625rem]">
+            {loading ? "Checking" : installed ? "Installed" : "Missing"}
+          </Badge>
+          <Button
+            variant="ghost"
+            size="xs"
+            className="h-6 px-2"
+            disabled={loading}
+            onClick={onRefresh}
+          >
+            <RefreshCwIcon className={cn("size-3", loading && "animate-spin")} />
+          </Button>
+        </div>
+      </div>
+      {!loading && !installed ? (
+        <p className="mt-1.5 rounded bg-background px-2 py-1 font-mono text-[0.625rem] text-muted-foreground">
+          bun run download:ndi-sdk
+        </p>
+      ) : null}
+    </div>
+  )
+}
+
 export function BroadcastSettings({
   open,
   onOpenChange,
@@ -81,6 +120,8 @@ export function BroadcastSettings({
 }) {
   const themes = useBroadcastStore((s) => s.themes)
   const activeThemeId = useBroadcastStore((s) => s.activeThemeId)
+  const { status: assetStatus, loading: assetsLoading, refresh: refreshAssets } = useAssets()
+  const ndiSdkInstalled = Boolean(assetStatus?.ndi_sdk)
 
   // Main output state
   const [mainEnabled, setMainEnabled] = useState(false)
@@ -241,6 +282,12 @@ export function BroadcastSettings({
 
   const handleToggleNdi = async () => {
     try {
+      if (!ndiActive && !ndiSdkInstalled) {
+        toast.error("NDI SDK is missing", {
+          description: "Run bun run download:ndi-sdk, then refresh SDK status.",
+        })
+        return
+      }
       if (ndiActive) {
         await invoke("stop_ndi", { outputId: "main" })
         syncNdiConfigToOutput("main", false, ndiFrameRate, ndiResolution)
@@ -331,6 +378,12 @@ export function BroadcastSettings({
 
   const handleAltToggleNdi = async () => {
     try {
+      if (!altNdiActive && !ndiSdkInstalled) {
+        toast.error("NDI SDK is missing", {
+          description: "Run bun run download:ndi-sdk, then refresh SDK status.",
+        })
+        return
+      }
       if (altNdiActive) {
         await invoke("stop_ndi", { outputId: "alt" })
         syncNdiConfigToOutput("alt", false, altNdiFrameRate, altNdiResolution)
@@ -544,6 +597,12 @@ export function BroadcastSettings({
               </div>
             ) : (
               <div className="space-y-3">
+                <NdiSdkStatus
+                  installed={ndiSdkInstalled}
+                  loading={assetsLoading}
+                  onRefresh={() => void refreshAssets()}
+                />
+
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
                     <label className="text-xs text-muted-foreground">Resolution</label>
@@ -620,6 +679,7 @@ export function BroadcastSettings({
                     "border-emerald-500/50 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 hover:text-emerald-400"
                   )}
                   onClick={handleToggleNdi}
+                  disabled={!ndiActive && !assetsLoading && !ndiSdkInstalled}
                 >
                   {ndiActive ? (
                     <>
@@ -723,6 +783,12 @@ export function BroadcastSettings({
               </div>
             ) : (
               <div className="space-y-3">
+                <NdiSdkStatus
+                  installed={ndiSdkInstalled}
+                  loading={assetsLoading}
+                  onRefresh={() => void refreshAssets()}
+                />
+
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
                     <label className="text-xs text-muted-foreground">Resolution</label>
@@ -761,6 +827,7 @@ export function BroadcastSettings({
                   size="sm"
                   className={cn("w-full gap-1.5", altNdiActive && "border-emerald-500/50 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 hover:text-emerald-400")}
                   onClick={handleAltToggleNdi}
+                  disabled={!altNdiActive && !assetsLoading && !ndiSdkInstalled}
                 >
                   {altNdiActive ? (<><CastIcon className="size-3.5" />Stop NDI</>) : (<><CastIcon className="size-3.5" />Start NDI</>)}
                 </Button>

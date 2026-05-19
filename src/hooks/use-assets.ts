@@ -9,6 +9,7 @@ export interface AssetStatus {
   embeddings: boolean
   embedding_ids: boolean
   semantic_ready: boolean
+  ndi_sdk: boolean
 }
 
 export function useAssets() {
@@ -19,6 +20,8 @@ export function useAssets() {
     setLoading(true)
     try {
       setStatus(await invoke<AssetStatus>("asset_status"))
+    } catch {
+      setStatus(null)
     } finally {
       setLoading(false)
     }

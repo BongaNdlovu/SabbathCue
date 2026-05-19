@@ -14,6 +14,7 @@ pub struct AssetStatus {
     pub embeddings: bool,
     pub embedding_ids: bool,
     pub semantic_ready: bool,
+    pub ndi_sdk: bool,
 }
 
 #[tauri::command]
@@ -24,6 +25,7 @@ pub fn asset_status(app: AppHandle) -> Result<AssetStatus, String> {
     let tokenizer = asset_paths::tokenizer_path(&app).exists();
     let embeddings = asset_paths::embeddings_path(&app).exists();
     let embedding_ids = asset_paths::embedding_ids_path(&app).exists();
+    let ndi_sdk = asset_paths::ndi_library_path(&app).exists();
 
     Ok(AssetStatus {
         bible_db,
@@ -33,5 +35,6 @@ pub fn asset_status(app: AppHandle) -> Result<AssetStatus, String> {
         embeddings,
         embedding_ids,
         semantic_ready: onnx_model && tokenizer && embeddings && embedding_ids,
+        ndi_sdk,
     })
 }
