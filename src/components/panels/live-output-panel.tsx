@@ -1,3 +1,4 @@
+import { useMemo } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { CanvasVerse } from "@/components/ui/canvas-verse"
@@ -5,7 +6,8 @@ import { PanelHeader } from "@/components/ui/panel-header"
 import { Switch } from "@/components/ui/switch"
 import { commitPreviewToLive } from "@/lib/presentation-workflow"
 import { cn } from "@/lib/utils"
-import { useBibleStore, useBroadcastStore } from "@/stores"
+import { useBibleStore } from "@/stores/bible-store"
+import { useBroadcastStore } from "@/stores/broadcast-store"
 import { EyeIcon, EyeOffIcon, RadioIcon, SendIcon } from "lucide-react"
 
 export function LiveOutputPanel() {
@@ -16,8 +18,15 @@ export function LiveOutputPanel() {
   const activeThemeId = useBroadcastStore((s) => s.activeThemeId)
   const selectedVerse = useBibleStore((s) => s.selectedVerse)
 
-  const activeTheme = themes.find((t) => t.id === activeThemeId) ?? themes[0]
-  const visibleVerse = isLive ? liveVerse : null
+  const activeTheme = useMemo(
+    () => themes.find((t) => t.id === activeThemeId) ?? themes[0],
+    [themes, activeThemeId],
+  )
+
+  const visibleVerse = useMemo(
+    () => (isLive ? liveVerse : null),
+    [isLive, liveVerse],
+  )
   const canCommitPreview = Boolean(selectedVerse)
 
   return (

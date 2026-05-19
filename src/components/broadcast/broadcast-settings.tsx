@@ -23,7 +23,7 @@ import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
 import { useAssets } from "@/hooks/use-assets"
-import { useBroadcastStore } from "@/stores"
+import { useBroadcastStore } from "@/stores/broadcast-store"
 import {
   DEFAULT_NDI_ALT_SOURCE_NAME,
   DEFAULT_NDI_SOURCE_NAME,

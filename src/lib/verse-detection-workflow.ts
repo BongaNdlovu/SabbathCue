@@ -2,11 +2,9 @@ import {
   previewVerseAndMaybeAutoLive,
   selectPreviewVerse,
 } from "@/lib/presentation-workflow"
-import {
-  useBibleStore,
-  useDetectionStore,
-  useQueueStore,
-} from "@/stores"
+import { useBibleStore } from "@/stores/bible-store"
+import { useDetectionStore } from "@/stores/detection-store"
+import { useQueueStore } from "@/stores/queue-store"
 import type { DetectionResult, ReadingAdvance, Verse } from "@/types"
 
 function detectionLikeToVerse({

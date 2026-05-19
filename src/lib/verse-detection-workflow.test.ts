@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { handleReadingAdvance, handleVerseDetections } from "./verse-detection-workflow"
-import { useBibleStore, useBroadcastStore, useDetectionStore, useQueueStore } from "@/stores"
+import { useBibleStore } from "@/stores/bible-store"
+import { useBroadcastStore } from "@/stores/broadcast-store"
+import { useDetectionStore } from "@/stores/detection-store"
+import { useQueueStore } from "@/stores/queue-store"
 import type { DetectionResult, QueueItem, ReadingAdvance } from "@/types"
 
 vi.mock("@tauri-apps/api/core", () => ({

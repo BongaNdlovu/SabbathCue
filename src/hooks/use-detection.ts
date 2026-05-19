@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core"
-import { useDetectionStore } from "@/stores"
+import { useDetectionStore } from "@/stores/detection-store"
 import type { DetectionResult } from "@/types"
 
 // Stable action functions (same pattern as use-bible.ts)

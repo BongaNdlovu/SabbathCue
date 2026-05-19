@@ -9,7 +9,7 @@ import {
   XIcon,
   GripVerticalIcon,
 } from "lucide-react"
-import { useQueueStore } from "@/stores"
+import { useQueueStore } from "@/stores/queue-store"
 import {
   presentVerse,
   selectPreviewVerse,

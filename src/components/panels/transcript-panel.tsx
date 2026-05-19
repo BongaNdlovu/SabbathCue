@@ -4,7 +4,10 @@ import { LevelMeter } from "@/components/ui/level-meter"
 import { Button } from "@/components/ui/button"
 import { ApiKeyPrompt } from "@/components/ui/api-key-prompt"
 import { MicIcon, MicOffIcon } from "lucide-react"
-import { useAudioStore, useBibleStore, useTranscriptStore } from "@/stores"
+import { profileDetectionEvent } from "@/lib/detection-profiler"
+import { useAudioStore } from "@/stores/audio-store"
+import { useBibleStore } from "@/stores/bible-store"
+import { useTranscriptStore } from "@/stores/transcript-store"
 import { useTauriEvent } from "@/hooks/use-tauri-event"
 import { useTranscription } from "@/hooks/use-transcription"
 import {
@@ -73,14 +76,18 @@ export function TranscriptPanel() {
 
   // Listen for detection results from the backend (batch replaces previous detections)
   useTauriEvent<DetectionResult[]>("verse_detections", (detections) => {
-    handleVerseDetections(detections)
+    profileDetectionEvent("verse_detections", detections.length, () => {
+      handleVerseDetections(detections)
+    })
   })
 
   // Reading mode navigation: auto-navigate book panel when reading mode
   // advances to a new verse (chapter commands, verse commands, text matching).
   // Does NOT add to queue — only direct/semantic feed the queue.
   useTauriEvent<ReadingAdvance>("reading_mode_verse", (advance) => {
-    handleReadingAdvance(advance)
+    profileDetectionEvent("reading_mode_verse", 1, () => {
+      handleReadingAdvance(advance)
+    })
   })
 
   // Auto-scroll on segment additions. Partial-driven scrolling lives in

@@ -26,7 +26,8 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { useBible, bibleActions } from "@/hooks/use-bible"
-import { useBibleStore, useQueueStore } from "@/stores"
+import { useBibleStore } from "@/stores/bible-store"
+import { useQueueStore } from "@/stores/queue-store"
 import type { Book, Verse, SemanticSearchResult } from "@/types"
 import { Input } from "@/components/ui/input"
 import {

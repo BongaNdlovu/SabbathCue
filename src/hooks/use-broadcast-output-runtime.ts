@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, type RefObject } from "react"
 import { invoke } from "@tauri-apps/api/core"
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow"
+import { getBroadcastRenderKey } from "@/lib/broadcast-render-key"
 import { renderVerse } from "@/lib/verse-renderer"
 import type { BroadcastTheme, VerseRenderData } from "@/types/broadcast"
 import type { NdiConfigEventPayload, NdiFrameRequest } from "@/types"
@@ -61,6 +62,7 @@ export function useBroadcastOutputRuntime({
   const ndiCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const lastPushRef = useRef(0)
   const pushingRef = useRef(false)
+  const lastRenderKeyRef = useRef<string | null>(null)
 
   const logDebug = useCallback((message: string, meta?: unknown) => {
     if (!import.meta.env.DEV) return
@@ -166,6 +168,7 @@ export function useBroadcastOutputRuntime({
   }, [canvasRef, outputId])
 
   const pushNdiBurst = useCallback(() => {
+    if (!ndiConfigRef.current.active) return
     void pushNdiFrame()
     setTimeout(() => void pushNdiFrame(), 150)
     setTimeout(() => void pushNdiFrame(), 300)
@@ -180,6 +183,17 @@ export function useBroadcastOutputRuntime({
     }
 
     const applyPayload = (payload: BroadcastPayload) => {
+      const renderKey = getBroadcastRenderKey(payload.theme, payload.verse)
+
+      if (lastRenderKeyRef.current === renderKey) {
+        logDebug("Skipped duplicate broadcast payload", {
+          hasVerse: Boolean(payload.verse),
+          themeId: payload.theme.id,
+        })
+        return
+      }
+
+      lastRenderKeyRef.current = renderKey
       latestData.current = payload
       preloadBackgroundImage(payload.theme)
       logDebug("Received broadcast payload", {

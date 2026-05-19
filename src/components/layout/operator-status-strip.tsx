@@ -1,12 +1,10 @@
 import { Badge } from "@/components/ui/badge"
 import { LevelMeter } from "@/components/ui/level-meter"
 import { cn } from "@/lib/utils"
-import {
-  useAudioStore,
-  useBroadcastStore,
-  useQueueStore,
-  useTranscriptStore,
-} from "@/stores"
+import { useAudioStore } from "@/stores/audio-store"
+import { useBroadcastStore } from "@/stores/broadcast-store"
+import { useQueueStore } from "@/stores/queue-store"
+import { useTranscriptStore } from "@/stores/transcript-store"
 import { MicIcon, RadioIcon, Rows3Icon, SwatchBookIcon } from "lucide-react"
 
 export function OperatorStatusStrip() {

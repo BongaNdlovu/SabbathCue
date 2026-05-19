@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react"
 import * as fabric from "fabric"
-import { useBroadcastStore } from "@/stores"
+import { useBroadcastStore } from "@/stores/broadcast-store"
 import { renderVerse } from "@/lib/verse-renderer"
 import { Button } from "@/components/ui/button"
 import {

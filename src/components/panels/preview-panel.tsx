@@ -1,4 +1,4 @@
-import { useEffect } from "react"
+import { useEffect, useMemo } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { CanvasVerse } from "@/components/ui/canvas-verse"
@@ -6,7 +6,8 @@ import { PanelHeader } from "@/components/ui/panel-header"
 import { bibleActions } from "@/hooks/use-bible"
 import { toVerseRenderData } from "@/hooks/use-broadcast"
 import { commitPreviewToLive } from "@/lib/presentation-workflow"
-import { useBibleStore, useBroadcastStore } from "@/stores"
+import { useBibleStore } from "@/stores/bible-store"
+import { useBroadcastStore } from "@/stores/broadcast-store"
 import { MonitorIcon, SendIcon } from "lucide-react"
 
 export function PreviewPanel() {
@@ -28,10 +29,20 @@ export function PreviewPanel() {
     }
   }, [activeTranslationId])
 
-  const activeTheme = themes.find((t) => t.id === activeThemeId) ?? themes[0]
-  const translation =
-    translations.find((t) => t.id === activeTranslationId)?.abbreviation ?? "KJV"
-  const verseData = selectedVerse ? toVerseRenderData(selectedVerse, translation) : null
+  const activeTheme = useMemo(
+    () => themes.find((t) => t.id === activeThemeId) ?? themes[0],
+    [themes, activeThemeId],
+  )
+
+  const translation = useMemo(
+    () => translations.find((t) => t.id === activeTranslationId)?.abbreviation ?? "KJV",
+    [translations, activeTranslationId],
+  )
+
+  const verseData = useMemo(
+    () => (selectedVerse ? toVerseRenderData(selectedVerse, translation) : null),
+    [selectedVerse, translation],
+  )
 
   return (
     <div

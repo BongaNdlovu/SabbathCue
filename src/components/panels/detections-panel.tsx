@@ -3,7 +3,7 @@ import { ConfidenceDot } from "@/components/ui/confidence-dot"
 import { Button } from "@/components/ui/button"
 import { EyeIcon, PlayIcon, PlusIcon } from "lucide-react"
 import { useDetection, detectionActions } from "@/hooks/use-detection"
-import { useQueueStore } from "@/stores"
+import { useQueueStore } from "@/stores/queue-store"
 import {
   detectionToVerse,
   presentVerse,

@@ -1,6 +1,6 @@
 import { useCallback } from "react"
 import { invoke } from "@tauri-apps/api/core"
-import { useAudioStore } from "@/stores"
+import { useAudioStore } from "@/stores/audio-store"
 import { useTauriEvent } from "./use-tauri-event"
 import type { DeviceInfo, AudioLevel } from "@/types"
 

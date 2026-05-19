@@ -1,6 +1,6 @@
 import { useEffect } from "react"
 import { Dialog as DialogPrimitive } from "radix-ui"
-import { useBroadcastStore } from "@/stores"
+import { useBroadcastStore } from "@/stores/broadcast-store"
 import { Button } from "@/components/ui/button"
 import { SaveIcon, TrashIcon, XIcon } from "lucide-react"
 import { ThemeLibrary } from "@/components/broadcast/theme-library"

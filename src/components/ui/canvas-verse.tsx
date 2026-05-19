@@ -1,4 +1,5 @@
-import { useRef, useEffect, useState, useCallback, memo } from "react"
+import { useRef, useEffect, useState, useCallback, useMemo, memo } from "react"
+import { getBroadcastRenderKey } from "@/lib/broadcast-render-key"
 import { renderVerse } from "@/lib/verse-renderer"
 import type { BroadcastTheme, VerseRenderData } from "@/types"
 import { cn } from "@/lib/utils"
@@ -18,6 +19,11 @@ export const CanvasVerse = memo(function CanvasVerse({
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const imageCacheRef = useRef<Map<string, HTMLImageElement>>(new Map())
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 })
+  const renderKey = useMemo(
+    () => getBroadcastRenderKey(theme, verse),
+    [theme, verse],
+  )
+  const lastDrawKeyRef = useRef<string | null>(null)
 
   // Measure available canvas box with ResizeObserver.
   useEffect(() => {
@@ -36,7 +42,7 @@ export const CanvasVerse = memo(function CanvasVerse({
     return () => observer.disconnect()
   }, [])
 
-  const draw = useCallback(() => {
+  const draw = useCallback((force = false) => {
     const canvas = canvasRef.current
     if (!canvas || containerSize.width === 0 || containerSize.height === 0) return
     const ctx = canvas.getContext("2d")
@@ -54,6 +60,10 @@ export const CanvasVerse = memo(function CanvasVerse({
       displayW = displayH * aspectRatio
     }
 
+    const drawKey = `${renderKey}:${Math.round(displayW)}x${Math.round(displayH)}:${window.devicePixelRatio || 1}`
+    if (!force && lastDrawKeyRef.current === drawKey) return
+    lastDrawKeyRef.current = drawKey
+
     canvas.width = displayW * dpr
     canvas.height = displayH * dpr
     canvas.style.width = `${displayW}px`
@@ -65,7 +75,7 @@ export const CanvasVerse = memo(function CanvasVerse({
       scale,
       imageCache: imageCacheRef.current,
     })
-  }, [theme, verse, containerSize])
+  }, [theme, verse, containerSize, renderKey])
 
   // Preload background image so the renderer can find it in the cache.
   useEffect(() => {
@@ -78,7 +88,7 @@ export const CanvasVerse = memo(function CanvasVerse({
     const img = new Image()
     img.onload = () => {
       cache.set(url, img)
-      draw()
+      draw(true)
     }
     img.onerror = () => {
       console.warn("[canvas-verse] failed to load background image", {

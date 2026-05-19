@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react"
-import { useBroadcastStore } from "@/stores"
+import { useBroadcastStore } from "@/stores/broadcast-store"
 import { CanvasVerse } from "@/components/ui/canvas-verse"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"

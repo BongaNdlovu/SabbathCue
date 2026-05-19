@@ -1,6 +1,7 @@
 import { bibleActions } from "@/hooks/use-bible"
 import { toVerseRenderData } from "@/hooks/use-broadcast"
-import { useBibleStore, useBroadcastStore } from "@/stores"
+import { useBibleStore } from "@/stores/bible-store"
+import { useBroadcastStore } from "@/stores/broadcast-store"
 import type { DetectionResult, Verse } from "@/types"
 
 function activeTranslationLabel(): string {

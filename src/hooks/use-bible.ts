@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core"
-import { useBibleStore } from "@/stores"
+import { useBibleStore } from "@/stores/bible-store"
 import type { Translation, Book, Verse, CrossReference } from "@/types"
 import type { SemanticSearchResult } from "@/types/detection"
 

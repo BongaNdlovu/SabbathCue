@@ -26,7 +26,7 @@ describe("presentation workflow", () => {
   })
 
   it("selectPreviewVerse only updates the Bible preview", async () => {
-    const { useBibleStore } = await import("@/stores")
+    const { useBibleStore } = await import("@/stores/bible-store")
     const { selectPreviewVerse } = await import("./presentation-workflow")
 
     selectPreviewVerse(sampleVerse)
@@ -40,7 +40,8 @@ describe("presentation workflow", () => {
   })
 
   it("commitPreviewToLive sends the selected verse live", async () => {
-    const { useBibleStore, useBroadcastStore } = await import("@/stores")
+    const { useBibleStore } = await import("@/stores/bible-store")
+    const { useBroadcastStore } = await import("@/stores/broadcast-store")
     const { toVerseRenderData } = await import("@/hooks/use-broadcast")
     const { commitPreviewToLive } = await import("./presentation-workflow")
 
@@ -75,7 +76,7 @@ describe("presentation workflow", () => {
   })
 
   it("commitPreviewToLive returns false when no verse is staged", async () => {
-    const { useBibleStore } = await import("@/stores")
+    const { useBibleStore } = await import("@/stores/bible-store")
     const { commitPreviewToLive } = await import("./presentation-workflow")
 
     useBibleStore.setState({ selectedVerse: null })

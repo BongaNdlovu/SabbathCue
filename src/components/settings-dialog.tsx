@@ -44,7 +44,8 @@ import {
   DownloadIcon,
   HardDriveIcon,
 } from "lucide-react"
-import { useSettingsStore } from "@/stores"
+import { useBibleStore } from "@/stores/bible-store"
+import { useSettingsStore } from "@/stores/settings-store"
 import { useAssets } from "@/hooks/use-assets"
 import { useTutorialStore } from "@/stores/tutorial-store"
 import { useSettingsDialogStore } from "@/lib/settings-dialog"
@@ -546,7 +547,6 @@ function BibleSection() {
       await invoke("set_active_translation", { translationId: id })
       setActiveId(id)
       // Update frontend stores so all panels use the new translation
-      const { useBibleStore } = await import("@/stores")
       useBibleStore.getState().setActiveTranslation(id)
     } catch (e) {
       console.error("Failed to set translation:", e)
