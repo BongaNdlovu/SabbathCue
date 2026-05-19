@@ -90,6 +90,9 @@ export function useTranscription(options?: UseTranscriptionOptions) {
     useTranscriptStore.getState().setConnectionStatus("error")
     toast.error("Transcription error", { description: msg })
   })
+  useTauriEvent("stt_speech_started", () => {
+    useTranscriptStore.getState().setPartial("Speech detected...")
+  })
 
   // Audio source lifecycle: when the OS device disappears (mic unplugged,
   // headset disconnects, app loses access) the watchdog in the Rust fanout

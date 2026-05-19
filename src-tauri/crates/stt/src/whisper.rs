@@ -20,9 +20,30 @@ use crate::types::{TranscriptEvent, Word};
 /// Maximum audio buffer before force-flushing to inference (10 seconds at 16 kHz).
 const MAX_BUFFER_SAMPLES: usize = 16_000 * 10;
 
+/// Flush speech to Whisper periodically so live transcription doesn't wait
+/// forever for a silence boundary during continuous speaking.
+const LIVE_CHUNK_SAMPLES: usize = 16_000 * 3;
+
 /// Minimum audio buffer for inference (1.0 seconds).
 /// Whisper warns "input is too short" below 1s.
 const MIN_BUFFER_SAMPLES: usize = 16_000;
+
+fn queue_inference(inference_tx: &mpsc::Sender<Vec<i16>>, audio_buffer: &mut Vec<i16>, reason: &str) {
+    if audio_buffer.len() < MIN_BUFFER_SAMPLES {
+        audio_buffer.clear();
+        return;
+    }
+
+    log::info!(
+        "[WHISPER] flush on {reason}: audio_buffer={} samples ({:.1}s)",
+        audio_buffer.len(),
+        audio_buffer.len() as f64 / 16_000.0,
+    );
+
+    if inference_tx.try_send(std::mem::take(audio_buffer)).is_err() {
+        log::warn!("[WHISPER] inference queue is full; dropping {reason} chunk");
+    }
+}
 
 /// Convert i16 PCM samples to f32 in [-1.0, 1.0] range.
 fn i16_to_f32(samples: &[i16]) -> Vec<f32> {
@@ -140,12 +161,13 @@ impl SttProvider for WhisperProvider {
         let vad_handle = tokio::task::spawn_blocking(move || {
             use rhema_audio::{AudioFrame, Vad, VadConfig, VadTransition};
 
-            // Higher thresholds than default to avoid sending near-silence
-            // to Whisper (which causes hallucinations).
+            // Keep thresholds modest so quieter microphones still open the gate.
+            // Whisper's no_speech threshold still filters near-silence at inference time.
             let vad_config = VadConfig {
-                silence_threshold: 0.01,
-                frame_threshold: 0.005,
-                min_voice_frames: 6,
+                silence_threshold: 0.003,
+                frame_threshold: 0.0015,
+                min_voice_frames: 3,
+                silence_frame_count: 8,
                 ..VadConfig::default()
             };
             let mut vad = Vad::new(vad_config);
@@ -154,9 +176,7 @@ impl SttProvider for WhisperProvider {
 
             loop {
                 if vad_cancelled.load(Ordering::SeqCst) {
-                    if audio_buffer.len() >= MIN_BUFFER_SAMPLES {
-                        let _ = inference_tx.blocking_send(std::mem::take(&mut audio_buffer));
-                    }
+                    queue_inference(&inference_tx, &mut audio_buffer, "cancel");
                     break;
                 }
 
@@ -172,17 +192,7 @@ impl SttProvider for WhisperProvider {
                                         .blocking_send(TranscriptEvent::SpeechStarted);
                                 }
                                 VadTransition::SpeechEnded => {
-                                    log::info!(
-                                        "[WHISPER] flush on SpeechEnded: audio_buffer={} samples ({:.1}s)",
-                                        audio_buffer.len(),
-                                        audio_buffer.len() as f64 / 16_000.0,
-                                    );
-                                    if audio_buffer.len() >= MIN_BUFFER_SAMPLES {
-                                        let _ = inference_tx
-                                            .blocking_send(std::mem::take(&mut audio_buffer));
-                                    } else {
-                                        audio_buffer.clear();
-                                    }
+                                    queue_inference(&inference_tx, &mut audio_buffer, "SpeechEnded");
                                 }
                             }
                         }
@@ -206,14 +216,14 @@ impl SttProvider for WhisperProvider {
                                 audio_buffer.len(),
                                 audio_buffer.len() as f64 / 16_000.0,
                             );
-                            let _ = inference_tx.blocking_send(std::mem::take(&mut audio_buffer));
+                            queue_inference(&inference_tx, &mut audio_buffer, "MAX_BUFFER");
+                        } else if audio_buffer.len() >= LIVE_CHUNK_SAMPLES {
+                            queue_inference(&inference_tx, &mut audio_buffer, "live chunk");
                         }
                     }
                     Err(crossbeam_channel::RecvTimeoutError::Timeout) => {}
                     Err(crossbeam_channel::RecvTimeoutError::Disconnected) => {
-                        if audio_buffer.len() >= MIN_BUFFER_SAMPLES {
-                            let _ = inference_tx.blocking_send(std::mem::take(&mut audio_buffer));
-                        }
+                        queue_inference(&inference_tx, &mut audio_buffer, "disconnect");
                         break;
                     }
                 }
