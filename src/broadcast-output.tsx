@@ -29,6 +29,14 @@ interface BroadcastPayload {
   verse: VerseRenderData | null
 }
 
+declare global {
+  interface Window {
+    __SABBATHCUE_BROADCAST_TEST__?: {
+      render: (payload: BroadcastPayload) => void
+    }
+  }
+}
+
 function BroadcastCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const latestData = useRef<BroadcastPayload | null>(null)
@@ -170,25 +178,48 @@ function BroadcastCanvas() {
       }
     }
 
-    const currentWindow = getCurrentWebviewWindow()
-    logDebug("Listener registration started", { label: currentWindow.label })
-    const unlisten = currentWindow.listen<BroadcastPayload>("broadcast:verse-update", (event) => {
-      latestData.current = event.payload
-      preloadBackgroundImage(event.payload.theme)
-      logDebug("Received broadcast:verse-update", {
-        hasVerse: Boolean(event.payload.verse),
-        themeId: event.payload.theme.id,
+    const applyPayload = (payload: BroadcastPayload) => {
+      latestData.current = payload
+      preloadBackgroundImage(payload.theme)
+      logDebug("Received broadcast payload", {
+        hasVerse: Boolean(payload.verse),
+        themeId: payload.theme.id,
       })
       draw()
       pushNdiBurst()
-    })
+    }
 
-    const unlistenNdiConfig = currentWindow.listen<NdiConfigEventPayload>("broadcast:ndi-config", (event) => {
-      ndiConfigRef.current = event.payload
-      logDebug("Received broadcast:ndi-config", event.payload)
-      // Push burst when NDI becomes active
-      if (event.payload.active) pushNdiBurst()
-    })
+    if (import.meta.env.DEV || import.meta.env.MODE === "test") {
+      window.__SABBATHCUE_BROADCAST_TEST__ = {
+        render: applyPayload,
+      }
+    }
+
+    let unlisten: Promise<() => void> | null = null
+    let unlistenNdiConfig: Promise<() => void> | null = null
+
+    try {
+      const currentWindow = getCurrentWebviewWindow()
+      logDebug("Listener registration started", { label: currentWindow.label })
+      unlisten = currentWindow.listen<BroadcastPayload>("broadcast:verse-update", (event) => {
+        applyPayload(event.payload)
+      })
+
+      unlistenNdiConfig = currentWindow.listen<NdiConfigEventPayload>("broadcast:ndi-config", (event) => {
+        ndiConfigRef.current = event.payload
+        logDebug("Received broadcast:ndi-config", event.payload)
+        // Push burst when NDI becomes active
+        if (event.payload.active) pushNdiBurst()
+      })
+
+      void currentWindow.emitTo("main", "broadcast:output-ready").then(() => {
+        logDebug("Sent broadcast:output-ready")
+      }).catch(() => {
+        console.warn("[broadcast-output] failed to send output-ready event")
+      })
+    } catch (error) {
+      logDebug("Tauri broadcast listeners unavailable", error)
+    }
 
     // Request current NDI status on mount (fixes race condition
     // where NDI is started before this window opens)
@@ -208,15 +239,10 @@ function BroadcastCanvas() {
         // Command may not exist yet
       })
 
-    void currentWindow.emitTo("main", "broadcast:output-ready").then(() => {
-      logDebug("Sent broadcast:output-ready")
-    }).catch(() => {
-      console.warn("[broadcast-output] failed to send output-ready event")
-    })
-
     return () => {
-      unlisten.then((fn) => fn())
-      unlistenNdiConfig.then((fn) => fn())
+      delete window.__SABBATHCUE_BROADCAST_TEST__
+      unlisten?.then((fn) => fn())
+      unlistenNdiConfig?.then((fn) => fn())
     }
   }, [draw, logDebug, preloadBackgroundImage, pushNdiFrame, pushNdiBurst])
 
