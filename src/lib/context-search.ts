@@ -75,6 +75,26 @@ export function clearContextSearchCache(translationId?: number) {
   fuseByTranslation.delete(translationId)
 }
 
+export function mergeContextSearchResults(
+  primary: SemanticSearchResult[],
+  fallback: SemanticSearchResult[],
+  limit = DEFAULT_LIMIT
+): SemanticSearchResult[] {
+  const byRef = new Map<string, SemanticSearchResult>()
+
+  for (const result of [...primary, ...fallback]) {
+    const key = `${result.book_number}:${result.chapter}:${result.verse}`
+    const existing = byRef.get(key)
+    if (!existing || result.similarity > existing.similarity) {
+      byRef.set(key, result)
+    }
+  }
+
+  return [...byRef.values()]
+    .sort((a, b) => b.similarity - a.similarity)
+    .slice(0, limit)
+}
+
 export async function searchContextWithFuse(
   query: string,
   translationId: number,

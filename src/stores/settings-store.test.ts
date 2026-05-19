@@ -36,6 +36,7 @@ describe("settings store", () => {
     mockGet.mockImplementation(async (key: string) => {
       if (key === "gain") return 2.5
       if (key === "sttProvider") return "whisper"
+      if (key === "whisperProfile") return "fast"
       if (key === "deepgramApiKey") return "dg-key"
       return null
     })
@@ -46,6 +47,7 @@ describe("settings store", () => {
     const state = useSettingsStore.getState()
     expect(state.gain).toBe(2.5)
     expect(state.sttProvider).toBe("whisper")
+    expect(state.whisperProfile).toBe("fast")
     expect(state.deepgramApiKey).toBe("dg-key")
     // Defaults remain for keys with null
     expect(state.autoMode).toBe(false)
@@ -61,6 +63,7 @@ describe("settings store", () => {
 
     expect(after.gain).toBe(1.0)
     expect(after.sttProvider).toBe("whisper")
+    expect(after.whisperProfile).toBe("balanced")
     expect(after.autoMode).toBe(false)
   })
 

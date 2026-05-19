@@ -197,6 +197,8 @@ function SpeechSection() {
   const {
     sttProvider,
     setSttProvider,
+    whisperProfile,
+    setWhisperProfile,
     deepgramApiKey,
     setDeepgramApiKey,
   } = useSettingsStore()
@@ -285,6 +287,24 @@ function SpeechSection() {
             Whisper is the free local speech engine. If the model is missing,
             transcription will not start until it is installed.
           </p>
+          <div className="flex flex-col gap-2">
+            <label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              Live profile
+            </label>
+            <Select
+              value={whisperProfile}
+              onValueChange={(v) => setWhisperProfile(v as "fast" | "balanced" | "accurate")}
+            >
+              <SelectTrigger className="h-8 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="fast">Fast</SelectItem>
+                <SelectItem value="balanced">Balanced</SelectItem>
+                <SelectItem value="accurate">Accurate</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
           {!assetsLoading && !assetStatus?.whisper_model && (
             <p className="rounded-md bg-background px-2 py-1.5 font-mono text-[0.625rem] text-muted-foreground">
               bun run download:whisper

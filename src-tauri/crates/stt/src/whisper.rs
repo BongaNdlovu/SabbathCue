@@ -20,13 +20,50 @@ use crate::types::{TranscriptEvent, Word};
 /// Maximum audio buffer before force-flushing to inference (10 seconds at 16 kHz).
 const MAX_BUFFER_SAMPLES: usize = 16_000 * 10;
 
-/// Flush speech to Whisper periodically so live transcription doesn't wait
-/// forever for a silence boundary during continuous speaking.
-const LIVE_CHUNK_SAMPLES: usize = 16_000 * 2;
-
 /// Minimum audio buffer for inference (1.0 seconds).
 /// Whisper warns "input is too short" below 1s.
 const MIN_BUFFER_SAMPLES: usize = 16_000;
+
+#[derive(Debug, Clone, Copy)]
+enum WhisperProfile {
+    Fast,
+    Balanced,
+    Accurate,
+}
+
+impl WhisperProfile {
+    fn from_name(name: Option<&str>) -> Self {
+        match name {
+            Some("fast") => Self::Fast,
+            Some("accurate") => Self::Accurate,
+            _ => Self::Balanced,
+        }
+    }
+
+    const fn live_chunk_samples(self) -> usize {
+        match self {
+            Self::Fast => 16_000,
+            Self::Balanced => 16_000 * 2,
+            Self::Accurate => 16_000 * 3,
+        }
+    }
+
+    const fn audio_ctx(self) -> i32 {
+        match self {
+            Self::Fast => 256,
+            Self::Balanced => 384,
+            Self::Accurate => 768,
+        }
+    }
+
+    const fn max_tokens(self) -> i32 {
+        match self {
+            Self::Fast => 64,
+            Self::Balanced => 96,
+            Self::Accurate => 144,
+        }
+    }
+}
 
 fn queue_inference(inference_tx: &mpsc::Sender<Vec<i16>>, audio_buffer: &mut Vec<i16>, reason: &str) {
     if audio_buffer.len() < MIN_BUFFER_SAMPLES {
@@ -102,6 +139,7 @@ pub struct WhisperProvider {
     model_path: PathBuf,
     language: Option<String>,
     n_threads: i32,
+    profile: WhisperProfile,
     cancelled: Arc<AtomicBool>,
 }
 
@@ -111,11 +149,17 @@ impl WhisperProvider {
     /// - `model_path`: path to a GGML model file
     /// - `language`: ISO language code (e.g. "en") or `None` for auto-detect
     /// - `n_threads`: number of CPU threads for inference
-    pub fn new(model_path: PathBuf, language: Option<String>, n_threads: i32) -> Self {
+    pub fn new(
+        model_path: PathBuf,
+        language: Option<String>,
+        n_threads: i32,
+        profile: Option<String>,
+    ) -> Self {
         Self {
             model_path,
             language,
             n_threads: n_threads.max(1),
+            profile: WhisperProfile::from_name(profile.as_deref()),
             cancelled: Arc::new(AtomicBool::new(false)),
         }
     }
@@ -127,6 +171,7 @@ impl std::fmt::Debug for WhisperProvider {
             .field("model_path", &self.model_path)
             .field("language", &self.language)
             .field("n_threads", &self.n_threads)
+            .field("profile", &self.profile)
             .finish_non_exhaustive()
     }
 }
@@ -151,6 +196,7 @@ impl SttProvider for WhisperProvider {
         let model_path = self.model_path.clone();
         let language = self.language.clone();
         let n_threads = self.n_threads;
+        let profile = self.profile;
         let cancelled = self.cancelled.clone();
 
         let (inference_tx, mut inference_rx) = mpsc::channel::<Vec<i16>>(4);
@@ -217,7 +263,7 @@ impl SttProvider for WhisperProvider {
                                 audio_buffer.len() as f64 / 16_000.0,
                             );
                             queue_inference(&inference_tx, &mut audio_buffer, "MAX_BUFFER");
-                        } else if audio_buffer.len() >= LIVE_CHUNK_SAMPLES {
+                        } else if audio_buffer.len() >= profile.live_chunk_samples() {
                             queue_inference(&inference_tx, &mut audio_buffer, "live chunk");
                         }
                     }
@@ -280,8 +326,8 @@ impl SttProvider for WhisperProvider {
                 params.set_no_timestamps(true);
                 params.set_single_segment(true);
                 params.set_token_timestamps(false);
-                params.set_audio_ctx(384);
-                params.set_max_tokens(96);
+                params.set_audio_ctx(profile.audio_ctx());
+                params.set_max_tokens(profile.max_tokens());
                 params.set_no_speech_thold(0.6);
                 params.set_suppress_blank(true);
                 params.set_suppress_nst(true);

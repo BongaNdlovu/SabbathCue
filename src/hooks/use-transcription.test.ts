@@ -45,6 +45,7 @@ describe("use-transcription", () => {
         deepgramApiKey: "ignored-for-whisper",
         audioDeviceId: "dev-42",
         gain: 1.5,
+        whisperProfile: "fast",
       })
 
       await transcriptionActions.start()
@@ -54,6 +55,7 @@ describe("use-transcription", () => {
         deviceId: "dev-42",
         gain: 1.5,
         provider: "whisper",
+        whisperProfile: "fast",
       })
     })
 
@@ -66,6 +68,7 @@ describe("use-transcription", () => {
         deepgramApiKey: "dg-live-123",
         audioDeviceId: null,
         gain: 1.0,
+        whisperProfile: "balanced",
       })
 
       await transcriptionActions.start()
@@ -77,6 +80,7 @@ describe("use-transcription", () => {
           provider: "deepgram",
           deviceId: null,
           gain: 1.0,
+          whisperProfile: "balanced",
         })
       )
     })

@@ -17,8 +17,8 @@ use crate::types::{SttConfig, TranscriptEvent, Word};
 
 const MAX_RECONNECT_ATTEMPTS: u32 = 5;
 const RECONNECT_DELAY: Duration = Duration::from_secs(1);
-/// Batch up to 250ms of audio before sending (at 16kHz, that is 4000 samples).
-const BATCH_SAMPLES: usize = 4000;
+/// Batch up to 100ms of audio before sending (at 16kHz, that is 1600 samples).
+const BATCH_SAMPLES: usize = 1600;
 
 pub struct DeepgramClient {
     config: SttConfig,

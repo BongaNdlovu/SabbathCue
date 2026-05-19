@@ -69,6 +69,7 @@ pub async fn start_transcription(
     device_id: Option<String>,
     gain: Option<f32>,
     provider: Option<String>,
+    whisper_profile: Option<String>,
 ) -> Result<(), String> {
     // ── 1. Guard: already running? ──────────────────────────────────────
     let (stt_active, audio_active) = {
@@ -109,6 +110,7 @@ pub async fn start_transcription(
                 model_path,
                 None,
                 n_threads,
+                whisper_profile,
             ))
         }
         #[cfg(not(feature = "whisper"))]

@@ -29,7 +29,10 @@ import { useBible, bibleActions } from "@/hooks/use-bible"
 import { useBibleStore, useQueueStore } from "@/stores"
 import type { Book, Verse, SemanticSearchResult } from "@/types"
 import { Input } from "@/components/ui/input"
-import { searchContextWithFuse } from "@/lib/context-search"
+import {
+  mergeContextSearchResults,
+  searchContextWithFuse,
+} from "@/lib/context-search"
 
 type SearchTab = "book" | "context" 
 
@@ -250,15 +253,13 @@ export function SearchPanel() {
 
     if (isStale()) return
 
-    if (hybridResults && hybridResults.length > 0) {
-      useBibleStore.getState().setSemanticResults(hybridResults)
-      return
-    }
-
-    // Fallback: client-side Fuse.js when semantic model is not loaded
+    // Client-side Fuse.js supplements backend vector/FTS5 results and acts as
+    // fallback when semantic assets are not loaded.
     const fuseResults = await searchContextWithFuse(query, translationId, 15).catch(() => [])
     if (isStale()) return
-    useBibleStore.getState().setSemanticResults(fuseResults)
+    useBibleStore
+      .getState()
+      .setSemanticResults(mergeContextSearchResults(hybridResults ?? [], fuseResults, 15))
   }, [])
 
   const handleContextSearch = useCallback((query: string) => {
