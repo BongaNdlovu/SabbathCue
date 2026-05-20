@@ -4,4 +4,6 @@ pub mod bible;
 pub mod broadcast;
 pub mod detection;
 pub mod remote;
+pub mod secrets;
 pub mod stt;
+pub mod theme_files;

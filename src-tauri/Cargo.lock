@@ -2495,6 +2495,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "keyring"
+version = "3.6.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eebcc3aff044e5944a8fbaf69eb277d11986064cba30c468730e8b9909fb551c"
+dependencies = [
+ "log",
+ "zeroize",
+]
+
+[[package]]
 name = "kuchikiki"
 version = "0.8.8-speedreader"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4329,7 +4339,9 @@ dependencies = [
  "base64 0.22.1",
  "crossbeam-channel",
  "dotenvy",
+ "keyring",
  "log",
+ "rand 0.8.5",
  "rhema-api",
  "rhema-audio",
  "rhema-bible",
@@ -4342,7 +4354,6 @@ dependencies = [
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",
- "tauri-plugin-fs",
  "tauri-plugin-global-shortcut",
  "tauri-plugin-log",
  "tauri-plugin-store",

@@ -5,9 +5,7 @@ type SttProvider = "deepgram" | "whisper"
 type WhisperProfile = "fast" | "balanced" | "accurate"
 
 interface SettingsState {
-  deepgramApiKey: string | null
-  openaiApiKey: string | null
-  claudeApiKey: string | null
+  hasDeepgramApiKey: boolean
   audioDeviceId: string | null
   gain: number
   autoMode: boolean
@@ -17,9 +15,7 @@ interface SettingsState {
   sttProvider: SttProvider
   whisperProfile: WhisperProfile
 
-  setDeepgramApiKey: (key: string | null) => void
-  setOpenaiApiKey: (key: string | null) => void
-  setClaudeApiKey: (key: string | null) => void
+  setHasDeepgramApiKey: (has: boolean) => void
   setAudioDeviceId: (id: string | null) => void
   setGain: (gain: number) => void
   setAutoMode: (auto: boolean) => void
@@ -31,9 +27,7 @@ interface SettingsState {
 }
 
 export const useSettingsStore = create<SettingsState>((set) => ({
-  deepgramApiKey: null,
-  openaiApiKey: null,
-  claudeApiKey: null,
+  hasDeepgramApiKey: false,
   audioDeviceId: null,
   gain: 1.0,
   autoMode: false,
@@ -43,9 +37,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   sttProvider: "whisper",
   whisperProfile: "balanced",
 
-  setDeepgramApiKey: (deepgramApiKey) => set({ deepgramApiKey }),
-  setOpenaiApiKey: (openaiApiKey) => set({ openaiApiKey }),
-  setClaudeApiKey: (claudeApiKey) => set({ claudeApiKey }),
+  setHasDeepgramApiKey: (hasDeepgramApiKey) => set({ hasDeepgramApiKey }),
   setAudioDeviceId: (audioDeviceId) => set({ audioDeviceId }),
   setGain: (gain) => set({ gain }),
   setAutoMode: (autoMode) => set({ autoMode }),
@@ -57,9 +49,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
 }))
 
 const PERSISTED_KEYS = [
-  "deepgramApiKey",
-  "openaiApiKey",
-  "claudeApiKey",
+  "hasDeepgramApiKey",
   "audioDeviceId",
   "gain",
   "autoMode",
@@ -95,6 +85,17 @@ export function hydrateSettings(): Promise<void> {
           ;(patch as Record<string, unknown>)[key] = value
         }
       }
+
+      // Resolve keyring-backed secret presence (Deepgram key) and write only a boolean flag.
+      // This is best-effort: if the command isn't available (web/dev), we just keep defaults.
+      try {
+        const { invoke } = await import("@tauri-apps/api/core")
+        const has = await invoke<boolean>("has_deepgram_api_key")
+        patch.hasDeepgramApiKey = has
+      } catch {
+        // ignore
+      }
+
       if (Object.keys(patch).length > 0) {
         useSettingsStore.setState(patch)
       }

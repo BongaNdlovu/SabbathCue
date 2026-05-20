@@ -39,10 +39,6 @@ export const transcriptionActions = {
     const settings = useSettingsStore.getState()
     try {
       await invoke("start_transcription", {
-        apiKey:
-          settings.sttProvider === "deepgram"
-            ? (settings.deepgramApiKey ?? "")
-            : "",
         deviceId: settings.audioDeviceId,
         gain: settings.gain,
         provider: settings.sttProvider,

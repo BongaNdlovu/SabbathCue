@@ -1,5 +1,5 @@
 import { open, save } from "@tauri-apps/plugin-dialog"
-import { readFile, writeTextFile } from "@tauri-apps/plugin-fs"
+import { invoke } from "@tauri-apps/api/core"
 import type { BroadcastTheme } from "@/types"
 
 /**
@@ -12,32 +12,14 @@ export async function pickThemeBackgroundImage(): Promise<string | null> {
     filters: [
       {
         name: "Images",
-        extensions: ["png", "jpg", "jpeg", "webp", "gif", "bmp", "svg"],
+        extensions: ["png", "jpg", "jpeg", "webp", "gif", "bmp"],
       },
     ],
   })
   if (!selected) return null
 
   const path = typeof selected === "string" ? selected : selected
-  const bytes = await readFile(path)
-  const extension = path.split(".").pop()?.toLowerCase() ?? "png"
-  const mimeMap: Record<string, string> = {
-    png: "image/png",
-    jpg: "image/jpeg",
-    jpeg: "image/jpeg",
-    webp: "image/webp",
-    gif: "image/gif",
-    bmp: "image/bmp",
-    svg: "image/svg+xml",
-  }
-  const mime = mimeMap[extension] ?? "image/png"
-
-  let binary = ""
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte)
-  }
-  const base64 = btoa(binary)
-  return `data:${mime};base64,${base64}`
+  return await invoke<string>("read_image_as_data_url", { path })
 }
 
 /**
@@ -50,8 +32,7 @@ export async function exportTheme(theme: BroadcastTheme): Promise<void> {
   })
   if (!path) return
 
-  const json = JSON.stringify(theme, null, 2)
-  await writeTextFile(path, json)
+  await invoke("export_theme_to_path", { path, theme })
 }
 
 /**
@@ -66,13 +47,7 @@ export async function importTheme(): Promise<BroadcastTheme | null> {
   if (!selected) return null
 
   const path = typeof selected === "string" ? selected : selected
-  const bytes = await readFile(path)
-  const text = new TextDecoder().decode(bytes)
-  const parsed = JSON.parse(text) as BroadcastTheme
-
-  if (!parsed.id || !parsed.name || !parsed.background || !parsed.layout) {
-    throw new Error("Invalid theme file: missing required fields")
-  }
+  const parsed = (await invoke("import_theme_from_path", { path })) as BroadcastTheme
 
   return {
     ...parsed,

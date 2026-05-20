@@ -19,6 +19,15 @@ use crate::state::AppState;
 static DIRECT_LOCK_OK: AtomicU64 = AtomicU64::new(0);
 static DIRECT_LOCK_CONTENDED: AtomicU64 = AtomicU64::new(0);
 
+fn transcript_logging_enabled() -> bool {
+    matches!(
+        std::env::var("SABBATHCUE_DEBUG_TRANSCRIPTS")
+            .unwrap_or_default()
+            .trim(),
+        "1" | "true" | "TRUE" | "yes" | "YES"
+    )
+}
+
 /// Truncate a string to at most `max_bytes`, snapping to a valid UTF-8 char boundary.
 fn truncate_safe(s: &str, max_bytes: usize) -> &str {
     if s.len() <= max_bytes {
@@ -32,6 +41,8 @@ fn truncate_safe(s: &str, max_bytes: usize) -> &str {
 }
 use rhema_audio::{AudioConfig, AudioFrame};
 use rhema_stt::{DeepgramClient, SttConfig, SttProvider, TranscriptEvent, Word};
+
+use crate::commands::secrets;
 
 fn to_word_payloads(words: Vec<Word>) -> Vec<WordPayload> {
     words
@@ -65,7 +76,6 @@ fn to_word_payloads(words: Vec<Word>) -> Vec<WordPayload> {
 pub async fn start_transcription(
     app: AppHandle,
     state: State<'_, Mutex<AppState>>,
-    api_key: String,
     device_id: Option<String>,
     gain: Option<f32>,
     provider: Option<String>,
@@ -121,22 +131,20 @@ pub async fn start_transcription(
         }
         _ => {
             // Deepgram (default)
-            let resolved_api_key = if api_key.is_empty() {
-                std::env::var("DEEPGRAM_API_KEY").unwrap_or_default()
-            } else {
-                api_key
+            let resolved_api_key = match std::env::var("DEEPGRAM_API_KEY") {
+                Ok(v) if !v.trim().is_empty() => v.trim().to_string(),
+                _ => secrets::get_deepgram_api_key()?,
             };
 
             if resolved_api_key.is_empty() {
                 return Err(
-                    "No Deepgram API key provided. Set it in Settings or via DEEPGRAM_API_KEY env var."
+                    "No Deepgram API key configured. Set it in Settings or via DEEPGRAM_API_KEY env var."
                         .into(),
                 );
             }
 
             log::info!(
-                "Starting Deepgram transcription: api_key={}..., device_id={device_id:?}, gain={gain:?}",
-                truncate_safe(&resolved_api_key, 8)
+                "Starting Deepgram transcription: api_key_configured=true, device_id={device_id:?}, gain={gain:?}"
             );
 
             let stt_config = SttConfig {
@@ -464,7 +472,15 @@ pub async fn start_transcription(
                             );
                         }
 
-                        log::debug!("[EVT] Final processed in {:?} ({:?})", t0.elapsed(), truncate_safe(&transcript, 40));
+                        if transcript_logging_enabled() {
+                            log::debug!(
+                                "[EVT] Final processed in {:?} ({:?})",
+                                t0.elapsed(),
+                                truncate_safe(&transcript, 40)
+                            );
+                        } else {
+                            log::debug!("[EVT] Final processed in {:?}", t0.elapsed());
+                        }
                     }
                 }
                 TranscriptEvent::UtteranceEnd => {}
@@ -584,7 +600,15 @@ fn run_direct_detection(app: &AppHandle, transcript: &str) -> bool {
     }
     drop(app_state);
     let _ = app.emit("verse_detections", &results);
-    log::info!("[DET-DIRECT] Detection took {:?} for {:?}", t0.elapsed(), truncate_safe(transcript, 50));
+    if transcript_logging_enabled() {
+        log::info!(
+            "[DET-DIRECT] Detection took {:?} for {:?}",
+            t0.elapsed(),
+            truncate_safe(transcript, 50)
+        );
+    } else {
+        log::info!("[DET-DIRECT] Detection took {:?}", t0.elapsed());
+    }
     has_high_confidence
 }
 
@@ -595,7 +619,14 @@ fn run_semantic_detection(app: &AppHandle, transcript: &str) {
     use super::detection::{FTS5_CONFIDENCE_DECAY, FTS5_MIN_CONFIDENCE, FTS5_RANK0_CONFIDENCE};
 
     let t0 = std::time::Instant::now();
-    log::info!("[DET-SEMANTIC] Running on: {:?}", truncate_safe(transcript, 80));
+    if transcript_logging_enabled() {
+        log::info!(
+            "[DET-SEMANTIC] Running on: {:?}",
+            truncate_safe(transcript, 80)
+        );
+    } else {
+        log::info!("[DET-SEMANTIC] Running");
+    }
 
     // FTS5 BM25 phrase search (~5ms)
     let fts_results = {
@@ -791,7 +822,9 @@ fn check_reading_mode(app: &AppHandle, transcript: &str, direct_found: bool) -> 
             if !rm.is_active() && !rm.has_verses() {
                 None
             } else {
-                log::info!("[READING] Checking chapter command for: {transcript:?}");
+                if transcript_logging_enabled() {
+                    log::info!("[READING] Checking chapter command for: {transcript:?}");
+                }
                 rm.check_chapter_command(transcript)
             }
         };

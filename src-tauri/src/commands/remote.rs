@@ -7,6 +7,8 @@ use rhema_api::{
     new_shared_status, start_http_server, start_osc_listener,
 };
 
+use crate::commands::secrets;
+
 /// Tauri-aware implementation of `CommandSink`.
 ///
 /// Routes frontend-bound commands as Tauri events (`app.emit()`)
@@ -180,7 +182,21 @@ pub async fn start_http(
         return Err("HTTP API server is already running".into());
     }
 
-    let token = std::env::var("SABBATHCUE_REMOTE_TOKEN").ok().filter(|v| !v.is_empty());
+    // Token source priority:
+    // 1) Environment variable (explicit override, not persisted)
+    // 2) OS keychain (persisted)
+    // 3) Generate + persist into OS keychain
+    let token = if let Ok(env_token) = std::env::var("SABBATHCUE_REMOTE_TOKEN") {
+        let trimmed = env_token.trim().to_string();
+        if trimmed.is_empty() {
+            return Err("SABBATHCUE_REMOTE_TOKEN is set but empty".into());
+        }
+        trimmed
+    } else {
+        // Ensure token exists (keyring failure should fail clearly)
+        let _created = secrets::ensure_remote_http_token_exists()?;
+        secrets::get_remote_http_token()?
+    };
 
     let config = HttpConfig {
         port: port.unwrap_or(8080),

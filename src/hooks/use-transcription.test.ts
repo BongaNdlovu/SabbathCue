@@ -42,7 +42,6 @@ describe("use-transcription", () => {
 
       useSettingsStore.setState({
         sttProvider: "whisper",
-        deepgramApiKey: "ignored-for-whisper",
         audioDeviceId: "dev-42",
         gain: 1.5,
         whisperProfile: "fast",
@@ -51,7 +50,6 @@ describe("use-transcription", () => {
       await transcriptionActions.start()
 
       expect(mockInvoke).toHaveBeenCalledWith("start_transcription", {
-        apiKey: "", // whisper path never forwards the key
         deviceId: "dev-42",
         gain: 1.5,
         provider: "whisper",
@@ -59,13 +57,12 @@ describe("use-transcription", () => {
       })
     })
 
-    it("forwards the Deepgram key when provider is deepgram", async () => {
+    it("invokes deepgram provider without forwarding secrets", async () => {
       mockInvoke.mockResolvedValue(undefined)
       const { useSettingsStore, transcriptionActions } = await loadModules()
 
       useSettingsStore.setState({
         sttProvider: "deepgram",
-        deepgramApiKey: "dg-live-123",
         audioDeviceId: null,
         gain: 1.0,
         whisperProfile: "balanced",
@@ -76,7 +73,6 @@ describe("use-transcription", () => {
       expect(mockInvoke).toHaveBeenCalledWith(
         "start_transcription",
         expect.objectContaining({
-          apiKey: "dg-live-123",
           provider: "deepgram",
           deviceId: null,
           gain: 1.0,
@@ -109,7 +105,7 @@ describe("use-transcription", () => {
 
     it("routes a missing-Deepgram-key error to onMissingApiKey (no toast)", async () => {
       mockInvoke.mockRejectedValue(
-        "No Deepgram API key provided. Set it in Settings or via DEEPGRAM_API_KEY env var."
+        "No Deepgram API key configured. Set it in Settings or via DEEPGRAM_API_KEY env var."
       )
       const { useTranscriptStore, transcriptionActions } = await loadModules()
       const onMissingApiKey = vi.fn()

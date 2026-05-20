@@ -4,7 +4,7 @@ use std::sync::Arc;
 use axum::{
     extract::State as AxumState,
     http::{HeaderMap, StatusCode},
-    response::IntoResponse,
+    response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,
 };
@@ -21,7 +21,9 @@ use crate::error::CommandError;
 pub struct HttpConfig {
     pub port: u16,
     pub host: String,
-    pub token: Option<String>,
+    /// Bearer token required for all private endpoints (`/api/v1/status`, `/api/v1/control`).
+    /// `/api/v1/health` remains unauthenticated and minimal.
+    pub token: String,
 }
 
 impl Default for HttpConfig {
@@ -29,7 +31,7 @@ impl Default for HttpConfig {
         Self {
             port: 8080,
             host: "127.0.0.1".into(),
-            token: None,
+            token: String::new(),
         }
     }
 }
@@ -69,7 +71,7 @@ pub struct HttpStartResult {
 struct AppState<S: CommandSink> {
     sink: Arc<S>,
     status: Arc<tokio::sync::RwLock<StatusSnapshot>>,
-    token: Option<String>,
+    token: String,
 }
 
 /// Snapshot of the current application state, served by `GET /api/v1/status`.
@@ -106,6 +108,12 @@ pub async fn start_http_server<S>(
 where
     S: CommandSink + 'static,
 {
+    if config.token.trim().is_empty() {
+        return Err(CommandError::DispatchFailed(
+            "HTTP API token is required (refusing to start unauthenticated)".to_string(),
+        ));
+    }
+
     let bind_addr: SocketAddr = format!("{}:{}", config.host, config.port)
         .parse()
         .map_err(|e| CommandError::DispatchFailed(format!("Invalid bind address: {e}")))?;
@@ -116,11 +124,30 @@ where
         token: config.token,
     });
 
+    let cors = CorsLayer::new()
+        // Only allow loopback origins. This is about browser-based callers; non-browser
+        // local processes can call the API directly (but still need the bearer token).
+        .allow_origin(tower_http::cors::AllowOrigin::predicate(|origin, _parts| {
+            let Ok(s) = origin.to_str() else { return false };
+            s.starts_with("http://localhost")
+                || s.starts_with("http://127.0.0.1")
+                || s.starts_with("tauri://localhost")
+        }))
+        .allow_methods([
+            axum::http::Method::GET,
+            axum::http::Method::POST,
+            axum::http::Method::OPTIONS,
+        ])
+        .allow_headers([
+            axum::http::header::AUTHORIZATION,
+            axum::http::header::CONTENT_TYPE,
+        ]);
+
     let app = Router::new()
         .route("/api/v1/health", get(health_handler))
         .route("/api/v1/status", get(status_handler::<S>))
         .route("/api/v1/control", post(control_handler::<S>))
-        .layer(CorsLayer::new())
+        .layer(cors)
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind(bind_addr).await.map_err(|e| {
@@ -174,11 +201,31 @@ async fn health_handler() -> impl IntoResponse {
     })
 }
 
+fn bearer_authorized(headers: &HeaderMap, expected: &str) -> bool {
+    headers
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        == Some(expected)
+}
+
 async fn status_handler<S: CommandSink + 'static>(
     AxumState(state): AxumState<Arc<AppState<S>>>,
-) -> impl IntoResponse {
+    headers: HeaderMap,
+) -> Response {
+    if !bearer_authorized(&headers, &state.token) {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({
+                "success": false,
+                "error": "Missing or invalid bearer token"
+            })),
+        )
+            .into_response();
+    }
+
     let snapshot = state.status.read().await;
-    Json(snapshot.clone())
+    (StatusCode::OK, Json(snapshot.clone())).into_response()
 }
 
 #[derive(Deserialize)]
@@ -199,21 +246,14 @@ async fn control_handler<S: CommandSink + 'static>(
     headers: HeaderMap,
     Json(request): Json<ControlRequest>,
 ) -> impl IntoResponse {
-    if let Some(expected) = &state.token {
-        let provided = headers
-            .get("authorization")
-            .and_then(|v| v.to_str().ok())
-            .and_then(|v| v.strip_prefix("Bearer "));
-
-        if provided != Some(expected.as_str()) {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(ControlResponse {
-                    success: false,
-                    error: Some("Missing or invalid bearer token".to_string()),
-                }),
-            );
-        }
+    if !bearer_authorized(&headers, &state.token) {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(ControlResponse {
+                success: false,
+                error: Some("Missing or invalid bearer token".to_string()),
+            }),
+        );
     }
 
     match CommandDispatcher::dispatch(&request.command, &*state.sink) {
@@ -274,7 +314,7 @@ mod tests {
         let config = HttpConfig {
             port: 0,
             host: "127.0.0.1".into(),
-            token: None,
+            token: "secret".into(),
         };
 
         let mut result = start_http_server(config, sink, status)
@@ -335,7 +375,7 @@ mod tests {
         let config = HttpConfig {
             port: 0,
             host: "127.0.0.1".into(),
-            token: None,
+            token: "secret".into(),
         };
 
         let result = start_http_server(config, sink, status)
@@ -370,7 +410,7 @@ mod tests {
         let config = HttpConfig {
             port: 0,
             host: "127.0.0.1".into(),
-            token: None,
+            token: "secret".into(),
         };
 
         let result = start_http_server(config, sink, status)
@@ -380,7 +420,14 @@ mod tests {
 
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
-        let resp = raw_http_request(port, "GET", "/api/v1/status", None).await;
+        let resp = raw_http_request_with_headers(
+            port,
+            "GET",
+            "/api/v1/status",
+            &[("Authorization", "Bearer secret")],
+            None,
+        )
+        .await;
         assert!(resp.contains("200 OK"), "Expected 200, got: {resp}");
         assert!(resp.contains("\"on_air\":true"));
         assert!(resp.contains("\"confidence_threshold\":0.75"));
@@ -396,7 +443,7 @@ mod tests {
         let config = HttpConfig {
             port: 0,
             host: "127.0.0.1".into(),
-            token: None,
+            token: "secret".into(),
         };
 
         let result = start_http_server(config, sink.clone(), status)
@@ -407,7 +454,14 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
         let body = r#"{"command":"next"}"#;
-        let resp = raw_http_request(port, "POST", "/api/v1/control", Some(body)).await;
+        let resp = raw_http_request_with_headers(
+            port,
+            "POST",
+            "/api/v1/control",
+            &[("Authorization", "Bearer secret")],
+            Some(body),
+        )
+        .await;
         assert!(resp.contains("200 OK"), "Expected 200, got: {resp}");
         assert!(resp.contains("\"success\":true"));
 
@@ -431,7 +485,7 @@ mod tests {
         let config = HttpConfig {
             port,
             host: "127.0.0.1".into(),
-            token: None,
+            token: "secret".into(),
         };
 
         let result = start_http_server(config, sink, status).await;
@@ -445,7 +499,7 @@ mod tests {
         let config = HttpConfig {
             port: 0,
             host: "127.0.0.1".into(),
-            token: Some("secret".into()),
+            token: "secret".into(),
         };
 
         let result = start_http_server(config, sink.clone(), status)
@@ -475,7 +529,7 @@ mod tests {
         let config = HttpConfig {
             port: 0,
             host: "127.0.0.1".into(),
-            token: Some("secret".into()),
+            token: "secret".into(),
         };
 
         let result = start_http_server(config, sink.clone(), status)
@@ -509,7 +563,7 @@ mod tests {
         let config = HttpConfig {
             port: 0,
             host: "127.0.0.1".into(),
-            token: None,
+            token: "secret".into(),
         };
 
         let result = start_http_server(config, sink.clone(), status)

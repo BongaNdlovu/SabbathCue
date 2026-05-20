@@ -21,7 +21,6 @@ pub fn run() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_fs::init())
         .manage(Mutex::new(state::AppState::new()))
         .manage(Mutex::new(rhema_detection::DetectionPipeline::new()))
         .manage(Mutex::new(rhema_broadcast::ndi::NdiRuntime::default()))
@@ -66,6 +65,15 @@ pub fn run() {
             commands::remote::stop_http,
             commands::remote::get_http_status,
             commands::remote::update_remote_status,
+            commands::secrets::has_deepgram_api_key,
+            commands::secrets::set_deepgram_api_key,
+            commands::secrets::clear_deepgram_api_key,
+            commands::secrets::has_remote_http_token,
+            commands::secrets::reveal_remote_http_token,
+            commands::secrets::rotate_remote_http_token,
+            commands::theme_files::import_theme_from_path,
+            commands::theme_files::export_theme_to_path,
+            commands::theme_files::read_image_as_data_url,
         ])
         .setup(|app| {
             use tauri::Manager;

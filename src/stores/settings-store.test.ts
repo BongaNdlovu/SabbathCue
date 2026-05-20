@@ -37,7 +37,6 @@ describe("settings store", () => {
       if (key === "gain") return 2.5
       if (key === "sttProvider") return "whisper"
       if (key === "whisperProfile") return "fast"
-      if (key === "deepgramApiKey") return "dg-key"
       return null
     })
 
@@ -48,7 +47,6 @@ describe("settings store", () => {
     expect(state.gain).toBe(2.5)
     expect(state.sttProvider).toBe("whisper")
     expect(state.whisperProfile).toBe("fast")
-    expect(state.deepgramApiKey).toBe("dg-key")
     // Defaults remain for keys with null
     expect(state.autoMode).toBe(false)
     expect(state.confidenceThreshold).toBe(0.8)

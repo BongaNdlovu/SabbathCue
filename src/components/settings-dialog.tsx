@@ -204,18 +204,36 @@ function SpeechSection() {
     setSttProvider,
     whisperProfile,
     setWhisperProfile,
-    deepgramApiKey,
-    setDeepgramApiKey,
+    hasDeepgramApiKey,
+    setHasDeepgramApiKey,
   } = useSettingsStore()
 
-  const [keyValue, setKeyValue] = useState(deepgramApiKey ?? "")
+  const [keyValue, setKeyValue] = useState("")
   const [saved, setSaved] = useState(false)
+  const [keyError, setKeyError] = useState<string | null>(null)
   const { status: assetStatus, loading: assetsLoading, refresh: refreshAssets } = useAssets()
 
-  const handleSaveKey = () => {
-    setDeepgramApiKey(keyValue || null)
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
+  const handleSaveKey = async () => {
+    try {
+      setKeyError(null)
+      await invoke("set_deepgram_api_key", { api_key: keyValue })
+      setHasDeepgramApiKey(true)
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+    } catch (e) {
+      setKeyError(String(e))
+    }
+  }
+
+  const handleClearKey = async () => {
+    try {
+      setKeyError(null)
+      await invoke("clear_deepgram_api_key")
+      setHasDeepgramApiKey(false)
+      setKeyValue("")
+    } catch (e) {
+      setKeyError(String(e))
+    }
   }
 
   return (
@@ -335,7 +353,7 @@ function SpeechSection() {
             <label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
               Deepgram API Key
             </label>
-            {deepgramApiKey && (
+            {hasDeepgramApiKey && (
               <Badge variant="outline" className="text-[0.5rem]">
                 Key configured
               </Badge>
@@ -349,7 +367,7 @@ function SpeechSection() {
               onChange={(e) => setKeyValue(e.target.value)}
               className="flex-1 text-xs"
             />
-            <Button size="sm" onClick={handleSaveKey}>
+            <Button size="sm" onClick={() => void handleSaveKey()}>
               {saved ? (
                 <>
                   <CheckIcon className="size-3" />
@@ -359,7 +377,15 @@ function SpeechSection() {
                 "Save"
               )}
             </Button>
+            {hasDeepgramApiKey && (
+              <Button size="sm" variant="outline" onClick={() => void handleClearKey()}>
+                Remove
+              </Button>
+            )}
           </div>
+          {keyError && (
+            <p className="text-[0.625rem] text-red-500">{keyError}</p>
+          )}
           <p className="text-[0.625rem] text-muted-foreground">
             Required for live transcription. Get a key at{" "}
             <span className="text-primary">deepgram.com</span>
@@ -466,7 +492,7 @@ function DisplayModeSection() {
 /* -------------------------------------------------------------------------- */
 
 function ApiKeysSection() {
-  const { deepgramApiKey, sttProvider } = useSettingsStore()
+  const { hasDeepgramApiKey, sttProvider } = useSettingsStore()
 
   return (
     <div className="flex flex-col gap-6">
@@ -476,7 +502,7 @@ function ApiKeysSection() {
           <label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
             Deepgram API Key
           </label>
-          {deepgramApiKey ? (
+          {hasDeepgramApiKey ? (
             <Badge variant="outline" className="text-[0.5rem]">
               Key configured
             </Badge>
@@ -631,8 +657,10 @@ function RemoteControlSection() {
   const [httpPort, setHttpPort] = useState("8080")
   const [oscStatus, setOscStatus] = useState<RemoteStatus>({ running: false, port: null })
   const [httpStatus, setHttpStatus] = useState<RemoteStatus>({ running: false, port: null })
+  const [httpTokenConfigured, setHttpTokenConfigured] = useState(false)
   const [oscError, setOscError] = useState<string | null>(null)
   const [httpError, setHttpError] = useState<string | null>(null)
+  const [tokenError, setTokenError] = useState<string | null>(null)
   const [commandLog, setCommandLog] = useState<CommandLogEntry[]>([])
   const logIdRef = useRef(0)
 
@@ -649,6 +677,12 @@ function RemoteControlSection() {
         setHttpStatus(http)
         if (http.running) setHttpError(null)
       } catch { /* ignore */ }
+      try {
+        const hasToken = await invoke<boolean>("has_remote_http_token")
+        setHttpTokenConfigured(hasToken)
+      } catch {
+        // If the command isn't available (dev/web), don't spam errors.
+      }
     }, 2000)
     return () => clearInterval(interval)
   }, [])
@@ -717,6 +751,27 @@ function RemoteControlSection() {
       }
     } catch (e) {
       setHttpError(String(e))
+    }
+  }
+
+  const handleCopyHttpToken = async () => {
+    try {
+      setTokenError(null)
+      const token = await invoke<string>("reveal_remote_http_token")
+      await navigator.clipboard.writeText(token)
+    } catch (e) {
+      setTokenError(String(e))
+    }
+  }
+
+  const handleRotateHttpToken = async () => {
+    try {
+      setTokenError(null)
+      const token = await invoke<string>("rotate_remote_http_token")
+      await navigator.clipboard.writeText(token)
+      setHttpTokenConfigured(true)
+    } catch (e) {
+      setTokenError(String(e))
     }
   }
 
@@ -790,6 +845,36 @@ function RemoteControlSection() {
         </div>
         {httpError && (
           <p className="text-[0.625rem] text-red-500">{httpError}</p>
+        )}
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <span className="text-[0.625rem] text-muted-foreground">Token</span>
+            <Badge variant="outline" className="text-[0.5rem]">
+              {httpTokenConfigured ? "Configured" : "Missing"}
+            </Badge>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => void handleCopyHttpToken()}
+              className="text-xs"
+              disabled={!httpTokenConfigured}
+            >
+              Copy token
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => void handleRotateHttpToken()}
+              className="text-xs"
+            >
+              Rotate
+            </Button>
+          </div>
+        </div>
+        {tokenError && (
+          <p className="text-[0.625rem] text-red-500">{tokenError}</p>
         )}
         {httpStatus.running && httpStatus.port && (
           <p className="text-[0.625rem] text-muted-foreground">
