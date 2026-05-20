@@ -319,15 +319,16 @@ pub async fn start_transcription(
 
     let conn_active = stt_active.clone();
     let provider_log_name = stt_provider.name().to_string();
+    let provider_log_name_task_a = provider_log_name.clone();
 
     // Task A: run the STT provider (Deepgram WS+REST or Whisper local).
     tauri::async_runtime::spawn(async move {
         let result = stt_provider.start(audio_send_rx, event_tx).await;
         if let Err(e) = result {
-            log::error!("[STT-{provider_log_name}] Provider failed: {e}");
+            log::error!("[STT-{provider_log_name_task_a}] Provider failed: {e}");
         }
         conn_active.store(false, Ordering::SeqCst);
-        log::info!("[STT-{provider_log_name}] Provider task exited");
+        log::info!("[STT-{provider_log_name_task_a}] Provider task exited");
     });
 
     // Task B: consume TranscriptEvents, emit to frontend, run detection
