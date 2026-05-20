@@ -90,43 +90,27 @@ impl RollingTranscriptPrompt {
 pub(crate) enum WhisperProfile {
     Fast,
     Balanced,
-    Accurate,
 }
 
 impl WhisperProfile {
     pub(crate) fn from_name(name: Option<&str>) -> Self {
         match name {
             Some("fast") => Self::Fast,
-            Some("accurate") => Self::Accurate,
             _ => Self::Balanced,
         }
     }
 
     pub(crate) const fn live_chunk_samples(self) -> usize {
         match self {
-            Self::Fast => 16_000,
-            Self::Balanced => 16_000 * 2,
-            Self::Accurate => 16_000 * 6,
+            Self::Fast => 16_000 * 2,
+            Self::Balanced => 16_000 * 4,
         }
     }
 
-    pub(crate) const fn uses_latency_decoder(self) -> bool {
-        matches!(self, Self::Fast | Self::Balanced)
-    }
-
-    pub(crate) const fn audio_ctx(self) -> i32 {
+    pub(crate) const fn beam_size(self) -> i32 {
         match self {
-            Self::Fast => 384,
-            Self::Balanced => 768,
-            Self::Accurate => 0,
-        }
-    }
-
-    pub(crate) const fn max_tokens(self) -> i32 {
-        match self {
-            Self::Fast => 64,
-            Self::Balanced => 96,
-            Self::Accurate => 0,
+            Self::Fast => 3,
+            Self::Balanced => 5,
         }
     }
 }
@@ -406,7 +390,10 @@ impl SttProvider for WhisperProvider {
 
                 let audio_f32 = i16_to_f32(&audio_i16);
 
-                let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
+                let mut params = FullParams::new(SamplingStrategy::BeamSearch {
+                    beam_size: profile.beam_size(),
+                    patience: -1.0,
+                });
                 params.set_language(Some(language.as_deref().unwrap_or("en")));
                 params.set_n_threads(n_threads);
                 params.set_print_progress(false);
@@ -414,21 +401,12 @@ impl SttProvider for WhisperProvider {
                 params.set_print_realtime(false);
                 let initial_prompt = rolling_prompt.prompt();
                 params.set_initial_prompt(&initial_prompt);
-                if profile.uses_latency_decoder() {
-                    params.set_no_context(true);
-                    params.set_n_max_text_ctx(0);
-                    params.set_no_timestamps(true);
-                    params.set_single_segment(true);
-                    params.set_token_timestamps(false);
-                    params.set_audio_ctx(profile.audio_ctx());
-                    params.set_max_tokens(profile.max_tokens());
-                } else {
-                    params.set_no_context(true);
-                    params.set_n_max_text_ctx(0);
-                    params.set_no_timestamps(false);
-                    params.set_single_segment(false);
-                    params.set_token_timestamps(true);
-                }
+                params.set_no_context(false);
+                params.set_no_timestamps(false);
+                params.set_single_segment(false);
+                params.set_token_timestamps(true);
+                params.set_temperature(0.0);
+                params.set_temperature_inc(0.0);
                 params.set_no_speech_thold(0.6);
                 params.set_suppress_blank(true);
                 params.set_suppress_nst(true);
@@ -493,21 +471,19 @@ mod tests {
             WhisperProfile::from_name(Some("not-a-profile")),
             WhisperProfile::Balanced
         );
+        assert_eq!(
+            WhisperProfile::from_name(Some("accurate")),
+            WhisperProfile::Balanced
+        );
     }
 
     #[test]
-    fn profiles_trade_latency_for_phrase_context() {
+    fn profiles_prioritize_accuracy_with_bounded_latency() {
         let fast = WhisperProfile::Fast;
         let balanced = WhisperProfile::Balanced;
-        let accurate = WhisperProfile::Accurate;
 
         assert!(fast.live_chunk_samples() < balanced.live_chunk_samples());
-        assert!(balanced.live_chunk_samples() < accurate.live_chunk_samples());
-        assert!(fast.uses_latency_decoder());
-        assert!(balanced.uses_latency_decoder());
-        assert!(!accurate.uses_latency_decoder());
-        assert!(fast.audio_ctx() < balanced.audio_ctx());
-        assert_eq!(accurate.audio_ctx(), 0);
+        assert!(fast.beam_size() < balanced.beam_size());
     }
 
     #[test]

@@ -2,7 +2,7 @@ import { create } from "zustand"
 import { load, type Store } from "@tauri-apps/plugin-store"
 
 type SttProvider = "deepgram" | "whisper"
-type WhisperProfile = "fast" | "balanced" | "accurate"
+type WhisperProfile = "fast" | "balanced"
 
 interface SettingsState {
   hasDeepgramApiKey: boolean
@@ -82,7 +82,11 @@ export function hydrateSettings(): Promise<void> {
       for (const key of PERSISTED_KEYS) {
         const value = await store.get(key)
         if (value !== undefined && value !== null) {
-          ;(patch as Record<string, unknown>)[key] = value
+          if (key === "whisperProfile") {
+            patch.whisperProfile = value === "fast" ? "fast" : "balanced"
+          } else {
+            ;(patch as Record<string, unknown>)[key] = value
+          }
         }
       }
 

@@ -65,6 +65,18 @@ describe("settings store", () => {
     expect(after.autoMode).toBe(false)
   })
 
+  it("hydrate maps removed accurate whisper profile to balanced", async () => {
+    mockGet.mockImplementation(async (key: string) => {
+      if (key === "whisperProfile") return "accurate"
+      return null
+    })
+
+    const { hydrateSettings, useSettingsStore } = await import("./settings-store")
+    await hydrateSettings()
+
+    expect(useSettingsStore.getState().whisperProfile).toBe("balanced")
+  })
+
   it("a setter call after hydration writes the full snapshot to disk", async () => {
     mockGet.mockResolvedValue(null)
 

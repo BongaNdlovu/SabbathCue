@@ -321,7 +321,7 @@ function SpeechSection() {
             </label>
             <Select
               value={whisperProfile}
-              onValueChange={(v) => setWhisperProfile(v as "fast" | "balanced" | "accurate")}
+              onValueChange={(v) => setWhisperProfile(v as "fast" | "balanced")}
             >
               <SelectTrigger className="h-8 text-xs">
                 <SelectValue />
@@ -329,7 +329,6 @@ function SpeechSection() {
               <SelectContent>
                 <SelectItem value="fast">Fast</SelectItem>
                 <SelectItem value="balanced">Balanced</SelectItem>
-                <SelectItem value="accurate">Accurate</SelectItem>
               </SelectContent>
             </Select>
           </div>
