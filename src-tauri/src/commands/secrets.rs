@@ -67,7 +67,9 @@ pub fn has_deepgram_api_key_with_store(store: &dyn KeychainStore) -> Result<bool
     match store.get_password("deepgram_api_key") {
         Ok(pw) => Ok(!pw.trim().is_empty()),
         Err(keyring::Error::NoEntry) => Ok(false),
-        Err(e) => Err(format!("Could not read Deepgram API key from OS keychain: {e}")),
+        Err(e) => Err(format!(
+            "Could not read Deepgram API key from OS keychain: {e}"
+        )),
     }
 }
 
@@ -99,7 +101,9 @@ pub fn set_deepgram_api_key_with_store(
         }
         Err(e) => {
             log::error!("[KEYCHAIN] Deepgram API key read-back failed: {e}");
-            Err(format!("Could not verify Deepgram API key in OS keychain: {e}"))
+            Err(format!(
+                "Could not verify Deepgram API key in OS keychain: {e}"
+            ))
         }
     }
 }
@@ -123,7 +127,9 @@ pub fn has_remote_http_token_with_store(store: &dyn KeychainStore) -> Result<boo
     match store.get_password("remote_http_token") {
         Ok(pw) => Ok(!pw.trim().is_empty()),
         Err(keyring::Error::NoEntry) => Ok(false),
-        Err(e) => Err(format!("Could not read remote HTTP token from OS keychain: {e}")),
+        Err(e) => Err(format!(
+            "Could not read remote HTTP token from OS keychain: {e}"
+        )),
     }
 }
 
@@ -162,7 +168,9 @@ pub fn ensure_remote_http_token_exists() -> Result<bool, String> {
                 .map_err(|e| format!("Could not store remote HTTP token in OS keychain: {e}"))?;
             Ok(true)
         }
-        Err(e) => Err(format!("Could not read remote HTTP token from OS keychain: {e}")),
+        Err(e) => Err(format!(
+            "Could not read remote HTTP token from OS keychain: {e}"
+        )),
     }
 }
 
@@ -172,16 +180,20 @@ pub fn get_remote_http_token() -> Result<String, String> {
         .map_err(|e| format!("Could not read remote HTTP token from OS keychain: {e}"))
 }
 
-pub fn get_deepgram_api_key() -> Result<String, String> {
-    get_deepgram_api_key_with_store(&DEFAULT_STORE)
+pub fn get_deepgram_api_key_or_empty() -> Result<String, String> {
+    get_deepgram_api_key_or_empty_with_store(&DEFAULT_STORE)
 }
 
-/// Testable version that accepts a KeychainStore implementation.
-pub fn get_deepgram_api_key_with_store(store: &dyn KeychainStore) -> Result<String, String> {
-    store
-        .get_password("deepgram_api_key")
-        .map(|key| normalize_deepgram_api_key(&key))
-        .map_err(|e| format!("Could not read Deepgram API key from OS keychain: {e}"))
+pub fn get_deepgram_api_key_or_empty_with_store(
+    store: &dyn KeychainStore,
+) -> Result<String, String> {
+    match store.get_password("deepgram_api_key") {
+        Ok(key) => Ok(normalize_deepgram_api_key(&key)),
+        Err(keyring::Error::NoEntry) => Ok(String::new()),
+        Err(e) => Err(format!(
+            "Could not read Deepgram API key from OS keychain: {e}"
+        )),
+    }
 }
 
 #[cfg(test)]
@@ -247,9 +259,7 @@ mod tests {
     #[test]
     fn has_remote_http_token_returns_false_when_empty() {
         let store = MockKeychainStore::new();
-        store
-            .set_password("remote_http_token", "   ")
-            .unwrap();
+        store.set_password("remote_http_token", "   ").unwrap();
         let result = has_remote_http_token_with_store(&store);
         assert_eq!(result.unwrap(), false);
     }
@@ -312,9 +322,7 @@ mod tests {
     #[test]
     fn has_deepgram_api_key_returns_true_when_set() {
         let store = MockKeychainStore::new();
-        store
-            .set_password("deepgram_api_key", "test-key")
-            .unwrap();
+        store.set_password("deepgram_api_key", "test-key").unwrap();
         let result = has_deepgram_api_key_with_store(&store);
         assert_eq!(result.unwrap(), true);
     }
@@ -322,9 +330,7 @@ mod tests {
     #[test]
     fn has_deepgram_api_key_returns_false_when_empty() {
         let store = MockKeychainStore::new();
-        store
-            .set_password("deepgram_api_key", "   ")
-            .unwrap();
+        store.set_password("deepgram_api_key", "   ").unwrap();
         let result = has_deepgram_api_key_with_store(&store);
         assert_eq!(result.unwrap(), false);
     }
@@ -332,8 +338,7 @@ mod tests {
     #[test]
     fn set_deepgram_api_key_saves_and_reads_back() {
         let store = MockKeychainStore::new();
-        set_deepgram_api_key_with_store(&store, "my-api-key".to_string())
-            .unwrap();
+        set_deepgram_api_key_with_store(&store, "my-api-key".to_string()).unwrap();
         let stored = store.get_password("deepgram_api_key").unwrap();
         assert_eq!(stored, "my-api-key");
     }
@@ -341,8 +346,7 @@ mod tests {
     #[test]
     fn set_deepgram_api_key_normalizes_input() {
         let store = MockKeychainStore::new();
-        set_deepgram_api_key_with_store(&store, "  Token abc  ".to_string())
-            .unwrap();
+        set_deepgram_api_key_with_store(&store, "  Token abc  ".to_string()).unwrap();
         let stored = store.get_password("deepgram_api_key").unwrap();
         assert_eq!(stored, "abc");
     }
@@ -362,30 +366,27 @@ mod tests {
     }
 
     #[test]
-    fn get_deepgram_api_key_returns_stored_value() {
+    fn get_deepgram_api_key_or_empty_returns_empty_when_not_set() {
         let store = MockKeychainStore::new();
-        store
-            .set_password("deepgram_api_key", "my-key")
-            .unwrap();
-        let result = get_deepgram_api_key_with_store(&store).unwrap();
+        let result = get_deepgram_api_key_or_empty_with_store(&store).unwrap();
+        assert_eq!(result, "");
+    }
+
+    #[test]
+    fn get_deepgram_api_key_or_empty_returns_stored_value() {
+        let store = MockKeychainStore::new();
+        store.set_password("deepgram_api_key", "my-key").unwrap();
+        let result = get_deepgram_api_key_or_empty_with_store(&store).unwrap();
         assert_eq!(result, "my-key");
     }
 
     #[test]
-    fn get_deepgram_api_key_normalizes_output() {
+    fn get_deepgram_api_key_or_empty_normalizes_output() {
         let store = MockKeychainStore::new();
         store
             .set_password("deepgram_api_key", "  Token abc  ")
             .unwrap();
-        let result = get_deepgram_api_key_with_store(&store).unwrap();
+        let result = get_deepgram_api_key_or_empty_with_store(&store).unwrap();
         assert_eq!(result, "abc");
     }
-
-    #[test]
-    fn get_deepgram_api_key_returns_error_when_not_set() {
-        let store = MockKeychainStore::new();
-        let result = get_deepgram_api_key_with_store(&store);
-        assert!(result.is_err());
-    }
 }
-

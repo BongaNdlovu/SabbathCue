@@ -109,10 +109,11 @@ pub async fn start_transcription(
 
             let parallelism = std::thread::available_parallelism()
                 .map_or(4, usize::from);
+            let profile_log = whisper_profile.as_deref().unwrap_or("balanced");
             let n_threads = i32::try_from(parallelism / 2).unwrap_or(2).max(1);
 
             log::info!(
-                "Starting Whisper transcription: model={}, threads={n_threads}, device_id={device_id:?}",
+                "Starting Whisper transcription: model={}, profile={profile_log}, threads={n_threads}, device_id={device_id:?}",
                 model_path.display()
             );
 
@@ -133,7 +134,7 @@ pub async fn start_transcription(
             // Deepgram (default)
             let resolved_api_key = match std::env::var("DEEPGRAM_API_KEY") {
                 Ok(v) if !v.trim().is_empty() => secrets::normalize_deepgram_api_key(&v),
-                _ => secrets::get_deepgram_api_key()?,
+                _ => secrets::get_deepgram_api_key_or_empty()?,
             };
 
             if resolved_api_key.is_empty() {
