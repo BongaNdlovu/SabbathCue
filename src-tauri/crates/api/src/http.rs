@@ -291,6 +291,16 @@ mod tests {
 
     /// Helper: send a raw HTTP request and return the response as a string.
     async fn raw_http_request(port: u16, method: &str, path: &str, body: Option<&str>) -> String {
+        raw_http_request_with_headers(port, method, path, &[], body).await
+    }
+
+    async fn raw_http_request_with_headers(
+        port: u16,
+        method: &str,
+        path: &str,
+        headers: &[(&str, &str)],
+        body: Option<&str>,
+    ) -> String {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
         let mut stream = tokio::net::TcpStream::connect(format!("127.0.0.1:{port}"))
@@ -298,13 +308,17 @@ mod tests {
             .expect("connect");
 
         let body_str = body.unwrap_or("");
+        let extra_headers = headers
+            .iter()
+            .map(|(name, value)| format!("{name}: {value}\r\n"))
+            .collect::<String>();
         let request = if body.is_some() {
             format!(
-                "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body_str}",
+                "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n{extra_headers}Content-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body_str}",
                 body_str.len()
             )
         } else {
-            format!("{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n")
+            format!("{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n{extra_headers}Connection: close\r\n\r\n")
         };
 
         stream.write_all(request.as_bytes()).await.expect("write");
@@ -434,7 +448,7 @@ mod tests {
             token: Some("secret".into()),
         };
 
-        let result = start_http_server(config, sink, status)
+        let result = start_http_server(config, sink.clone(), status)
             .await
             .expect("should bind");
         let port = result.bound_port;
@@ -444,6 +458,80 @@ mod tests {
         let body = r#"{"command":"next"}"#;
         let resp = raw_http_request(port, "POST", "/api/v1/control", Some(body)).await;
         assert!(resp.contains("401 Unauthorized"), "Expected 401, got: {resp}");
+        assert_eq!(
+            sink.command_count(),
+            0,
+            "Unauthorized requests must not dispatch commands"
+        );
+
+        let mut handle = result.handle;
+        handle.stop();
+    }
+
+    #[tokio::test]
+    async fn control_endpoint_accepts_valid_bearer_token() {
+        let sink = Arc::new(MockSink::new());
+        let status = new_shared_status();
+        let config = HttpConfig {
+            port: 0,
+            host: "127.0.0.1".into(),
+            token: Some("secret".into()),
+        };
+
+        let result = start_http_server(config, sink.clone(), status)
+            .await
+            .expect("should bind");
+        let port = result.bound_port;
+
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        let body = r#"{"command":"show"}"#;
+        let resp = raw_http_request_with_headers(
+            port,
+            "POST",
+            "/api/v1/control",
+            &[("Authorization", "Bearer secret")],
+            Some(body),
+        )
+        .await;
+        assert!(resp.contains("200 OK"), "Expected 200, got: {resp}");
+        assert!(resp.contains("\"success\":true"));
+        assert_eq!(sink.command_count(), 1);
+
+        let mut handle = result.handle;
+        handle.stop();
+    }
+
+    #[tokio::test]
+    async fn malformed_control_payload_is_rejected_without_dispatch() {
+        let sink = Arc::new(MockSink::new());
+        let status = new_shared_status();
+        let config = HttpConfig {
+            port: 0,
+            host: "127.0.0.1".into(),
+            token: None,
+        };
+
+        let result = start_http_server(config, sink.clone(), status)
+            .await
+            .expect("should bind");
+        let port = result.bound_port;
+
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        let resp = raw_http_request(
+            port,
+            "POST",
+            "/api/v1/control",
+            Some(r#"{"command":"on_air","value":"yes please"}"#),
+        )
+        .await;
+
+        assert!(
+            resp.contains("422 Unprocessable Entity") || resp.contains("400 Bad Request"),
+            "Expected JSON rejection, got: {resp}"
+        );
+        assert_eq!(sink.command_count(), 0);
 
         let mut handle = result.handle;
         handle.stop();
