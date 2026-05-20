@@ -389,4 +389,13 @@ mod tests {
         let result = get_deepgram_api_key_or_empty_with_store(&store).unwrap();
         assert_eq!(result, "abc");
     }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn keyring_uses_native_windows_persistence() {
+        assert!(matches!(
+            keyring::default::default_credential_builder().persistence(),
+            keyring::credential::CredentialPersistence::UntilDelete
+        ));
+    }
 }

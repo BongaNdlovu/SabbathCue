@@ -19,6 +19,9 @@ Run these from the repo root unless noted:
 - [ ] `bun run build:bible:public`
 - [ ] `bun run verify:bible:public`
 - [ ] `bun run download:whisper`
+- [ ] `bun run download:model`
+- [ ] `bun run export:verses`
+- [ ] `bun run precompute:embeddings`
 - [ ] `bun run typecheck`
 - [ ] `bun run test -- --run`
 - [ ] `bun run build`

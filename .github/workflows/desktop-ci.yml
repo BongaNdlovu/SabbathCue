@@ -89,7 +89,10 @@ jobs:
           key: minilm-embeddings-${{ hashFiles('data/precompute-embeddings.py') }}
 
       - name: Prepare MiniLM semantic assets
-        run: bun run download:model
+        run: |
+          bun run download:model
+          bun run export:verses
+          bun run precompute:embeddings
 
       - name: Check workspace
         working-directory: src-tauri

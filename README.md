@@ -22,6 +22,9 @@ To build the public release version with only redistributable content:
 ```bash
 bun run build:bible:public
 bun run download:whisper
+bun run download:model
+bun run export:verses
+bun run precompute:embeddings
 bun run tauri build
 ```
 
