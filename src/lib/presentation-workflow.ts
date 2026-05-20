@@ -71,15 +71,16 @@ export function previewVerseAndMaybeAutoLive(
     autoLiveWhenAlreadyOn?: boolean
   },
 ) {
-  selectPreviewVerse(verse, { navigate: options?.navigate })
-  console.info("[pipeline] preview", { reference: `${verse.book_name} ${verse.chapter}:${verse.verse}` })
-
   const broadcast = useBroadcastStore.getState()
-  if (
+  const shouldAutoLive =
     options?.autoLiveWhenAlreadyOn &&
     broadcast.isLive &&
     broadcast.readingModeAutoLive
-  ) {
+
+  if (shouldAutoLive) {
     commitVerseToLive(verse, { makeLive: false })
   }
+
+  selectPreviewVerse(verse, { navigate: options?.navigate })
+  console.info("[pipeline] preview", { reference: `${verse.book_name} ${verse.chapter}:${verse.verse}` })
 }

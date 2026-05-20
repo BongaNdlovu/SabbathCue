@@ -83,4 +83,47 @@ describe("presentation workflow", () => {
 
     expect(commitPreviewToLive()).toBe(false)
   })
+
+  it("auto-live commits the verse before staging preview", async () => {
+    const { useBibleStore } = await import("@/stores/bible-store")
+    const { useBroadcastStore } = await import("@/stores/broadcast-store")
+    const { toVerseRenderData } = await import("@/hooks/use-broadcast")
+    const { previewVerseAndMaybeAutoLive } = await import("./presentation-workflow")
+
+    useBibleStore.setState({
+      selectedVerse: null,
+      translations: [
+        {
+          id: 1,
+          abbreviation: "KJV",
+          title: "King James Version",
+          language: "en",
+          is_copyrighted: false,
+          is_downloaded: true,
+        },
+      ],
+      activeTranslationId: 1,
+    })
+    useBroadcastStore.setState({
+      isLive: true,
+      readingModeAutoLive: true,
+      liveVerse: null,
+    })
+
+    const previewSelections: Array<Verse | null> = []
+    const unsubscribe = useBibleStore.subscribe((state) => {
+      previewSelections.push(state.selectedVerse)
+      expect(useBroadcastStore.getState().liveVerse).toEqual(
+        toVerseRenderData(sampleVerse, "KJV")
+      )
+    })
+
+    previewVerseAndMaybeAutoLive(sampleVerse, {
+      autoLiveWhenAlreadyOn: true,
+    })
+    unsubscribe()
+
+    expect(previewSelections).toHaveLength(1)
+    expect(useBibleStore.getState().selectedVerse).toEqual(sampleVerse)
+  })
 })
