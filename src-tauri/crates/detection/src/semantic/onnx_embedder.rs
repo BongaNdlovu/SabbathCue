@@ -35,6 +35,7 @@ pub struct OnnxEmbedder {
     dim: usize,
     prompt_prefix: String,
     has_position_ids: bool,
+    has_token_type_ids: bool,
 }
 
 // Safety: Tokenizer is Send but not Sync by default.  We never share
@@ -104,6 +105,7 @@ impl OnnxEmbedder {
             .map_err(|e| DetectionError::Internal(format!("tokenizer truncation: {e}")))?;
 
         let has_position_ids = session.inputs().iter().any(|i| i.name() == "position_ids");
+        let has_token_type_ids = session.inputs().iter().any(|i| i.name() == "token_type_ids");
 
         // Log all model inputs for diagnostics
         for input in session.inputs() {
@@ -157,6 +159,7 @@ impl OnnxEmbedder {
             // documents with no prefix. Symmetric mode gives highest similarity.
             prompt_prefix: String::new(),
             has_position_ids,
+            has_token_type_ids,
         })
     }
 
@@ -206,18 +209,34 @@ impl OnnxEmbedder {
         let attention_mask_tensor = Tensor::from_array((shape.clone(), attention_mask_data))
             .map_err(|e| DetectionError::Internal(format!("attention_mask tensor: {e}")))?;
 
-        // Qwen3 needs position_ids. For models that don't have this input, it's ignored.
+        // Some models need position_ids. For models that don't have this input, it's ignored.
         #[expect(clippy::cast_possible_wrap, reason = "seq_len is at most MAX_TOKENS (128), fits i64")]
         let position_ids_data: Vec<i64> = (0..seq_len as i64).collect();
-        let position_ids_tensor = Tensor::from_array((shape, position_ids_data))
+        let position_ids_tensor = Tensor::from_array((shape.clone(), position_ids_data))
             .map_err(|e| DetectionError::Internal(format!("position_ids tensor: {e}")))?;
 
-        // Qwen3 needs position_ids; BERT-style models don't
-        let inputs = if self.has_position_ids {
+        let token_type_ids_data = vec![0i64; seq_len];
+        let token_type_ids_tensor = Tensor::from_array((shape, token_type_ids_data))
+            .map_err(|e| DetectionError::Internal(format!("token_type_ids tensor: {e}")))?;
+
+        let inputs = if self.has_position_ids && self.has_token_type_ids {
             ort::inputs![
                 "input_ids" => input_ids_tensor,
                 "attention_mask" => attention_mask_tensor,
                 "position_ids" => position_ids_tensor,
+                "token_type_ids" => token_type_ids_tensor,
+            ]
+        } else if self.has_position_ids {
+            ort::inputs![
+                "input_ids" => input_ids_tensor,
+                "attention_mask" => attention_mask_tensor,
+                "position_ids" => position_ids_tensor,
+            ]
+        } else if self.has_token_type_ids {
+            ort::inputs![
+                "input_ids" => input_ids_tensor,
+                "attention_mask" => attention_mask_tensor,
+                "token_type_ids" => token_type_ids_tensor,
             ]
         } else {
             ort::inputs![

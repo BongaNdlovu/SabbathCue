@@ -63,39 +63,39 @@ pub fn onnx_model_path(app: &AppHandle) -> PathBuf {
         [
             app_data_dir(app).ok().map(|p| {
                 p.join("models")
-                    .join("qwen3-embedding-0.6b-int8")
+                    .join("minilm-l6-v2-int8")
                     .join("onnx")
                     .join("model_quantized.onnx")
             }),
             app.path().resource_dir().ok().map(|p| {
                 p.join("models")
-                    .join("qwen3-embedding-0.6b-int8")
+                    .join("minilm-l6-v2-int8")
                     .join("onnx")
                     .join("model_quantized.onnx")
             }),
             Some(
                 dev_root()
                     .join("models")
-                    .join("qwen3-embedding-0.6b-int8")
+                    .join("minilm-l6-v2-int8")
                     .join("onnx")
                     .join("model_quantized.onnx"),
             ),
             app_data_dir(app).ok().map(|p| {
                 p.join("models")
-                    .join("qwen3-embedding-0.6b")
+                    .join("minilm-l6-v2")
                     .join("onnx")
                     .join("model.onnx")
             }),
             app.path().resource_dir().ok().map(|p| {
                 p.join("models")
-                    .join("qwen3-embedding-0.6b")
+                    .join("minilm-l6-v2")
                     .join("onnx")
                     .join("model.onnx")
             }),
             Some(
                 dev_root()
                     .join("models")
-                    .join("qwen3-embedding-0.6b")
+                    .join("minilm-l6-v2")
                     .join("onnx")
                     .join("model.onnx"),
             ),
@@ -107,7 +107,7 @@ pub fn onnx_model_path(app: &AppHandle) -> PathBuf {
         app_data_dir(app)
             .unwrap_or_else(|_| dev_root())
             .join("models")
-            .join("qwen3-embedding-0.6b-int8")
+            .join("minilm-l6-v2-int8")
             .join("onnx")
             .join("model_quantized.onnx")
     })
@@ -118,18 +118,18 @@ pub fn tokenizer_path(app: &AppHandle) -> PathBuf {
         [
             app_data_dir(app).ok().map(|p| {
                 p.join("models")
-                    .join("qwen3-embedding-0.6b")
+                    .join("minilm-l6-v2")
                     .join("tokenizer.json")
             }),
             app.path().resource_dir().ok().map(|p| {
                 p.join("models")
-                    .join("qwen3-embedding-0.6b")
+                    .join("minilm-l6-v2")
                     .join("tokenizer.json")
             }),
             Some(
                 dev_root()
                     .join("models")
-                    .join("qwen3-embedding-0.6b")
+                    .join("minilm-l6-v2")
                     .join("tokenizer.json"),
             ),
         ]
@@ -140,7 +140,7 @@ pub fn tokenizer_path(app: &AppHandle) -> PathBuf {
         app_data_dir(app)
             .unwrap_or_else(|_| dev_root())
             .join("models")
-            .join("qwen3-embedding-0.6b")
+            .join("minilm-l6-v2")
             .join("tokenizer.json")
     })
 }
@@ -150,12 +150,12 @@ pub fn embeddings_path(app: &AppHandle) -> PathBuf {
         [
             app_data_dir(app)
                 .ok()
-                .map(|p| p.join("embeddings").join("kjv-qwen3-0.6b.bin")),
+                .map(|p| p.join("embeddings").join("kjv-minilm-l6-v2.bin")),
             app.path()
                 .resource_dir()
                 .ok()
-                .map(|p| p.join("embeddings").join("kjv-qwen3-0.6b.bin")),
-            Some(dev_root().join("embeddings").join("kjv-qwen3-0.6b.bin")),
+                .map(|p| p.join("embeddings").join("kjv-minilm-l6-v2.bin")),
+            Some(dev_root().join("embeddings").join("kjv-minilm-l6-v2.bin")),
         ]
         .into_iter()
         .flatten(),
@@ -164,7 +164,7 @@ pub fn embeddings_path(app: &AppHandle) -> PathBuf {
         app_data_dir(app)
             .unwrap_or_else(|_| dev_root())
             .join("embeddings")
-            .join("kjv-qwen3-0.6b.bin")
+            .join("kjv-minilm-l6-v2.bin")
     })
 }
 
@@ -173,12 +173,12 @@ pub fn embedding_ids_path(app: &AppHandle) -> PathBuf {
         [
             app_data_dir(app)
                 .ok()
-                .map(|p| p.join("embeddings").join("kjv-qwen3-0.6b-ids.bin")),
+                .map(|p| p.join("embeddings").join("kjv-minilm-l6-v2-ids.bin")),
             app.path()
                 .resource_dir()
                 .ok()
-                .map(|p| p.join("embeddings").join("kjv-qwen3-0.6b-ids.bin")),
-            Some(dev_root().join("embeddings").join("kjv-qwen3-0.6b-ids.bin")),
+                .map(|p| p.join("embeddings").join("kjv-minilm-l6-v2-ids.bin")),
+            Some(dev_root().join("embeddings").join("kjv-minilm-l6-v2-ids.bin")),
         ]
         .into_iter()
         .flatten(),
@@ -187,7 +187,7 @@ pub fn embedding_ids_path(app: &AppHandle) -> PathBuf {
         app_data_dir(app)
             .unwrap_or_else(|_| dev_root())
             .join("embeddings")
-            .join("kjv-qwen3-0.6b-ids.bin")
+            .join("kjv-minilm-l6-v2-ids.bin")
     })
 }
 

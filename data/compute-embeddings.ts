@@ -7,11 +7,11 @@
  * 1. Run: bun run data/download-model.ts  (download the ONNX model first)
  * 2. Run: bun run data/compute-embeddings.ts  (export verses to JSON)
  * 3. Run: cargo run -p rhema-detection --features onnx,vector-search --bin precompute -- \
- *         --model models/qwen3-embedding-0.6b-int8/onnx/model_quantized.onnx \
- *         --tokenizer models/qwen3-embedding-0.6b/tokenizer.json \
+ *         --model models/minilm-l6-v2-int8/onnx/model_quantized.onnx \
+ *         --tokenizer models/minilm-l6-v2/tokenizer.json \
  *         --verses data/verses-for-embedding.json \
- *         --output-embeddings embeddings/kjv-qwen3-0.6b.bin \
- *         --output-ids embeddings/kjv-qwen3-0.6b-ids.bin
+ *         --output-embeddings embeddings/kjv-minilm-l6-v2.bin \
+ *         --output-ids embeddings/kjv-minilm-l6-v2-ids.bin
  *
  * For now, this script just exports the verses to JSON.
  * The actual embedding computation will be done via Rust.

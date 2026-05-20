@@ -26,11 +26,11 @@ import {
 
 // ── Paths ────────────────────────────────────────────────────────────
 const DATA_DIR = join(PROJECT_ROOT, "data")
-const MODELS_DIR = join(PROJECT_ROOT, "models", "qwen3-embedding-0.6b")
+const MODELS_DIR = join(PROJECT_ROOT, "models", "minilm-l6-v2")
 const MODELS_DIR_INT8 = join(
   PROJECT_ROOT,
   "models",
-  "qwen3-embedding-0.6b-int8"
+  "minilm-l6-v2-int8"
 )
 
 const KJV_SOURCE = join(DATA_DIR, "sources", "KJV.json")
@@ -39,8 +39,8 @@ const ESV_SOURCE = join(DATA_DIR, "sources", "ESV.json")
 const CROSS_REFS = join(DATA_DIR, "cross-refs", "cross_references.txt")
 const DB_PATH = join(DATA_DIR, "rhema.db")
 const VERSES_JSON = join(DATA_DIR, "verses-for-embedding.json")
-const EMB_BIN = join(PROJECT_ROOT, "embeddings", "kjv-qwen3-0.6b.bin")
-const IDS_BIN = join(PROJECT_ROOT, "embeddings", "kjv-qwen3-0.6b-ids.bin")
+const EMB_BIN = join(PROJECT_ROOT, "embeddings", "kjv-minilm-l6-v2.bin")
+const IDS_BIN = join(PROJECT_ROOT, "embeddings", "kjv-minilm-l6-v2-ids.bin")
 const WHISPER_MODEL = join(PROJECT_ROOT, "models", "whisper", "ggml-base.en.bin")
 const MODEL_ONNX = join(MODELS_DIR, "onnx", "model.onnx")
 const MODEL_ONNX_DATA = join(MODELS_DIR, "onnx", "model.onnx_data")
@@ -121,7 +121,7 @@ async function main() {
       process.platform === "win32" ? "python" : "python3"
     )
     await run(
-      [venvPython, join(DATA_DIR, "export-qwen3-onnx.py")],
+      [venvPython, join(DATA_DIR, "export-minilm-onnx.py")],
       undefined,
       { PYTHONUTF8: "1" }
     )

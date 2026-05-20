@@ -37,7 +37,7 @@ SabbathCue is a Tauri v2 desktop app. The frontend is React 19 + TypeScript + Ta
 
 ### Bible data, models, and embeddings
 
-Much of SabbathCue's behavior depends on artifacts that aren't checked into the repo: the SQLite Bible database, copyrighted translations, the Qwen3 ONNX embedding model, and precomputed verse embeddings. For anything touching verse detection, Bible search, or rendering, you'll want these in place.
+Much of SabbathCue's behavior depends on artifacts that aren't checked into the repo: the SQLite Bible database, copyrighted translations, the MiniLM ONNX embedding model, and precomputed verse embeddings. For anything touching verse detection, Bible search, or rendering, you'll want these in place.
 
 One command sets everything up (idempotent — it skips phases that are already complete):
 

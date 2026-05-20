@@ -36,7 +36,7 @@ to local Whisper speech recognition with the local model bundled.
 - **Voice-controlled translation switching** — say "read in NIV" or "switch to ESV" to change translations instantly during a sermon
 - **Multi-strategy verse detection**
   - Direct reference parsing (Aho-Corasick automaton + fuzzy matching)
-  - Semantic search — Qwen3-0.6B ONNX embeddings, brute-force cosine similarity over ~31k verse vectors (the `hnsw_index.rs` file is named after a future plan; today it scans linearly)
+  - Semantic search — MiniLM-L6-v2 ONNX embeddings, brute-force cosine similarity over ~31k verse vectors (the `hnsw_index.rs` file is named after a future plan; today it scans linearly)
   - Quotation matching against known verse text
   - Reading mode — locks to book/chapter as soon as it's mentioned, with voice navigation ("next chapter", "chapter 5")
   - Sermon context tracking and sentence buffering
@@ -62,7 +62,7 @@ to local Whisper speech recognition with the local model bundled.
 |---|---|
 | **Frontend** | React 19, TypeScript, Tailwind CSS v4, shadcn/ui, Zustand, Vite 7 |
 | **Backend** | Tauri v2, Rust (workspace with 7 crates) |
-| **AI/ML** | ONNX Runtime (Qwen3-0.6B embeddings), Aho-Corasick, Fuse.js |
+| **AI/ML** | ONNX Runtime (MiniLM-L6-v2 embeddings), Aho-Corasick, Fuse.js |
 | **Database** | SQLite via rusqlite (bundled) with FTS5 |
 | **Broadcast** | NDI 6 SDK via dynamic loading (libloading FFI) |
 | **STT** | Local Whisper via `whisper-rs`; Deepgram WebSocket + REST (`tokio-tungstenite`) |
@@ -147,7 +147,7 @@ This runs 7 idempotent phases in sequence, skipping any whose output artifacts a
 1. Python environment (`.venv` + pip deps: `optimum-onnx[onnxruntime]`, `sentence-transformers`, `accelerate`, `tokenizers`, `numpy`, `torch`, `meaningless`)
 2. Download Bible source data — public-release builds include redistributable translations only; private/development builds may include additional licensed translations if the developer has the rights to use them.
 3. Build SQLite Bible database (`data/rhema.db` with FTS5 + cross-references)
-4. Download & export ONNX model (`Qwen3-Embedding-0.6B`) + INT8 quantization for ARM64
+4. Download & export ONNX model (`all-MiniLM-L6-v2`) + INT8 quantization for ARM64
 5. Export KJV verses to JSON for embedding precomputation
 6. Precompute verse embeddings (GPU sentence-transformers when available, ONNX CPU fallback otherwise)
 7. Download Whisper model (`ggml-base.en.bin`) into `models/whisper/`
@@ -241,7 +241,7 @@ sabbathcue/
 │   ├── build-bible-db.ts         # Build SQLite DB from JSON sources
 │   ├── compute-embeddings.ts     # Export verses to JSON for embedding
 │   ├── precompute-embeddings.py  # Precompute embeddings (GPU auto-detect, ONNX fallback)
-│   ├── download-model.ts         # Export & quantize Qwen3 ONNX model
+│   ├── download-model.ts         # Export & quantize MiniLM ONNX model
 │   ├── download-ndi-sdk.ts       # Download NDI SDK libraries
 │   └── schema.sql                # Database schema
 ├── models/                       # ML models (gitignored)
@@ -266,7 +266,7 @@ sabbathcue/
 | `preview` | Preview production build |
 | `download:bible-data` | Download bundled Bible translation archive + cross-references |
 | `build:bible` | Build SQLite Bible database from JSON sources |
-| `download:model` | Export Qwen3-Embedding-0.6B to ONNX + quantize to INT8 |
+| `download:model` | Export all-MiniLM-L6-v2 to ONNX + quantize to INT8 |
 | `export:verses` | Export KJV verses to JSON for embedding precomputation |
 | `precompute:embeddings` | Precompute embeddings via Rust ONNX binary (recommended) |
 | `precompute:embeddings-onnx` | Precompute embeddings via Python ONNX Runtime |

@@ -1,5 +1,5 @@
 /**
- * Downloads the Qwen3-Embedding-0.6B ONNX model exported for feature-extraction.
+ * Downloads the all-MiniLM-L6-v2 ONNX model exported for feature-extraction.
  *
  * This script automatically:
  *   1. Verifies Python >= 3.9.0 is available
@@ -17,11 +17,11 @@ import {
   PROJECT_ROOT,
 } from "./lib/python-env"
 
-const MODELS_DIR = join(PROJECT_ROOT, "models", "qwen3-embedding-0.6b")
+const MODELS_DIR = join(PROJECT_ROOT, "models", "minilm-l6-v2")
 const MODELS_DIR_INT8 = join(
   PROJECT_ROOT,
   "models",
-  "qwen3-embedding-0.6b-int8"
+  "minilm-l6-v2-int8"
 )
 
 async function main() {
@@ -34,7 +34,7 @@ async function main() {
   const python = getVenvBin(process.platform === "win32" ? "python" : "python3")
 
   console.log(
-    "\nExporting Qwen3-Embedding-0.6B to ONNX with sentence-transformers...\n"
+    "\nExporting all-MiniLM-L6-v2 to ONNX with sentence-transformers...\n"
   )
   console.log(
     "  This downloads the model from HuggingFace and converts it to ONNX format."
@@ -42,7 +42,7 @@ async function main() {
   console.log("  This may take a few minutes on first run.\n")
 
   const proc = Bun.spawn(
-    [python, join(PROJECT_ROOT, "data", "export-qwen3-onnx.py")],
+    [python, join(PROJECT_ROOT, "data", "export-minilm-onnx.py")],
     {
       stdout: "inherit",
       stderr: "inherit",

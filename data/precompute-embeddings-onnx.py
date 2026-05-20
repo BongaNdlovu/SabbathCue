@@ -25,13 +25,13 @@ from tokenizers import Tokenizer
 # ── Paths ───────────────────────────────────────────────────────────
 ROOT = Path(__file__).resolve().parent.parent
 VERSES_PATH = ROOT / "data" / "verses-for-embedding.json"
-EMB_OUT = ROOT / "embeddings" / "kjv-qwen3-0.6b.bin"
-IDS_OUT = ROOT / "embeddings" / "kjv-qwen3-0.6b-ids.bin"
+EMB_OUT = ROOT / "embeddings" / "kjv-minilm-l6-v2.bin"
+IDS_OUT = ROOT / "embeddings" / "kjv-minilm-l6-v2-ids.bin"
 
 # Try INT8 first, fall back to FP32
-MODEL_INT8 = ROOT / "models" / "qwen3-embedding-0.6b-int8" / "onnx" / "model_quantized.onnx"
-MODEL_FP32 = ROOT / "models" / "qwen3-embedding-0.6b" / "onnx" / "model.onnx"
-TOKENIZER_PATH = ROOT / "models" / "qwen3-embedding-0.6b" / "tokenizer.json"
+MODEL_INT8 = ROOT / "models" / "minilm-l6-v2-int8" / "onnx" / "model_quantized.onnx"
+MODEL_FP32 = ROOT / "models" / "minilm-l6-v2" / "onnx" / "model.onnx"
+TOKENIZER_PATH = ROOT / "models" / "minilm-l6-v2" / "tokenizer.json"
 
 MAX_LENGTH = 128  # Bible verses are short (~20 tokens avg). 128 is plenty and 4x faster than 512.
 BATCH_SIZE = 32

@@ -29,15 +29,15 @@ import numpy as np
 # ── Paths ───────────────────────────────────────────────────────────
 ROOT = Path(__file__).resolve().parent.parent
 VERSES_PATH = ROOT / "data" / "verses-for-embedding.json"
-EMB_OUT = ROOT / "embeddings" / "kjv-qwen3-0.6b.bin"
-IDS_OUT = ROOT / "embeddings" / "kjv-qwen3-0.6b-ids.bin"
-MODEL_NAME = "Qwen/Qwen3-Embedding-0.6B"
-LOCAL_MODEL_DIR = ROOT / "models" / "qwen3-embedding-0.6b"
+EMB_OUT = ROOT / "embeddings" / "kjv-minilm-l6-v2.bin"
+IDS_OUT = ROOT / "embeddings" / "kjv-minilm-l6-v2-ids.bin"
+MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
+LOCAL_MODEL_DIR = ROOT / "models" / "minilm-l6-v2"
 
 # ONNX model paths (for fallback)
-MODEL_INT8 = ROOT / "models" / "qwen3-embedding-0.6b-int8" / "onnx" / "model_quantized.onnx"
-MODEL_FP32 = ROOT / "models" / "qwen3-embedding-0.6b" / "onnx" / "model.onnx"
-TOKENIZER_PATH = ROOT / "models" / "qwen3-embedding-0.6b" / "tokenizer.json"
+MODEL_INT8 = ROOT / "models" / "minilm-l6-v2-int8" / "onnx" / "model_quantized.onnx"
+MODEL_FP32 = ROOT / "models" / "minilm-l6-v2" / "onnx" / "model.onnx"
+TOKENIZER_PATH = ROOT / "models" / "minilm-l6-v2" / "tokenizer.json"
 
 MAX_LENGTH = 128
 BATCH_SIZE_ONNX = 32

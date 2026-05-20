@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Export Qwen3-Embedding-0.6B to the ONNX layout used by SabbathCue."""
+"""Export all-MiniLM-L6-v2 to the ONNX layout used by SabbathCue."""
 
 from pathlib import Path
 
@@ -7,9 +7,9 @@ from sentence_transformers import SentenceTransformer
 from sentence_transformers.backend import export_dynamic_quantized_onnx_model
 
 ROOT = Path(__file__).resolve().parent.parent
-MODEL_NAME = "Qwen/Qwen3-Embedding-0.6B"
-MODELS_DIR = ROOT / "models" / "qwen3-embedding-0.6b"
-MODELS_DIR_INT8 = ROOT / "models" / "qwen3-embedding-0.6b-int8"
+MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
+MODELS_DIR = ROOT / "models" / "minilm-l6-v2"
+MODELS_DIR_INT8 = ROOT / "models" / "minilm-l6-v2-int8"
 
 
 def main() -> None:
