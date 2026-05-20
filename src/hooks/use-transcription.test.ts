@@ -201,6 +201,63 @@ describe("use-transcription", () => {
     })
   })
 
+  describe("transcriptionActions.dumpMemory", () => {
+    it("clears visible transcript without restarting when transcription is inactive", async () => {
+      const { useTranscriptStore, transcriptionActions } = await loadModules()
+
+      useTranscriptStore.setState({
+        isTranscribing: false,
+        segments: [
+          {
+            id: "seg-1",
+            text: "old words",
+            is_final: true,
+            confidence: 0.9,
+            words: [],
+            timestamp: Date.now(),
+          },
+        ],
+        currentPartial: "half heard",
+      })
+
+      await transcriptionActions.dumpMemory()
+
+      expect(useTranscriptStore.getState().segments).toEqual([])
+      expect(useTranscriptStore.getState().currentPartial).toBe("")
+      expect(mockInvoke).not.toHaveBeenCalled()
+    })
+
+    it("restarts active transcription so provider prompt state is discarded too", async () => {
+      mockInvoke.mockResolvedValue(undefined)
+      const { useTranscriptStore, transcriptionActions } = await loadModules()
+
+      useTranscriptStore.setState({
+        isTranscribing: true,
+        connectionStatus: "connected",
+        segments: [
+          {
+            id: "seg-1",
+            text: "old words",
+            is_final: true,
+            confidence: 0.9,
+            words: [],
+            timestamp: Date.now(),
+          },
+        ],
+      })
+
+      await transcriptionActions.dumpMemory()
+
+      expect(useTranscriptStore.getState().segments).toEqual([])
+      expect(mockInvoke).toHaveBeenNthCalledWith(1, "stop_transcription")
+      expect(mockInvoke).toHaveBeenNthCalledWith(
+        2,
+        "start_transcription",
+        expect.any(Object)
+      )
+    })
+  })
+
   describe("stt_error integration contract", () => {
     it("surfaces stt errors via toast and sets connection status to error", async () => {
       const { useTranscriptStore } = await loadModules()

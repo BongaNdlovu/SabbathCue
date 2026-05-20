@@ -69,6 +69,17 @@ export const transcriptionActions = {
     transcript.setPartial("")
     transcript.setConnectionStatus("disconnected")
   },
+
+  async dumpMemory(onMissingApiKey?: () => void): Promise<void> {
+    const transcript = useTranscriptStore.getState()
+    const wasTranscribing = transcript.isTranscribing
+
+    transcript.clearTranscript()
+    if (!wasTranscribing) return
+
+    await transcriptionActions.stop()
+    await transcriptionActions.start(onMissingApiKey)
+  },
 }
 
 export function useTranscription(options?: UseTranscriptionOptions) {
@@ -130,6 +141,10 @@ export function useTranscription(options?: UseTranscriptionOptions) {
     () => transcriptionActions.start(onMissingApiKey),
     [onMissingApiKey]
   )
+  const dumpTranscriptMemory = useCallback(
+    () => transcriptionActions.dumpMemory(onMissingApiKey),
+    [onMissingApiKey]
+  )
 
   return {
     segments,
@@ -137,5 +152,6 @@ export function useTranscription(options?: UseTranscriptionOptions) {
     connectionStatus,
     startTranscription,
     stopTranscription: transcriptionActions.stop,
+    dumpTranscriptMemory,
   }
 }

@@ -216,7 +216,7 @@ function SpeechSection() {
   const handleSaveKey = async () => {
     try {
       setKeyError(null)
-      await invoke("set_deepgram_api_key", { api_key: keyValue })
+      await invoke("set_deepgram_api_key", { apiKey: keyValue })
       setHasDeepgramApiKey(true)
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)

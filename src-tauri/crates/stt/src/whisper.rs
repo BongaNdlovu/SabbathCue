@@ -7,7 +7,7 @@
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crossbeam_channel::Receiver;
 use tokio::sync::mpsc;
@@ -27,16 +27,22 @@ const MAX_BUFFER_SAMPLES: usize = 16_000 * 10;
 const MIN_BUFFER_SAMPLES: usize = 16_000;
 const WHISPER_PROMPT_PREAMBLE: &str =
     "Sermon and Bible reading transcription. Common words: Jesus, Christ, God, Lord, Holy Spirit, Genesis, Exodus, Psalms, Proverbs, Matthew, Mark, Luke, John, Romans, Corinthians, Revelation.";
-const MAX_ROLLING_PROMPT_CHARS: usize = 480;
+const MAX_ROLLING_PROMPT_CHARS: usize = 640;
 const MAX_ROLLING_TRANSCRIPTS: usize = 6;
+const ROLLING_PROMPT_MAX_AGE: Duration = Duration::from_secs(45);
 
 #[derive(Debug, Default)]
 struct RollingTranscriptPrompt {
     recent: std::collections::VecDeque<String>,
+    last_updated: Option<Instant>,
 }
 
 impl RollingTranscriptPrompt {
     fn push(&mut self, text: &str) {
+        self.push_at(text, Instant::now());
+    }
+
+    fn push_at(&mut self, text: &str, now: Instant) {
         let cleaned = text.trim();
         if cleaned.is_empty() {
             return;
@@ -46,9 +52,11 @@ impl RollingTranscriptPrompt {
         while self.recent.len() > MAX_ROLLING_TRANSCRIPTS {
             self.recent.pop_front();
         }
+        self.last_updated = Some(now);
     }
 
-    fn prompt(&self) -> String {
+    fn prompt(&mut self) -> String {
+        self.clear_if_stale(Instant::now());
         let mut prompt = WHISPER_PROMPT_PREAMBLE.to_string();
         if self.recent.is_empty() {
             return prompt;
@@ -65,6 +73,17 @@ impl RollingTranscriptPrompt {
             prompt.push_str(text);
         }
         prompt
+    }
+
+    fn clear_if_stale(&mut self, now: Instant) {
+        let Some(last_updated) = self.last_updated else {
+            return;
+        };
+        if now.duration_since(last_updated) >= ROLLING_PROMPT_MAX_AGE {
+            self.recent.clear();
+            self.last_updated = None;
+            log::info!("[Whisper] Cleared stale rolling prompt context");
+        }
     }
 }
 
@@ -257,9 +276,9 @@ impl SttProvider for WhisperProvider {
             // Keep thresholds modest so quieter microphones still open the gate.
             // Whisper's no_speech threshold still filters near-silence at inference time.
             let vad_config = VadConfig {
-                silence_threshold: 0.003,
-                frame_threshold: 0.0015,
-                min_voice_frames: 3,
+                silence_threshold: 0.002,
+                frame_threshold: 0.001,
+                min_voice_frames: 2,
                 silence_frame_count: 8,
                 ..VadConfig::default()
             };
@@ -378,14 +397,15 @@ impl SttProvider for WhisperProvider {
                 params.set_print_progress(false);
                 params.set_print_special(false);
                 params.set_print_realtime(false);
-                params.set_initial_prompt(&rolling_prompt.prompt());
+                let initial_prompt = rolling_prompt.prompt();
+                params.set_initial_prompt(&initial_prompt);
                 if profile.uses_latency_decoder() {
                     params.set_no_context(true);
                     params.set_n_max_text_ctx(0);
                     params.set_no_timestamps(true);
                     params.set_single_segment(true);
                     params.set_token_timestamps(false);
-                    params.set_audio_ctx(512);
+                    params.set_audio_ctx(768);
                     params.set_max_tokens(96);
                 } else {
                     params.set_no_context(true);
@@ -485,5 +505,18 @@ mod tests {
         assert!(text.contains("segment 9"));
         assert!(!text.contains("segment 0"));
         assert!(text.len() <= MAX_ROLLING_PROMPT_CHARS);
+    }
+
+    #[test]
+    fn rolling_prompt_dumps_stale_transcript() {
+        let mut prompt = RollingTranscriptPrompt::default();
+        let now = Instant::now();
+
+        prompt.push_at("old transcript", now);
+        prompt.clear_if_stale(now + ROLLING_PROMPT_MAX_AGE);
+
+        let text = prompt.prompt();
+        assert!(!text.contains("old transcript"));
+        assert!(text.contains("Jesus"));
     }
 }

@@ -3,7 +3,7 @@ import { PanelHeader } from "@/components/ui/panel-header"
 import { LevelMeter } from "@/components/ui/level-meter"
 import { Button } from "@/components/ui/button"
 import { ApiKeyPrompt } from "@/components/ui/api-key-prompt"
-import { MicIcon, MicOffIcon } from "lucide-react"
+import { MicIcon, MicOffIcon, Trash2Icon } from "lucide-react"
 import { profileDetectionEvent } from "@/lib/detection-profiler"
 import { useAudioStore } from "@/stores/audio-store"
 import { useBibleStore } from "@/stores/bible-store"
@@ -57,6 +57,7 @@ export function TranscriptPanel() {
     connectionStatus,
     startTranscription,
     stopTranscription,
+    dumpTranscriptMemory,
   } = useTranscription({ onMissingApiKey })
   const hasPartial = useTranscriptStore((s) => s.currentPartial.length > 0)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -108,6 +109,16 @@ export function TranscriptPanel() {
         icon={<MicIcon className="size-3" />}
       >
         <div className="flex items-end gap-2 pb-px">
+          {(segments.length > 0 || hasPartial) && (
+            <button
+              onClick={() => void dumpTranscriptMemory()}
+              className="mb-0.5 flex items-center gap-1 text-[0.625rem] text-muted-foreground transition-colors hover:text-foreground"
+              title="Clear transcript and reset STT session memory"
+            >
+              <Trash2Icon className="size-3" />
+              Dump
+            </button>
+          )}
           {isTranscribing && (
             <span
               className={`mb-1 size-1.5 rounded-full ${
