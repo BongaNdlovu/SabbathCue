@@ -45,8 +45,7 @@ pub fn normalize_deepgram_api_key(api_key: &str) -> String {
         .trim_matches(|c| matches!(c, '"' | '\'' | '`'));
     let without_header = trimmed
         .strip_prefix("Authorization:")
-        .map(str::trim)
-        .unwrap_or(trimmed);
+        .map_or(trimmed, str::trim);
 
     for prefix in ["Token ", "token ", "Bearer ", "bearer "] {
         if let Some(key) = without_header.strip_prefix(prefix) {
@@ -62,7 +61,7 @@ pub fn has_deepgram_api_key() -> Result<bool, String> {
     has_deepgram_api_key_with_store(&DEFAULT_STORE)
 }
 
-/// Testable version that accepts a KeychainStore implementation.
+/// Testable version that accepts a `KeychainStore` implementation.
 pub fn has_deepgram_api_key_with_store(store: &dyn KeychainStore) -> Result<bool, String> {
     match store.get_password("deepgram_api_key") {
         Ok(pw) => Ok(!pw.trim().is_empty()),
@@ -74,16 +73,20 @@ pub fn has_deepgram_api_key_with_store(store: &dyn KeychainStore) -> Result<bool
 }
 
 #[command]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "Tauri command extractors require pass-by-value"
+)]
 pub fn set_deepgram_api_key(api_key: String) -> Result<(), String> {
-    set_deepgram_api_key_with_store(&DEFAULT_STORE, api_key)
+    set_deepgram_api_key_with_store(&DEFAULT_STORE, &api_key)
 }
 
-/// Testable version that accepts a KeychainStore implementation.
+/// Testable version that accepts a `KeychainStore` implementation.
 pub fn set_deepgram_api_key_with_store(
     store: &dyn KeychainStore,
-    api_key: String,
+    api_key: &str,
 ) -> Result<(), String> {
-    let normalized = normalize_deepgram_api_key(&api_key);
+    let normalized = normalize_deepgram_api_key(api_key);
     if normalized.is_empty() {
         return Err("API key cannot be empty".into());
     }
@@ -122,7 +125,7 @@ pub fn has_remote_http_token() -> Result<bool, String> {
     has_remote_http_token_with_store(&DEFAULT_STORE)
 }
 
-/// Testable version that accepts a KeychainStore implementation.
+/// Testable version that accepts a `KeychainStore` implementation.
 pub fn has_remote_http_token_with_store(store: &dyn KeychainStore) -> Result<bool, String> {
     match store.get_password("remote_http_token") {
         Ok(pw) => Ok(!pw.trim().is_empty()),
@@ -148,7 +151,7 @@ pub fn rotate_remote_http_token() -> Result<String, String> {
     rotate_remote_http_token_with_store(&DEFAULT_STORE)
 }
 
-/// Testable version that accepts a KeychainStore implementation.
+/// Testable version that accepts a `KeychainStore` implementation.
 pub fn rotate_remote_http_token_with_store(store: &dyn KeychainStore) -> Result<String, String> {
     let token = generate_token();
     store
@@ -243,7 +246,7 @@ mod tests {
     fn has_remote_http_token_returns_false_when_not_set() {
         let store = MockKeychainStore::new();
         let result = has_remote_http_token_with_store(&store);
-        assert_eq!(result.unwrap(), false);
+        assert!(!result.unwrap());
     }
 
     #[test]
@@ -253,7 +256,7 @@ mod tests {
             .set_password("remote_http_token", "test-token")
             .unwrap();
         let result = has_remote_http_token_with_store(&store);
-        assert_eq!(result.unwrap(), true);
+        assert!(result.unwrap());
     }
 
     #[test]
@@ -261,7 +264,7 @@ mod tests {
         let store = MockKeychainStore::new();
         store.set_password("remote_http_token", "   ").unwrap();
         let result = has_remote_http_token_with_store(&store);
-        assert_eq!(result.unwrap(), false);
+        assert!(!result.unwrap());
     }
 
     #[test]
@@ -316,7 +319,7 @@ mod tests {
     fn has_deepgram_api_key_returns_false_when_not_set() {
         let store = MockKeychainStore::new();
         let result = has_deepgram_api_key_with_store(&store);
-        assert_eq!(result.unwrap(), false);
+        assert!(!result.unwrap());
     }
 
     #[test]
@@ -324,7 +327,7 @@ mod tests {
         let store = MockKeychainStore::new();
         store.set_password("deepgram_api_key", "test-key").unwrap();
         let result = has_deepgram_api_key_with_store(&store);
-        assert_eq!(result.unwrap(), true);
+        assert!(result.unwrap());
     }
 
     #[test]
@@ -332,13 +335,13 @@ mod tests {
         let store = MockKeychainStore::new();
         store.set_password("deepgram_api_key", "   ").unwrap();
         let result = has_deepgram_api_key_with_store(&store);
-        assert_eq!(result.unwrap(), false);
+        assert!(!result.unwrap());
     }
 
     #[test]
     fn set_deepgram_api_key_saves_and_reads_back() {
         let store = MockKeychainStore::new();
-        set_deepgram_api_key_with_store(&store, "my-api-key".to_string()).unwrap();
+        set_deepgram_api_key_with_store(&store, "my-api-key").unwrap();
         let stored = store.get_password("deepgram_api_key").unwrap();
         assert_eq!(stored, "my-api-key");
     }
@@ -346,7 +349,7 @@ mod tests {
     #[test]
     fn set_deepgram_api_key_normalizes_input() {
         let store = MockKeychainStore::new();
-        set_deepgram_api_key_with_store(&store, "  Token abc  ".to_string()).unwrap();
+        set_deepgram_api_key_with_store(&store, "  Token abc  ").unwrap();
         let stored = store.get_password("deepgram_api_key").unwrap();
         assert_eq!(stored, "abc");
     }
@@ -354,14 +357,14 @@ mod tests {
     #[test]
     fn set_deepgram_api_key_rejects_empty() {
         let store = MockKeychainStore::new();
-        let result = set_deepgram_api_key_with_store(&store, "".to_string());
+        let result = set_deepgram_api_key_with_store(&store, "");
         assert_eq!(result, Err("API key cannot be empty".into()));
     }
 
     #[test]
     fn set_deepgram_api_key_rejects_whitespace() {
         let store = MockKeychainStore::new();
-        let result = set_deepgram_api_key_with_store(&store, "   ".to_string());
+        let result = set_deepgram_api_key_with_store(&store, "   ");
         assert_eq!(result, Err("API key cannot be empty".into()));
     }
 

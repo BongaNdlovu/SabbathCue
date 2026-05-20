@@ -1,3 +1,8 @@
+#![expect(
+    clippy::needless_pass_by_value,
+    reason = "Tauri command extractors require pass-by-value"
+)]
+
 use std::path::Path;
 
 use base64::Engine as _;
@@ -9,11 +14,9 @@ const MAX_JSON_DEPTH: usize = 32;
 const MAX_JSON_NODES: usize = 20_000;
 
 fn file_size(path: &Path) -> Result<u64, String> {
-    std::fs::metadata(path)
+    Ok(std::fs::metadata(path)
         .map_err(|e| format!("Could not read file metadata: {e}"))?
-        .len()
-        .try_into()
-        .map_err(|_| "Invalid file size".to_string())
+        .len())
 }
 
 fn enforce_json_limits(value: &serde_json::Value) -> Result<(), String> {
@@ -135,7 +138,7 @@ mod tests {
     fn enforces_json_depth_limit() {
         // Create a JSON structure that exceeds MAX_JSON_DEPTH
         let mut value = serde_json::Value::Null;
-        for _ in 0..(MAX_JSON_DEPTH + 1) {
+        for _ in 0..=MAX_JSON_DEPTH {
             value = serde_json::json!({ "nested": value });
         }
 
@@ -159,7 +162,7 @@ mod tests {
     #[test]
     fn enforces_json_nodes_limit() {
         // Create a JSON structure that exceeds MAX_JSON_NODES
-        let large_array: Vec<serde_json::Value> = (0..(MAX_JSON_NODES + 1))
+        let large_array: Vec<serde_json::Value> = (0..=MAX_JSON_NODES)
             .map(|i| serde_json::json!(i))
             .collect();
         let value = serde_json::Value::Array(large_array);

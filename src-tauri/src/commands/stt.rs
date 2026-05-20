@@ -439,13 +439,12 @@ pub async fn start_transcription(
                         // This makes translation switching feel instant without waiting for speech_final
                         check_translation_command(&event_app, &transcript);
                         match partial_preview_tx.try_send((seq, transcript.clone())) {
-                            Ok(()) => {}
                             Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
                                 if transcript_logging_enabled() {
                                     log::debug!("[QUEUE] partial_preview_tx dropped stale partial");
                                 }
                             }
-                            Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {}
+                            Ok(()) | Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {}
                         }
                         log::debug!("[EVT] Partial processed in {:?}", t0.elapsed());
                     }
@@ -474,13 +473,12 @@ pub async fn start_transcription(
                         // Check for translation commands (cheap, <1ms, stays inline)
                         check_translation_command(&event_app, &transcript);
                         match partial_preview_tx.try_send((seq, transcript.clone())) {
-                            Ok(()) => {}
                             Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
                                 if transcript_logging_enabled() {
                                     log::debug!("[QUEUE] fast_preview_tx dropped stale transcript");
                                 }
                             }
-                            Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {}
+                            Ok(()) | Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {}
                         }
 
                         log::info!(

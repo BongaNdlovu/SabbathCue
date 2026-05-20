@@ -180,6 +180,10 @@ impl OnnxEmbedder {
     /// 4. Run ONNX inference.
     /// 5. Mean-pool the last hidden state over the attention mask.
     /// 6. L2-normalise the resulting vector.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "embedding tensor setup is clearer in one flow"
+    )]
     fn embed_impl(&self, text: &str) -> Result<Vec<f32>, DetectionError> {
         let embed_start = std::time::Instant::now();
         let prefixed = format!("{}{}", self.prompt_prefix, text);
