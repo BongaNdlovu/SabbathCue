@@ -72,7 +72,7 @@ pub fn run() {
 
             memstats::spawn();
 
-            let db_path = asset_paths::bible_db_path(&app.handle());
+            let db_path = asset_paths::bible_db_path(app.handle());
 
             if db_path.exists() {
                 let bible_db = if app.path().resource_dir().ok().is_some_and(|dir| {
@@ -94,10 +94,10 @@ pub fn run() {
                 log::warn!("Bible database not found at {}", db_path.display());
             }
 
-            let model_path = asset_paths::onnx_model_path(&app.handle());
-            let tokenizer_path = asset_paths::tokenizer_path(&app.handle());
-            let embeddings_path = asset_paths::embeddings_path(&app.handle());
-            let ids_path = asset_paths::embedding_ids_path(&app.handle());
+            let model_path = asset_paths::onnx_model_path(app.handle());
+            let tokenizer_path = asset_paths::tokenizer_path(app.handle());
+            let embeddings_path = asset_paths::embeddings_path(app.handle());
+            let ids_path = asset_paths::embedding_ids_path(app.handle());
 
             log::info!("Resolved ONNX model path: {}", model_path.display());
             log::info!("Resolved tokenizer path: {}", tokenizer_path.display());

@@ -89,7 +89,7 @@ pub fn coerce_string(arg: &OscType) -> Result<String, CommandError> {
 
 /// Parse an OSC address + arguments into a `RemoteCommand`.
 ///
-/// Handles all 8 SabbathCue OSC addresses:
+/// Handles all 8 `SabbathCue` OSC addresses:
 /// - `/sabbathcue/next`, `/sabbathcue/prev`, `/sabbathcue/show`, `/sabbathcue/hide` (no arguments)
 /// - `/sabbathcue/theme` (string argument)
 /// - `/sabbathcue/opacity`, `/sabbathcue/confidence` (float argument, normalized to [0.0, 1.0])

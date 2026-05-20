@@ -25,13 +25,17 @@ pub fn spawn() {
             );
 
             if let Some(proc_) = sys.process(pid) {
+                #[expect(
+                    clippy::cast_precision_loss,
+                    reason = "diagnostic memory counters are displayed in MB"
+                )]
                 let rss_mb = proc_.memory() as f64 / 1024.0 / 1024.0;
+                #[expect(
+                    clippy::cast_precision_loss,
+                    reason = "diagnostic memory counters are displayed in MB"
+                )]
                 let virt_mb = proc_.virtual_memory() as f64 / 1024.0 / 1024.0;
-                log::info!(
-                    "[MEM] rss={:.1}MB virt={:.0}MB",
-                    rss_mb,
-                    virt_mb,
-                );
+                log::info!("[MEM] rss={rss_mb:.1}MB virt={virt_mb:.0}MB");
             }
 
             tokio::time::sleep(INTERVAL).await;

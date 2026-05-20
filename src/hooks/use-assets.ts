@@ -28,7 +28,11 @@ export function useAssets() {
   }, [])
 
   useEffect(() => {
-    void refresh()
+    const timeoutId = setTimeout(() => {
+      void refresh()
+    }, 0)
+
+    return () => clearTimeout(timeoutId)
   }, [refresh])
 
   return { status, loading, refresh }

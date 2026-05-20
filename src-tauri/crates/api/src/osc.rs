@@ -80,7 +80,7 @@ where
         CommandError::DispatchFailed(format!("Failed to bind OSC on {bind_addr}: {e}"))
     })?;
 
-    let bound_port = socket.local_addr().map(|a| a.port()).unwrap_or(config.port);
+    let bound_port = socket.local_addr().map_or(config.port, |a| a.port());
 
     // Non-blocking with a short timeout so we can check the active flag
     socket

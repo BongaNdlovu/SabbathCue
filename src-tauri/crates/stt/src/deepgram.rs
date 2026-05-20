@@ -354,7 +354,7 @@ pub(crate) fn deepgram_keyterms() -> Vec<String> {
 
     let mut seen = std::collections::HashSet::new();
     let mut all_keyterms: Vec<String> = Vec::new();
-    for term in core_terms.into_iter().chain(bible_terms.into_iter()) {
+    for term in core_terms.into_iter().chain(bible_terms) {
         if seen.insert(term.clone()) {
             all_keyterms.push(term);
         }

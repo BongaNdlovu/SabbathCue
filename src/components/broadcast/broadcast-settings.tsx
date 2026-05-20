@@ -201,12 +201,22 @@ export function BroadcastSettings({
   }, [selectedMonitor])
 
   useEffect(() => {
-    if (open) fetchMonitors()
+    if (!open) return
+
+    const timeoutId = setTimeout(() => {
+      void fetchMonitors()
+    }, 0)
+
+    return () => clearTimeout(timeoutId)
   }, [open, fetchMonitors])
 
   // Sync theme selection with broadcast store
   useEffect(() => {
-    setMainThemeId(activeThemeId)
+    const timeoutId = setTimeout(() => {
+      setMainThemeId(activeThemeId)
+    }, 0)
+
+    return () => clearTimeout(timeoutId)
   }, [activeThemeId])
 
   useEffect(() => {

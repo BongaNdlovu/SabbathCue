@@ -506,6 +506,10 @@ impl DirectDetector {
     /// Detect Bible references in the given transcript text.
     ///
     /// Returns a list of Detection objects for each reference found.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "reference detection keeps ordered fallback logic in one pass"
+    )]
     pub fn detect(&mut self, text: &str) -> Vec<Detection> {
         // Step 0: Clean filler phrases from the transcript
         let cleaned = clean_transcript(text);

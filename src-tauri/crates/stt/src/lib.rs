@@ -1,4 +1,4 @@
-//! Speech-to-text integration for the SabbathCue application.
+//! Speech-to-text integration for the `SabbathCue` application.
 //!
 //! Provides real-time transcription via multiple providers:
 //! - **Deepgram** (cloud) — WebSocket streaming with keyword boosting

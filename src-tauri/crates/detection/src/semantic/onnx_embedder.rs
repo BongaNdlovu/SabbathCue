@@ -58,9 +58,7 @@ impl OnnxEmbedder {
     /// to a `tokenizer.json` file (`HuggingFace` format).
     pub fn load(model_path: &Path, tokenizer_path: &Path) -> Result<Self, DetectionError> {
         // Determine thread counts: use half of available CPUs for intra-op
-        let num_cpus = std::thread::available_parallelism()
-            .map(std::num::NonZero::get)
-            .unwrap_or(4);
+        let num_cpus = std::thread::available_parallelism().map_or(4, std::num::NonZero::get);
         let intra_threads = (num_cpus / 2).max(1);
 
         log::info!(

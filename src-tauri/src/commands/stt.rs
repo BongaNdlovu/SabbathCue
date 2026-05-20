@@ -13,9 +13,9 @@ use crate::events::{
 };
 use crate::state::AppState;
 
-/// [DIAG] Running totals for AppState mutex contention on the direct-detection
+/// [DIAG] Running totals for `AppState` mutex contention on the direct-detection
 /// hot path. Direct-mode detection runs on every Final transcript fragment
-/// inside spawn_blocking, so high contention here means workers are stalling.
+/// inside `spawn_blocking`, so high contention here means workers are stalling.
 static DIRECT_LOCK_OK: AtomicU64 = AtomicU64::new(0);
 static DIRECT_LOCK_CONTENDED: AtomicU64 = AtomicU64::new(0);
 
@@ -110,7 +110,7 @@ pub async fn start_transcription(
                 model_path,
                 None,
                 n_threads,
-                whisper_profile,
+                whisper_profile.as_deref(),
             ))
         }
         #[cfg(not(feature = "whisper"))]
@@ -425,49 +425,43 @@ pub async fn start_transcription(
 
                         // Fire-and-forget: detection runs in background thread pool.
                         // Event consumer proceeds immediately to next transcript.
-                        match detect_tx.try_send(transcript.clone()) {
-                            Ok(()) => {
-                                let n = detect_sent_evt.fetch_add(1, Ordering::Relaxed) + 1;
-                                if n % 25 == 0 {
-                                    let depth = detect_tx.max_capacity() - detect_tx.capacity();
-                                    let dropped = detect_dropped_evt.load(Ordering::Relaxed);
-                                    log::info!(
-                                        "[QUEUE] detect_tx sent={n} dropped={dropped} depth={depth}/{}",
-                                        detect_tx.max_capacity()
-                                    );
-                                }
-                            }
-                            Err(_) => {
-                                let d = detect_dropped_evt.fetch_add(1, Ordering::Relaxed) + 1;
-                                let sent = detect_sent_evt.load(Ordering::Relaxed);
-                                log::warn!(
-                                    "[QUEUE] detect_tx DROPPED (consumer behind) sent={sent} dropped={d}"
+                        if let Ok(()) = detect_tx.try_send(transcript.clone()) {
+                            let n = detect_sent_evt.fetch_add(1, Ordering::Relaxed) + 1;
+                            if n % 25 == 0 {
+                                let depth = detect_tx.max_capacity() - detect_tx.capacity();
+                                let dropped = detect_dropped_evt.load(Ordering::Relaxed);
+                                log::info!(
+                                    "[QUEUE] detect_tx sent={n} dropped={dropped} depth={depth}/{}",
+                                    detect_tx.max_capacity()
                                 );
                             }
+                        } else {
+                            let d = detect_dropped_evt.fetch_add(1, Ordering::Relaxed) + 1;
+                            let sent = detect_sent_evt.load(Ordering::Relaxed);
+                            log::warn!(
+                                "[QUEUE] detect_tx DROPPED (consumer behind) sent={sent} dropped={d}"
+                            );
                         }
 
                         // Send every is_final fragment to FTS5 immediately.
                         // No sentence buffer — FTS5 is fast enough (~20-50ms)
                         // to run on every fragment without waiting for pauses.
-                        match semantic_tx.try_send(transcript.clone()) {
-                            Ok(()) => {
-                                let n = semantic_sent_evt.fetch_add(1, Ordering::Relaxed) + 1;
-                                if n % 25 == 0 {
-                                    let depth = semantic_tx.max_capacity() - semantic_tx.capacity();
-                                    let dropped = semantic_dropped_evt.load(Ordering::Relaxed);
-                                    log::info!(
-                                        "[QUEUE] semantic_tx sent={n} dropped={dropped} depth={depth}/{}",
-                                        semantic_tx.max_capacity()
-                                    );
-                                }
-                            }
-                            Err(_) => {
-                                let d = semantic_dropped_evt.fetch_add(1, Ordering::Relaxed) + 1;
-                                let sent = semantic_sent_evt.load(Ordering::Relaxed);
-                                log::warn!(
-                                    "[QUEUE] semantic_tx DROPPED (consumer behind) sent={sent} dropped={d}"
+                        if let Ok(()) = semantic_tx.try_send(transcript.clone()) {
+                            let n = semantic_sent_evt.fetch_add(1, Ordering::Relaxed) + 1;
+                            if n % 25 == 0 {
+                                let depth = semantic_tx.max_capacity() - semantic_tx.capacity();
+                                let dropped = semantic_dropped_evt.load(Ordering::Relaxed);
+                                log::info!(
+                                    "[QUEUE] semantic_tx sent={n} dropped={dropped} depth={depth}/{}",
+                                    semantic_tx.max_capacity()
                                 );
                             }
+                        } else {
+                            let d = semantic_dropped_evt.fetch_add(1, Ordering::Relaxed) + 1;
+                            let sent = semantic_sent_evt.load(Ordering::Relaxed);
+                            log::warn!(
+                                "[QUEUE] semantic_tx DROPPED (consumer behind) sent={sent} dropped={d}"
+                            );
                         }
 
                         log::debug!("[EVT] Final processed in {:?} ({:?})", t0.elapsed(), truncate_safe(&transcript, 40));
@@ -598,6 +592,8 @@ fn run_direct_detection(app: &AppHandle, transcript: &str) -> bool {
 /// FTS5 phrase match finds exact scripture quotes; direct detection handles
 /// verse references; ONNX can be re-enabled later with parallelized vector search.
 fn run_semantic_detection(app: &AppHandle, transcript: &str) {
+    use super::detection::{FTS5_CONFIDENCE_DECAY, FTS5_MIN_CONFIDENCE, FTS5_RANK0_CONFIDENCE};
+
     let t0 = std::time::Instant::now();
     log::info!("[DET-SEMANTIC] Running on: {:?}", truncate_safe(transcript, 80));
 
@@ -629,8 +625,6 @@ fn run_semantic_detection(app: &AppHandle, transcript: &str) {
         log::error!("Failed to lock AppState for verse resolution");
         return;
     };
-
-    use super::detection::{FTS5_RANK0_CONFIDENCE, FTS5_CONFIDENCE_DECAY, FTS5_MIN_CONFIDENCE};
 
     let results: Vec<super::detection::DetectionResult> = fts
         .iter()
@@ -797,7 +791,7 @@ fn check_reading_mode(app: &AppHandle, transcript: &str, direct_found: bool) -> 
             if !rm.is_active() && !rm.has_verses() {
                 None
             } else {
-                log::info!("[READING] Checking chapter command for: {:?}", transcript);
+                log::info!("[READING] Checking chapter command for: {transcript:?}");
                 rm.check_chapter_command(transcript)
             }
         };
@@ -831,8 +825,7 @@ fn check_reading_mode(app: &AppHandle, transcript: &str, direct_found: bool) -> 
                     let start_verse_text = chapter_verses
                         .iter()
                         .find(|v| v.verse == start_verse)
-                        .map(|v| v.text.clone())
-                        .unwrap_or_else(|| chapter_verses[0].text.clone());
+                        .map_or_else(|| chapter_verses[0].text.clone(), |v| v.text.clone());
 
                     let verses: Vec<(i32, String)> = chapter_verses
                         .into_iter()

@@ -24,6 +24,10 @@ impl DeepgramRestClient {
     ///
     /// Sends the audio to Deepgram's REST endpoint and returns transcript events.
     /// Unlike the WebSocket client, this is request/response — no streaming.
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "audio sample count fits comfortably in f64"
+    )]
     pub async fn transcribe(&self, samples: &[i16]) -> Result<Vec<TranscriptEvent>, SttError> {
         if samples.is_empty() {
             return Ok(vec![]);

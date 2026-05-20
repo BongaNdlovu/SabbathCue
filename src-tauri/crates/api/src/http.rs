@@ -127,7 +127,7 @@ where
         CommandError::DispatchFailed(format!("Failed to bind HTTP on {bind_addr}: {e}"))
     })?;
 
-    let bound_port = listener.local_addr().map(|a| a.port()).unwrap_or(config.port);
+    let bound_port = listener.local_addr().map_or(config.port, |a| a.port());
 
     let (shutdown_tx, mut shutdown_rx) = watch::channel(false);
 

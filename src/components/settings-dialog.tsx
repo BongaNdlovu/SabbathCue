@@ -125,7 +125,11 @@ function AudioSection() {
   }, [])
 
   useEffect(() => {
-    loadDevices()
+    const timeoutId = setTimeout(() => {
+      void loadDevices()
+    }, 0)
+
+    return () => clearTimeout(timeoutId)
   }, [loadDevices])
 
   // gain is 0.0-2.0 in store, display as 0-100%

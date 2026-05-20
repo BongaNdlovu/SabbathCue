@@ -308,7 +308,7 @@ fn try_chapter_verse_spoken(tokens: &[Token], book_match: &BookMatch) -> Option<
                         verse_start: 0,
                         verse_end: None,
                     });
-                } else {
+                }
                     // "chapter" keyword found but no number follows
                     // e.g., "Genesis chapter" (incomplete) → chapter-only
                     return Some(VerseRef {
@@ -318,7 +318,6 @@ fn try_chapter_verse_spoken(tokens: &[Token], book_match: &BookMatch) -> Option<
                         verse_start: 0,
                         verse_end: None,
                     });
-                }
             }
         }
     }
@@ -394,7 +393,7 @@ fn try_verse_only_pattern(tokens: &[Token], book_match: &BookMatch) -> Option<Ve
                             verse_start: verse,
                             verse_end: None,
                         });
-                    } else {
+                    }
                         // "verse" keyword found but no number follows
                         // e.g., "Genesis verse" (incomplete) → Genesis 1:1
                         return Some(VerseRef {
@@ -404,7 +403,6 @@ fn try_verse_only_pattern(tokens: &[Token], book_match: &BookMatch) -> Option<Ve
                             verse_start: 1,
                             verse_end: None,
                         });
-                    }
                 }
             }
         }

@@ -65,10 +65,12 @@ fn queue_inference(
         return;
     }
 
+    #[expect(clippy::cast_precision_loss, reason = "audio sample count fits in f64")]
+    let buffer_duration_s = audio_buffer.len() as f64 / 16_000.0;
     log::info!(
         "[WHISPER] flush on {reason}: audio_buffer={} samples ({:.1}s)",
         audio_buffer.len(),
-        audio_buffer.len() as f64 / 16_000.0,
+        buffer_duration_s,
     );
 
     if inference_tx.try_send(std::mem::take(audio_buffer)).is_err() {
@@ -152,13 +154,13 @@ impl WhisperProvider {
         model_path: PathBuf,
         language: Option<String>,
         n_threads: i32,
-        profile: Option<String>,
+        profile: Option<&str>,
     ) -> Self {
         Self {
             model_path,
             language,
             n_threads: n_threads.max(1),
-            profile: WhisperProfile::from_name(profile.as_deref()),
+            profile: WhisperProfile::from_name(profile),
             cancelled: Arc::new(AtomicBool::new(false)),
         }
     }
@@ -181,6 +183,7 @@ impl SttProvider for WhisperProvider {
         clippy::too_many_lines,
         reason = "spawns two blocking tasks with setup; splitting would obscure the pipeline flow"
     )]
+    #[expect(clippy::cast_precision_loss, reason = "audio sample count fits in f64")]
     async fn start(
         &self,
         audio_rx: Receiver<Vec<i16>>,

@@ -6,6 +6,10 @@ use tauri::AppHandle;
 use crate::asset_paths;
 
 #[derive(Debug, Serialize)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "frontend asset readiness DTO mirrors independent asset flags"
+)]
 pub struct AssetStatus {
     pub bible_db: bool,
     pub whisper_model: bool,
@@ -18,7 +22,7 @@ pub struct AssetStatus {
 }
 
 #[tauri::command]
-pub fn asset_status(app: AppHandle) -> Result<AssetStatus, String> {
+pub fn asset_status(app: AppHandle) -> AssetStatus {
     let bible_db = asset_paths::bible_db_path(&app).exists();
     let whisper_model = asset_paths::whisper_model_path(&app).exists();
     let onnx_model = asset_paths::onnx_model_path(&app).exists();
@@ -27,7 +31,7 @@ pub fn asset_status(app: AppHandle) -> Result<AssetStatus, String> {
     let embedding_ids = asset_paths::embedding_ids_path(&app).exists();
     let ndi_sdk = asset_paths::ndi_library_path(&app).exists();
 
-    Ok(AssetStatus {
+    AssetStatus {
         bible_db,
         whisper_model,
         onnx_model,
@@ -36,5 +40,5 @@ pub fn asset_status(app: AppHandle) -> Result<AssetStatus, String> {
         embedding_ids,
         semantic_ready: onnx_model && tokenizer && embeddings && embedding_ids,
         ndi_sdk,
-    })
+    }
 }

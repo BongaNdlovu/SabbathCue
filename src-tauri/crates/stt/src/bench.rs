@@ -29,6 +29,10 @@ pub struct TranscriptBenchResult {
 }
 
 impl TranscriptBenchResult {
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "benchmark term counts are tiny fixture values"
+    )]
     pub fn scripture_term_accuracy(&self) -> f64 {
         if self.scripture_terms_total == 0 {
             return 1.0;
@@ -52,6 +56,10 @@ pub fn score_fixture(
     }
 }
 
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "benchmark token counts are tiny fixture values"
+)]
 pub fn token_similarity(expected: &str, actual: &str) -> f64 {
     let expected_tokens = normalized_tokens(expected);
     let actual_tokens = normalized_tokens(actual);
