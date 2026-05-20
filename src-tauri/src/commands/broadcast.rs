@@ -16,6 +16,14 @@ fn window_label(output_id: &str) -> &'static str {
     }
 }
 
+/// Map `output_id` to the user-visible projector window title.
+fn projector_window_title(output_id: &str) -> &'static str {
+    match output_id {
+        "alt" => "Projector - Alt",
+        _ => "Projector - Program",
+    }
+}
+
 /// Map `output_id` to broadcast-output.html URL with query param.
 fn window_url(output_id: &str) -> String {
     format!("broadcast-output.html?output={output_id}")
@@ -80,6 +88,7 @@ pub fn open_broadcast_window(
     app: tauri::AppHandle,
     output_id: String,
     monitor_index: usize,
+    fullscreen: Option<bool>,
 ) -> Result<(), String> {
     let label = window_label(&output_id);
     let monitors = app.available_monitors().map_err(|e| e.to_string())?;
@@ -89,9 +98,17 @@ pub fn open_broadcast_window(
 
     let pos = monitor.position();
     let size = monitor.size();
+    let fullscreen_enabled = fullscreen.unwrap_or(false);
 
     // If window already exists (e.g. hidden for NDI), reuse it
     if let Some(window) = app.get_webview_window(label) {
+        // Temporarily disable fullscreen before moving/resizing
+        let _ = window.set_fullscreen(false);
+        window
+            .set_title(projector_window_title(&output_id))
+            .map_err(|e| e.to_string())?;
+        window.set_skip_taskbar(false).map_err(|e| e.to_string())?;
+
         window
             .set_position(tauri::Position::Physical(tauri::PhysicalPosition {
                 x: pos.x,
@@ -104,25 +121,33 @@ pub fn open_broadcast_window(
                 height: size.height,
             }))
             .map_err(|e| e.to_string())?;
+
+        // Set decorations based on fullscreen mode
+        window
+            .set_decorations(!fullscreen_enabled)
+            .map_err(|e| e.to_string())?;
+
         window.show().map_err(|e| e.to_string())?;
+        window.set_focus().map_err(|e| e.to_string())?;
+
+        // Enable fullscreen if requested
+        if fullscreen_enabled {
+            window.set_fullscreen(true).map_err(|e| e.to_string())?;
+        }
+
         return Ok(());
     }
-
-    let title = if output_id == "alt" {
-        "Projector - Alt"
-    } else {
-        "Projector - Program"
-    };
 
     WebviewWindowBuilder::new(
         &app,
         label,
         WebviewUrl::App(window_url(&output_id).into()),
     )
-    .title(title)
+    .title(projector_window_title(&output_id))
     .position(f64::from(pos.x), f64::from(pos.y))
     .inner_size(f64::from(size.width), f64::from(size.height))
-    .decorations(true)
+    .decorations(!fullscreen_enabled)
+    .fullscreen(fullscreen_enabled)
     .always_on_top(false)
     .skip_taskbar(false)
     .focused(true)

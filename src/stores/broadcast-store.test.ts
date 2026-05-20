@@ -115,4 +115,44 @@ describe("broadcast store sync", () => {
     expect(useBroadcastStore.getState().readingModeAutoLive).toBe(false)
     expect(emitToMock).not.toHaveBeenCalled()
   })
+
+  it("stores the main display monitor index without emitting output", async () => {
+    const { useBroadcastStore } = await import("./broadcast-store")
+
+    emitToMock.mockClear()
+    useBroadcastStore.getState().setMainDisplayMonitorIndex(2)
+
+    expect(useBroadcastStore.getState().mainDisplayMonitorIndex).toBe(2)
+    expect(emitToMock).not.toHaveBeenCalled()
+  })
+
+  it("stores the alt display monitor index without emitting output", async () => {
+    const { useBroadcastStore } = await import("./broadcast-store")
+
+    emitToMock.mockClear()
+    useBroadcastStore.getState().setAltDisplayMonitorIndex(1)
+
+    expect(useBroadcastStore.getState().altDisplayMonitorIndex).toBe(1)
+    expect(emitToMock).not.toHaveBeenCalled()
+  })
+
+  it("stores the main projector fullscreen preference without emitting output", async () => {
+    const { useBroadcastStore } = await import("./broadcast-store")
+
+    emitToMock.mockClear()
+    useBroadcastStore.getState().setMainProjectorFullscreen(true)
+
+    expect(useBroadcastStore.getState().mainProjectorFullscreen).toBe(true)
+    expect(emitToMock).not.toHaveBeenCalled()
+  })
+
+  it("stores the alt projector fullscreen preference without emitting output", async () => {
+    const { useBroadcastStore } = await import("./broadcast-store")
+
+    emitToMock.mockClear()
+    useBroadcastStore.getState().setAltProjectorFullscreen(true)
+
+    expect(useBroadcastStore.getState().altProjectorFullscreen).toBe(true)
+    expect(emitToMock).not.toHaveBeenCalled()
+  })
 })

@@ -14,6 +14,12 @@ interface BroadcastState {
   liveVerse: VerseRenderData | null
   readingModeAutoLive: boolean
 
+  // Projector display settings
+  mainDisplayMonitorIndex: number
+  altDisplayMonitorIndex: number
+  mainProjectorFullscreen: boolean
+  altProjectorFullscreen: boolean
+
   // Designer state
   isDesignerOpen: boolean
   editingThemeId: string | null
@@ -36,6 +42,12 @@ interface BroadcastState {
   setReadingModeAutoLive: (enabled: boolean) => void
   syncBroadcastOutput: () => void
   syncBroadcastOutputFor: (outputId: string) => void
+
+  // Projector display setters
+  setMainDisplayMonitorIndex: (index: number) => void
+  setAltDisplayMonitorIndex: (index: number) => void
+  setMainProjectorFullscreen: (fullscreen: boolean) => void
+  setAltProjectorFullscreen: (fullscreen: boolean) => void
 
   // Designer actions
   setDesignerOpen: (open: boolean) => void
@@ -103,6 +115,10 @@ export const useBroadcastStore = create<BroadcastState>((set, get) => ({
   isLive: false,
   liveVerse: null,
   readingModeAutoLive: true,
+  mainDisplayMonitorIndex: 0,
+  altDisplayMonitorIndex: 0,
+  mainProjectorFullscreen: false,
+  altProjectorFullscreen: false,
   isDesignerOpen: false,
   editingThemeId: null,
   renamingThemeId: null,
@@ -204,6 +220,18 @@ export const useBroadcastStore = create<BroadcastState>((set, get) => ({
   setReadingModeAutoLive: (readingModeAutoLive) => {
     set({ readingModeAutoLive })
   },
+  setMainDisplayMonitorIndex: (mainDisplayMonitorIndex) => {
+    set({ mainDisplayMonitorIndex })
+  },
+  setAltDisplayMonitorIndex: (altDisplayMonitorIndex) => {
+    set({ altDisplayMonitorIndex })
+  },
+  setMainProjectorFullscreen: (mainProjectorFullscreen) => {
+    set({ mainProjectorFullscreen })
+  },
+  setAltProjectorFullscreen: (altProjectorFullscreen) => {
+    set({ altProjectorFullscreen })
+  },
 
   // Designer
   setDesignerOpen: (isDesignerOpen) => {
@@ -297,6 +325,10 @@ export function hydrateBroadcastThemes(): Promise<void> {
       const activeId = (await store.get("activeThemeId")) as string | undefined
       const altActiveId = (await store.get("altActiveThemeId")) as string | undefined
       const readingModeAutoLive = (await store.get("readingModeAutoLive")) as boolean | undefined
+      const mainDisplayMonitorIndex = (await store.get("mainDisplayMonitorIndex")) as number | undefined
+      const altDisplayMonitorIndex = (await store.get("altDisplayMonitorIndex")) as number | undefined
+      const mainProjectorFullscreen = (await store.get("mainProjectorFullscreen")) as boolean | undefined
+      const altProjectorFullscreen = (await store.get("altProjectorFullscreen")) as boolean | undefined
 
       const patch: Partial<BroadcastState> = {}
       if (customThemes && Array.isArray(customThemes) && customThemes.length > 0) {
@@ -306,6 +338,18 @@ export function hydrateBroadcastThemes(): Promise<void> {
       if (altActiveId) patch.altActiveThemeId = altActiveId
       if (typeof readingModeAutoLive === "boolean") {
         patch.readingModeAutoLive = readingModeAutoLive
+      }
+      if (typeof mainDisplayMonitorIndex === "number") {
+        patch.mainDisplayMonitorIndex = mainDisplayMonitorIndex
+      }
+      if (typeof altDisplayMonitorIndex === "number") {
+        patch.altDisplayMonitorIndex = altDisplayMonitorIndex
+      }
+      if (typeof mainProjectorFullscreen === "boolean") {
+        patch.mainProjectorFullscreen = mainProjectorFullscreen
+      }
+      if (typeof altProjectorFullscreen === "boolean") {
+        patch.altProjectorFullscreen = altProjectorFullscreen
       }
 
       if (Object.keys(patch).length > 0) {
@@ -318,7 +362,11 @@ export function hydrateBroadcastThemes(): Promise<void> {
           state.themes !== prevState.themes ||
           state.activeThemeId !== prevState.activeThemeId ||
           state.altActiveThemeId !== prevState.altActiveThemeId ||
-          state.readingModeAutoLive !== prevState.readingModeAutoLive
+          state.readingModeAutoLive !== prevState.readingModeAutoLive ||
+          state.mainDisplayMonitorIndex !== prevState.mainDisplayMonitorIndex ||
+          state.altDisplayMonitorIndex !== prevState.altDisplayMonitorIndex ||
+          state.mainProjectorFullscreen !== prevState.mainProjectorFullscreen ||
+          state.altProjectorFullscreen !== prevState.altProjectorFullscreen
         if (!changed) return
         if (saveTimer) clearTimeout(saveTimer)
         saveTimer = setTimeout(() => {
@@ -347,6 +395,10 @@ async function persistBroadcastThemes(state: BroadcastState): Promise<void> {
     await store.set("activeThemeId", state.activeThemeId)
     await store.set("altActiveThemeId", state.altActiveThemeId)
     await store.set("readingModeAutoLive", state.readingModeAutoLive)
+    await store.set("mainDisplayMonitorIndex", state.mainDisplayMonitorIndex)
+    await store.set("altDisplayMonitorIndex", state.altDisplayMonitorIndex)
+    await store.set("mainProjectorFullscreen", state.mainProjectorFullscreen)
+    await store.set("altProjectorFullscreen", state.altProjectorFullscreen)
     await store.save()
   } catch {
     console.warn("[broadcast] Failed to persist themes")

@@ -1,4 +1,4 @@
-import { useMemo } from "react"
+import { useMemo, useRef, useState, useEffect } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { CanvasVerse } from "@/components/ui/canvas-verse"
@@ -8,7 +8,8 @@ import { commitPreviewToLive } from "@/lib/presentation-workflow"
 import { cn } from "@/lib/utils"
 import { useBibleStore } from "@/stores/bible-store"
 import { useBroadcastStore } from "@/stores/broadcast-store"
-import { EyeIcon, EyeOffIcon, RadioIcon, SendIcon } from "lucide-react"
+import { EyeIcon, EyeOffIcon, RadioIcon, SendIcon, Maximize2Icon, Minimize2Icon } from "lucide-react"
+import { toast } from "sonner"
 
 export function LiveOutputPanel() {
   const isLive = useBroadcastStore((s) => s.isLive)
@@ -17,6 +18,8 @@ export function LiveOutputPanel() {
   const themes = useBroadcastStore((s) => s.themes)
   const activeThemeId = useBroadcastStore((s) => s.activeThemeId)
   const selectedVerse = useBibleStore((s) => s.selectedVerse)
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  const panelRef = useRef<HTMLDivElement>(null)
 
   const activeTheme = useMemo(
     () => themes.find((t) => t.id === activeThemeId) ?? themes[0],
@@ -29,24 +32,68 @@ export function LiveOutputPanel() {
   )
   const canCommitPreview = Boolean(selectedVerse)
 
+  const toggleFullscreen = async () => {
+    const panel = panelRef.current
+    if (!panel) return
+
+    try {
+      if (document.fullscreenElement === panel) {
+        await document.exitFullscreen()
+      } else {
+        await panel.requestFullscreen()
+      }
+    } catch (error) {
+      toast.error("Fullscreen failed", {
+        description: String(error),
+      })
+    }
+  }
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(document.fullscreenElement === panelRef.current)
+    }
+
+    document.addEventListener("fullscreenchange", handleFullscreenChange)
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFullscreenChange)
+    }
+  }, [])
+
   return (
     <div
+      ref={panelRef}
       data-slot="live-output-panel"
       className={cn(
         "flex min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-card",
         isLive && "shadow-[inset_0_2px_0_0_rgba(16,185,129,0.35)]",
+        isFullscreen && "!rounded-none !border-0 !h-screen !w-screen",
       )}
     >
       <PanelHeader title="Live output" icon={<RadioIcon className="size-3" />}>
-        <Badge
-          variant={isLive ? "default" : "outline"}
-          className={cn(
-            "h-5 text-[0.5625rem] uppercase",
-            isLive && "bg-emerald-500 text-white hover:bg-emerald-500",
-          )}
-        >
-          {isLive ? "On air" : "Hidden"}
-        </Badge>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="xs"
+            className="h-6 gap-1 px-2"
+            onClick={toggleFullscreen}
+          >
+            {isFullscreen ? (
+              <Minimize2Icon className="size-3.5" />
+            ) : (
+              <Maximize2Icon className="size-3.5" />
+            )}
+          </Button>
+          <Badge
+            variant={isLive ? "default" : "outline"}
+            className={cn(
+              "h-5 text-[0.5625rem] uppercase",
+              isLive && "bg-emerald-500 text-white hover:bg-emerald-500",
+            )}
+          >
+            {isLive ? "On air" : "Hidden"}
+          </Badge>
+        </div>
       </PanelHeader>
 
       <div className="flex min-h-10 items-center justify-between gap-2 border-b border-border px-3 py-1.5">

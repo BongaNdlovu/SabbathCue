@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { invoke } from "@tauri-apps/api/core"
 import { emitTo, listen } from "@tauri-apps/api/event"
-import { availableMonitors, getAllWindows, type Monitor } from '@tauri-apps/api/window'
+import { getAllWindows } from '@tauri-apps/api/window'
 import {
   Dialog,
   DialogContent,
@@ -36,10 +36,17 @@ import {
   EyeOffIcon,
   RefreshCwIcon,
   RadioIcon,
+  Maximize2Icon,
 } from "lucide-react"
 import { toast } from "sonner"
 
 type OutputType = "display" | "ndi"
+
+interface MonitorInfo {
+  name: string
+  width: number
+  height: number
+}
 
 const NDI_RESOLUTION_OPTIONS: Array<{ value: NdiResolution; label: string }> = [
   { value: "r1080p", label: "1080p (1920×1080)" },
@@ -124,11 +131,13 @@ export function BroadcastSettings({
   const ndiSdkInstalled = Boolean(assetStatus?.ndi_sdk)
 
   // Main output state
+  const mainDisplayMonitorIndex = useBroadcastStore((s) => s.mainDisplayMonitorIndex)
+  const mainProjectorFullscreen = useBroadcastStore((s) => s.mainProjectorFullscreen)
   const [mainEnabled, setMainEnabled] = useState(false)
   const [mainThemeId, setMainThemeId] = useState(activeThemeId)
   const [outputType, setOutputType] = useState<OutputType>("display")
-  const [monitors, setMonitors] = useState<Monitor[]>([])
-  const [selectedMonitor, setSelectedMonitor] = useState("0")
+  const [monitors, setMonitors] = useState<MonitorInfo[]>([])
+  const [selectedMonitor, setSelectedMonitor] = useState(String(mainDisplayMonitorIndex))
   const [isPreviewOpen, setIsPreviewOpen] = useState(false)
   const [ndiSourceName, setNdiSourceName] = useState(DEFAULT_NDI_SOURCE_NAME)
   const [ndiResolution, setNdiResolution] = useState<NdiResolution>("r1080p")
@@ -139,10 +148,12 @@ export function BroadcastSettings({
 
   // Alternate output state
   const altActiveThemeId = useBroadcastStore((s) => s.altActiveThemeId)
+  const altDisplayMonitorIndex = useBroadcastStore((s) => s.altDisplayMonitorIndex)
+  const altProjectorFullscreen = useBroadcastStore((s) => s.altProjectorFullscreen)
   const [altEnabled, setAltEnabled] = useState(false)
   const [altThemeId, setAltThemeId] = useState(altActiveThemeId)
   const [altOutputType, setAltOutputType] = useState<OutputType>("ndi")
-  const [altSelectedMonitor, setAltSelectedMonitor] = useState("0")
+  const [altSelectedMonitor, setAltSelectedMonitor] = useState(String(altDisplayMonitorIndex))
   const [altIsPreviewOpen, setAltIsPreviewOpen] = useState(false)
   const [altNdiSourceName, setAltNdiSourceName] = useState(DEFAULT_NDI_ALT_SOURCE_NAME)
   const [altNdiResolution, setAltNdiResolution] = useState<NdiResolution>("r1080p")
@@ -187,18 +198,22 @@ export function BroadcastSettings({
   const fetchMonitors = useCallback(async () => {
     setRefreshing(true)
     try {
-      const result = await availableMonitors()
+      const result = await invoke<MonitorInfo[]>("list_monitors")
       setMonitors(result)
-      if (result.length > 0 && selectedMonitor === "0") {
-        setSelectedMonitor("0")
-      }
+      // Validate and clamp saved monitor indices
+      const mainIndex = Math.min(mainDisplayMonitorIndex, Math.max(0, result.length - 1))
+      const altIndex = Math.min(altDisplayMonitorIndex, Math.max(0, result.length - 1))
+      setSelectedMonitor(String(mainIndex))
+      setAltSelectedMonitor(String(altIndex))
+      useBroadcastStore.getState().setMainDisplayMonitorIndex(mainIndex)
+      useBroadcastStore.getState().setAltDisplayMonitorIndex(altIndex)
     } catch (error) {
       setMonitors([])
       showBroadcastError("Could not load display monitors", error)
     } finally {
       setRefreshing(false)
     }
-  }, [selectedMonitor])
+  }, [mainDisplayMonitorIndex, altDisplayMonitorIndex])
 
   useEffect(() => {
     if (!open) return
@@ -266,6 +281,11 @@ export function BroadcastSettings({
     useBroadcastStore.getState().setActiveTheme(id)
   }
 
+  const handleMainMonitorChange = (value: string) => {
+    setSelectedMonitor(value)
+    useBroadcastStore.getState().setMainDisplayMonitorIndex(Number(value))
+  }
+
   const handleTogglePreview = async () => {
     try {
       if (isPreviewOpen) {
@@ -275,6 +295,7 @@ export function BroadcastSettings({
         await invoke("open_broadcast_window", {
           outputId: "main",
           monitorIndex: Number(selectedMonitor),
+          fullscreen: mainProjectorFullscreen,
         })
         const opened = await reconcilePreviewState("main")
         setIsPreviewOpen(opened)
@@ -362,6 +383,11 @@ export function BroadcastSettings({
     useBroadcastStore.getState().setAltActiveTheme(id)
   }
 
+  const handleAltMonitorChange = (value: string) => {
+    setAltSelectedMonitor(value)
+    useBroadcastStore.getState().setAltDisplayMonitorIndex(Number(value))
+  }
+
   const handleAltTogglePreview = async () => {
     try {
       if (altIsPreviewOpen) {
@@ -371,6 +397,7 @@ export function BroadcastSettings({
         await invoke("open_broadcast_window", {
           outputId: "alt",
           monitorIndex: Number(altSelectedMonitor),
+          fullscreen: altProjectorFullscreen,
         })
         const opened = await reconcilePreviewState("alt")
         setAltIsPreviewOpen(opened)
@@ -560,7 +587,7 @@ export function BroadcastSettings({
                   </div>
                   <Select
                     value={selectedMonitor}
-                    onValueChange={setSelectedMonitor}
+                    onValueChange={handleMainMonitorChange}
                     disabled={monitors.length === 0}
                   >
                     <SelectTrigger
@@ -578,11 +605,24 @@ export function BroadcastSettings({
                     <SelectContent>
                       {monitors.map((m, i) => (
                         <SelectItem key={i} value={String(i)}>
-                          {m.name} ({m.size.width}&times;{m.size.height})
+                          {m.name} ({m.width}&times;{m.height})
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                </div>
+
+                <div className="flex items-center justify-between gap-2">
+                  <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Maximize2Icon className="size-3.5" />
+                    Fullscreen projector
+                  </label>
+                  <Switch
+                    checked={mainProjectorFullscreen}
+                    onCheckedChange={(checked) => {
+                      useBroadcastStore.getState().setMainProjectorFullscreen(checked)
+                    }}
+                  />
                 </div>
 
                 <Button
@@ -774,18 +814,30 @@ export function BroadcastSettings({
                       Refresh
                     </Button>
                   </div>
-                  <Select value={altSelectedMonitor} onValueChange={setAltSelectedMonitor} disabled={monitors.length === 0}>
+                  <Select value={altSelectedMonitor} onValueChange={handleAltMonitorChange} disabled={monitors.length === 0}>
                     <SelectTrigger className="w-full" disabled={monitors.length === 0}>
                       <SelectValue placeholder={monitors.length === 0 ? "No monitors detected" : "Select monitor"} />
                     </SelectTrigger>
                     <SelectContent>
                       {monitors.map((m, i) => (
                         <SelectItem key={i} value={String(i)}>
-                          {m.name} ({m.size.width}&times;{m.size.height})
+                          {m.name} ({m.width}&times;{m.height})
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Maximize2Icon className="size-3.5" />
+                    Fullscreen projector
+                  </label>
+                  <Switch
+                    checked={altProjectorFullscreen}
+                    onCheckedChange={(checked) => {
+                      useBroadcastStore.getState().setAltProjectorFullscreen(checked)
+                    }}
+                  />
                 </div>
                 <Button variant="outline" size="sm" className="w-full gap-1.5" disabled={monitors.length === 0} onClick={handleAltTogglePreview}>
                   {altIsPreviewOpen ? (<><EyeOffIcon className="size-3.5" />Close Preview</>) : (<><EyeIcon className="size-3.5" />Open Preview</>)}
