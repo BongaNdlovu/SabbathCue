@@ -125,6 +125,7 @@ describe("verse detection workflow", () => {
     handleVerseDetections([makeDetection({ auto_queued: false })])
 
     expect(useDetectionStore.getState().detections).toHaveLength(1)
+    expect(useQueueStore.getState().items).toHaveLength(0)
     expect(useBibleStore.getState().selectedVerse).toMatchObject({
       translation_id: 7,
       book_number: 43,

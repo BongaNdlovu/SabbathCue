@@ -342,6 +342,11 @@ pub async fn start_transcription(
     // Background detection channel — direct + reading mode, non-blocking
     let (detect_tx, mut detect_rx) = tokio::sync::mpsc::channel::<String>(16);
 
+    // Background fast-preview channel: direct references only, latest work wins.
+    // This gives preview a fast path without touching final detector/cooldown state.
+    let (partial_preview_tx, mut partial_preview_rx) =
+        tokio::sync::mpsc::channel::<(u64, String)>(4);
+
     // [DIAG] Counters so we can see whether transcripts are being dropped
     // because the detection workers can't keep up. Logged every 25 sends
     // alongside current queue depth.
@@ -349,6 +354,31 @@ pub async fn start_transcription(
     let detect_dropped = Arc::new(AtomicU64::new(0));
     let semantic_sent = Arc::new(AtomicU64::new(0));
     let semantic_dropped = Arc::new(AtomicU64::new(0));
+    let transcript_seq = Arc::new(AtomicU64::new(0));
+
+    // Spawn direct-preview worker. It is intentionally separate from
+    // the final detector so interim text cannot consume queue cooldowns or
+    // corrupt cross-segment state used for final confirmations.
+    let partial_app = app.clone();
+    let partial_latest_seq = transcript_seq.clone();
+    tauri::async_runtime::spawn(async move {
+        let partial_detector = Arc::new(Mutex::new(rhema_detection::DirectDetector::new()));
+        while let Some((seq, transcript)) = partial_preview_rx.recv().await {
+            let app_clone = partial_app.clone();
+            let latest_seq = partial_latest_seq.clone();
+            let detector = partial_detector.clone();
+            let _ = tokio::task::spawn_blocking(move || {
+                run_partial_direct_preview_detection(
+                    &app_clone,
+                    &detector,
+                    seq,
+                    latest_seq,
+                    &transcript,
+                );
+            })
+            .await;
+        }
+    });
 
     // Spawn semantic detection worker (runs ONNX inference without blocking transcript).
     // Uses spawn_blocking so ONNX doesn't starve the tokio async runtime
@@ -393,6 +423,7 @@ pub async fn start_transcription(
             match event {
                 TranscriptEvent::Partial { transcript, words } => {
                     if !transcript.is_empty() {
+                        let seq = transcript_seq.fetch_add(1, Ordering::Relaxed) + 1;
                         let t0 = std::time::Instant::now();
                         let _ = event_app.emit(
                             EVENT_TRANSCRIPT_PARTIAL,
@@ -407,6 +438,15 @@ pub async fn start_transcription(
                         // Check for translation commands on partials too (cheap string matching)
                         // This makes translation switching feel instant without waiting for speech_final
                         check_translation_command(&event_app, &transcript);
+                        match partial_preview_tx.try_send((seq, transcript.clone())) {
+                            Ok(()) => {}
+                            Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
+                                if transcript_logging_enabled() {
+                                    log::debug!("[QUEUE] partial_preview_tx dropped stale partial");
+                                }
+                            }
+                            Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {}
+                        }
                         log::debug!("[EVT] Partial processed in {:?}", t0.elapsed());
                     }
                 }
@@ -417,6 +457,7 @@ pub async fn start_transcription(
                     speech_final: _,
                 } => {
                     if !transcript.is_empty() {
+                        let seq = transcript_seq.fetch_add(1, Ordering::Relaxed) + 1;
                         let t0 = std::time::Instant::now();
                         // Emit as permanent transcript segment IMMEDIATELY
                         // (never blocked by detection work)
@@ -432,6 +473,15 @@ pub async fn start_transcription(
 
                         // Check for translation commands (cheap, <1ms, stays inline)
                         check_translation_command(&event_app, &transcript);
+                        match partial_preview_tx.try_send((seq, transcript.clone())) {
+                            Ok(()) => {}
+                            Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
+                                if transcript_logging_enabled() {
+                                    log::debug!("[QUEUE] fast_preview_tx dropped stale transcript");
+                                }
+                            }
+                            Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {}
+                        }
 
                         log::info!(
                             "[PIPELINE] final_transcript provider={} conf={:.2} chars={} event_ms={:?}",
@@ -516,6 +566,89 @@ pub async fn start_transcription(
     });
 
     Ok(())
+}
+
+/// Run a preview-only direct detection pass on a transcript.
+///
+/// This intentionally skips semantic detection, reading mode, queueing, and
+/// cooldown state. Final transcript handling remains authoritative; this path
+/// exists only to stage complete direct references in the preview panel sooner.
+fn run_partial_direct_preview_detection(
+    app: &AppHandle,
+    detector_state: &Arc<Mutex<rhema_detection::DirectDetector>>,
+    seq: u64,
+    latest_seq: Arc<AtomicU64>,
+    transcript: &str,
+) {
+    if seq != latest_seq.load(Ordering::Relaxed) {
+        return;
+    }
+
+    let t0 = std::time::Instant::now();
+    let direct_results = {
+        let Ok(mut detector) = detector_state.lock() else {
+            log::warn!("[DET-PARTIAL] DirectDetector lock poisoned");
+            return;
+        };
+        detector.detect(transcript)
+    };
+
+    if direct_results.is_empty() || seq != latest_seq.load(Ordering::Relaxed) {
+        return;
+    }
+
+    let merged: Vec<rhema_detection::MergedDetection> = direct_results
+        .into_iter()
+        .filter(|d| {
+            !d.is_chapter_only
+                && d.verse_ref.book_number > 0
+                && d.verse_ref.chapter > 0
+                && d.verse_ref.verse_start > 0
+                && d.confidence >= 0.90
+        })
+        .map(|d| rhema_detection::MergedDetection {
+            detection: d,
+            auto_queued: false,
+        })
+        .collect();
+
+    if merged.is_empty() {
+        return;
+    }
+
+    let app_managed: State<'_, Mutex<AppState>> = app.state();
+    let Ok(app_state) = app_managed.try_lock() else {
+        if transcript_logging_enabled() {
+            log::debug!("[DET-PARTIAL] AppState busy; skipping partial preview");
+        }
+        return;
+    };
+    let results: Vec<super::detection::DetectionResult> = merged
+        .iter()
+        .map(|m| super::detection::to_result(&app_state, m))
+        .collect();
+    drop(app_state);
+
+    if results.is_empty() || seq != latest_seq.load(Ordering::Relaxed) {
+        return;
+    }
+
+    for r in &results {
+        log::info!(
+            "[DET-PARTIAL] Preview: {} ({:.0}%)",
+            r.verse_ref,
+            r.confidence * 100.0
+        );
+    }
+    let _ = app.emit("verse_detections", &results);
+
+    if transcript_logging_enabled() {
+        log::info!(
+            "[DET-PARTIAL] Detection+emit took {:?} for {:?}",
+            t0.elapsed(),
+            truncate_safe(transcript, 50)
+        );
+    }
 }
 
 /// Run direct (regex/pattern) detection only. Instant, no ONNX.
