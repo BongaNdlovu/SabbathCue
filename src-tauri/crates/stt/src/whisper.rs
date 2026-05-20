@@ -102,15 +102,18 @@ impl WhisperProfile {
 
     pub(crate) const fn live_chunk_samples(self) -> usize {
         match self {
-            Self::Fast => 16_000 * 2,
-            Self::Balanced => 16_000 * 4,
+            Self::Fast => 16_000,
+            Self::Balanced => 16_000 * 2,
         }
     }
 
-    pub(crate) const fn beam_size(self) -> i32 {
+    pub(crate) const fn sampling_strategy(self) -> SamplingStrategy {
         match self {
-            Self::Fast => 3,
-            Self::Balanced => 5,
+            Self::Fast => SamplingStrategy::Greedy { best_of: 1 },
+            Self::Balanced => SamplingStrategy::BeamSearch {
+                beam_size: 3,
+                patience: -1.0,
+            },
         }
     }
 }
@@ -390,10 +393,7 @@ impl SttProvider for WhisperProvider {
 
                 let audio_f32 = i16_to_f32(&audio_i16);
 
-                let mut params = FullParams::new(SamplingStrategy::BeamSearch {
-                    beam_size: profile.beam_size(),
-                    patience: -1.0,
-                });
+                let mut params = FullParams::new(profile.sampling_strategy());
                 params.set_language(Some(language.as_deref().unwrap_or("en")));
                 params.set_n_threads(n_threads);
                 params.set_print_progress(false);
@@ -404,7 +404,7 @@ impl SttProvider for WhisperProvider {
                 params.set_no_context(false);
                 params.set_no_timestamps(false);
                 params.set_single_segment(false);
-                params.set_token_timestamps(true);
+                params.set_token_timestamps(false);
                 params.set_temperature(0.0);
                 params.set_temperature_inc(0.0);
                 params.set_no_speech_thold(0.6);
@@ -483,7 +483,17 @@ mod tests {
         let balanced = WhisperProfile::Balanced;
 
         assert!(fast.live_chunk_samples() < balanced.live_chunk_samples());
-        assert!(fast.beam_size() < balanced.beam_size());
+        assert!(matches!(
+            fast.sampling_strategy(),
+            SamplingStrategy::Greedy { best_of: 1 }
+        ));
+        assert!(matches!(
+            balanced.sampling_strategy(),
+            SamplingStrategy::BeamSearch {
+                beam_size: 3,
+                patience: -1.0
+            }
+        ));
     }
 
     #[test]

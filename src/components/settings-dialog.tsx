@@ -209,16 +209,22 @@ function SpeechSection() {
   } = useSettingsStore()
 
   const [keyValue, setKeyValue] = useState("")
+  const [editingSavedKey, setEditingSavedKey] = useState(false)
   const [saved, setSaved] = useState(false)
   const [keyError, setKeyError] = useState<string | null>(null)
   const { status: assetStatus, loading: assetsLoading, refresh: refreshAssets } = useAssets()
-  const keyActionLabel = keyValue.trim()
-    ? hasDeepgramApiKey
-      ? "Update"
-      : "Save"
-    : hasDeepgramApiKey
-      ? "Saved"
-      : "Save"
+  const savedKeyDisplay = "Saved in secure keychain"
+  const displayedKeyValue =
+    hasDeepgramApiKey && !editingSavedKey && !keyValue ? savedKeyDisplay : keyValue
+  const keyActionLabel = hasDeepgramApiKey ? "Update" : "Save"
+
+  const handleKeyAction = async () => {
+    if (hasDeepgramApiKey && !editingSavedKey && !keyValue) {
+      setEditingSavedKey(true)
+      return
+    }
+    await handleSaveKey()
+  }
 
   const handleSaveKey = async () => {
     try {
@@ -228,6 +234,7 @@ function SpeechSection() {
       setHasDeepgramApiKey(hasKey)
       if (hasKey) {
         setKeyValue("")
+        setEditingSavedKey(false)
         setSaved(true)
         setTimeout(() => setSaved(false), 2000)
       } else {
@@ -244,6 +251,7 @@ function SpeechSection() {
       await invoke("clear_deepgram_api_key")
       setHasDeepgramApiKey(false)
       setKeyValue("")
+      setEditingSavedKey(false)
     } catch (e) {
       setKeyError(String(e))
     }
@@ -373,13 +381,17 @@ function SpeechSection() {
           </div>
           <div className="flex gap-2">
             <Input
-              type="password"
+              type={hasDeepgramApiKey && !editingSavedKey && !keyValue ? "text" : "password"}
               placeholder="Enter your Deepgram API key..."
-              value={keyValue}
-              onChange={(e) => setKeyValue(e.target.value)}
+              value={displayedKeyValue}
+              readOnly={hasDeepgramApiKey && !editingSavedKey && !keyValue}
+              onChange={(e) => {
+                setEditingSavedKey(true)
+                setKeyValue(e.target.value)
+              }}
               className="flex-1 text-xs"
             />
-            <Button size="sm" onClick={() => void handleSaveKey()}>
+            <Button size="sm" onClick={() => void handleKeyAction()}>
               {saved ? (
                 <>
                   <CheckIcon className="size-3" />

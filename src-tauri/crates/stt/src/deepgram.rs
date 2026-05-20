@@ -17,10 +17,10 @@ use crate::types::{SttConfig, TranscriptEvent, Word};
 
 const MAX_RECONNECT_ATTEMPTS: u32 = 5;
 const RECONNECT_DELAY: Duration = Duration::from_secs(1);
-/// Batch up to 100ms of audio before sending (at 16kHz, that is 1600 samples).
-const BATCH_SAMPLES: usize = 1600;
-pub(crate) const DEEPGRAM_ENDPOINTING_MS: &str = "500";
-pub(crate) const DEEPGRAM_UTTERANCE_END_MS: &str = "1000";
+/// Batch up to 50ms of audio before sending (at 16kHz, that is 800 samples).
+const BATCH_SAMPLES: usize = 800;
+pub(crate) const DEEPGRAM_ENDPOINTING_MS: &str = "250";
+pub(crate) const DEEPGRAM_UTTERANCE_END_MS: &str = "500";
 pub(crate) const MAX_DEEPGRAM_KEYTERMS: usize = 100;
 
 pub struct DeepgramClient {
@@ -487,7 +487,7 @@ impl SttProvider for DeepgramClient {
                 .await;
 
             let rest_client = crate::rest::DeepgramRestClient::new(self.config.clone());
-            let flush_interval = std::time::Duration::from_secs(5);
+            let flush_interval = std::time::Duration::from_secs(2);
             let cancelled = self.cancelled.clone();
             let (rest_audio_tx, mut rest_audio_rx) = mpsc::channel::<Vec<i16>>(4);
 
