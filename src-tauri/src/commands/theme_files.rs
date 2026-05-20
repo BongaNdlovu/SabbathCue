@@ -127,3 +127,87 @@ pub fn read_image_as_data_url(path: String) -> Result<String, String> {
     Ok(format!("data:{mime};base64,{b64}"))
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn enforces_json_depth_limit() {
+        // Create a JSON structure that exceeds MAX_JSON_DEPTH
+        let mut value = serde_json::Value::Null;
+        for _ in 0..(MAX_JSON_DEPTH + 1) {
+            value = serde_json::json!({ "nested": value });
+        }
+
+        let result = enforce_json_limits(&value);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("too deeply nested"));
+    }
+
+    #[test]
+    fn accepts_json_at_depth_limit() {
+        // Create a JSON structure exactly at MAX_JSON_DEPTH
+        let mut value = serde_json::Value::Null;
+        for _ in 0..MAX_JSON_DEPTH {
+            value = serde_json::json!({ "nested": value });
+        }
+
+        let result = enforce_json_limits(&value);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn enforces_json_nodes_limit() {
+        // Create a JSON structure that exceeds MAX_JSON_NODES
+        let large_array: Vec<serde_json::Value> = (0..(MAX_JSON_NODES + 1))
+            .map(|i| serde_json::json!(i))
+            .collect();
+        let value = serde_json::Value::Array(large_array);
+
+        let result = enforce_json_limits(&value);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("too large"));
+    }
+
+    #[test]
+    fn accepts_json_at_nodes_limit() {
+        // Create a JSON structure exactly at MAX_JSON_NODES
+        // Array itself counts as 1 node, so we need MAX_JSON_NODES - 1 elements
+        let large_array: Vec<serde_json::Value> = (0..(MAX_JSON_NODES - 1))
+            .map(|i| serde_json::json!(i))
+            .collect();
+        let value = serde_json::Value::Array(large_array);
+
+        let result = enforce_json_limits(&value);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn accepts_valid_theme_shape() {
+        let valid_theme = serde_json::json!({
+            "id": "test-theme",
+            "name": "Test Theme",
+            "background": "#ffffff",
+            "layout": "standard",
+            "resolution": "1080p"
+        });
+
+        let result = validate_theme_shape(&valid_theme);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn rejects_missing_required_field() {
+        let invalid_theme = serde_json::json!({
+            "id": "test-theme",
+            "name": "Test Theme",
+            "background": "#ffffff"
+            // Missing "layout" and "resolution"
+        });
+
+        let result = validate_theme_shape(&invalid_theme);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("missing required field"));
+    }
+}
+
