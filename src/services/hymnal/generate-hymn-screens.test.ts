@@ -37,4 +37,22 @@ describe("hymnal services", () => {
       lines: expect.arrayContaining(["Praise to the Lord, the Almighty, the King of creation!"]),
     })
   })
+
+  it("preserves repeated hymn sections as separate screens", async () => {
+    const hymn = await getHymnByNumber(1)
+    expect(hymn).not.toBeNull()
+
+    const sectionId = hymn!.sections[0].id
+    const screens = generateHymnScreens({
+      hymn: hymn!,
+      selectedSectionIds: [sectionId, sectionId],
+      maxLinesPerScreen: 10,
+    })
+
+    expect(screens).toHaveLength(2)
+    expect(screens.map((screen) => screen.id)).toEqual([
+      `${sectionId}-repeat-1-screen-1`,
+      `${sectionId}-repeat-2-screen-1`,
+    ])
+  })
 })

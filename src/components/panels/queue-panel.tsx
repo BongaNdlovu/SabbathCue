@@ -196,21 +196,33 @@ export function QueuePanel() {
               />
             </div>
           )}
-          {items.map((item, idx) => (
-            <QueueItemRow
-              key={item.id}
-              item={item}
-              index={idx}
-              isActive={idx === activeIndex}
-              isHighlighted={item.id === highlightedId}
-              isDragging={idx === draggedIndex}
-              isDropTarget={idx === dropTargetIndex && idx !== draggedIndex}
-              onDragStart={setDraggedIndex}
-              onDragEnter={setDropTargetIndex}
-              onDragEnd={resetDragState}
-              onDrop={handleDrop}
-            />
-          ))}
+          {items.map((item, idx) => {
+            const showGroupLabel = item.hymnGroup && item.hymnGroup.itemIndex === 1
+            const prevItem = idx > 0 ? items[idx - 1] : null
+            const isDifferentGroup = !prevItem || prevItem.hymnGroup?.groupId !== item.hymnGroup?.groupId
+
+            return (
+              <div key={item.id}>
+                {showGroupLabel && isDifferentGroup && item.hymnGroup && (
+                  <div className="px-2.5 py-1 text-[0.625rem] font-medium text-muted-foreground">
+                    {item.hymnGroup.groupLabel}
+                  </div>
+                )}
+                <QueueItemRow
+                  item={item}
+                  index={idx}
+                  isActive={idx === activeIndex}
+                  isHighlighted={item.id === highlightedId}
+                  isDragging={idx === draggedIndex}
+                  isDropTarget={idx === dropTargetIndex && idx !== draggedIndex}
+                  onDragStart={setDraggedIndex}
+                  onDragEnter={setDropTargetIndex}
+                  onDragEnd={resetDragState}
+                  onDrop={handleDrop}
+                />
+              </div>
+            )
+          })}
         </div>
       </div>
     </div>

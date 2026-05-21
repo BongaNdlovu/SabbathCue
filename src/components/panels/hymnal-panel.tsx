@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -10,22 +10,33 @@ import { useQueueStore } from "@/stores/queue-store"
 import {
   defaultSelectedSectionIds,
   createHymnPresentationItem,
-  createHymnQueueItem,
+  createGroupedHymnQueueItems,
 } from "@/services/hymnal/hymn-presentation"
+import {
+  getRecentHymns,
+  addRecentHymn,
+  getFavoriteHymns,
+  toggleFavoriteHymn,
+} from "@/services/hymnal/hymnal-history"
 import { generateHymnScreens } from "@/services/hymnal/generate-hymn-screens"
 import {
   getHymnById,
   getInitialHymns,
   searchHymns,
 } from "@/services/hymnal/hymnal-repository"
+import { SDA_HYMNAL_INDEX } from "@/data/sda-hymnal-index"
 import type { Hymn, HymnSearchResult } from "@/types"
 import {
   BookOpenTextIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  HeartIcon,
   ListMusicIcon,
   PlayIcon,
   PlusIcon,
   SearchIcon,
   SendIcon,
+  StarIcon,
 } from "lucide-react"
 
 export function HymnalPanel() {
@@ -33,11 +44,14 @@ export function HymnalPanel() {
   const [selectedHymn, setSelectedHymn] = useState<Hymn | null>(null)
   const [selectedSectionIds, setSelectedSectionIds] = useState<string[]>([])
   const [activeScreenIndex, setActiveScreenIndex] = useState(0)
-  const [isLoadingHymn, setIsLoadingHymn] = useState(false)
+  const [isLoadingHymn, setIsLoadingHymn] = useState(true)
+  const [viewMode, setViewMode] = useState<"search" | "recent" | "favorites">("search")
+  const [recentHymnIds, setRecentHymnIds] = useState<string[]>(() => getRecentHymns())
+  const [favoriteHymnIds, setFavoriteHymnIds] = useState<string[]>(() => getFavoriteHymns())
+  const panelRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     let cancelled = false
-    setIsLoadingHymn(true)
     getHymnById("sda-1")
       .then((hymn) => {
         if (cancelled || !hymn) return
@@ -52,10 +66,19 @@ export function HymnalPanel() {
     }
   }, [])
 
-  const results = useMemo<HymnSearchResult[]>(
-    () => (query.trim() ? searchHymns(query, 24) : getInitialHymns(24)),
-    [query],
-  )
+  const results = useMemo<HymnSearchResult[]>(() => {
+    if (viewMode === "favorites") {
+      return favoriteHymnIds
+        .map((id) => SDA_HYMNAL_INDEX.find((h) => h.id === id))
+        .filter((h): h is NonNullable<typeof h> => h !== undefined)
+    }
+    if (viewMode === "recent" && !query.trim()) {
+      return recentHymnIds
+        .map((id) => SDA_HYMNAL_INDEX.find((h) => h.id === id))
+        .filter((h): h is NonNullable<typeof h> => h !== undefined)
+    }
+    return query.trim() ? searchHymns(query, 24) : getInitialHymns(24)
+  }, [favoriteHymnIds, query, recentHymnIds, viewMode])
 
   const screens = useMemo(
     () =>
@@ -71,6 +94,41 @@ export function HymnalPanel() {
 
   const activeScreen = screens[Math.min(activeScreenIndex, Math.max(0, screens.length - 1))]
 
+  const goToPreviousScreen = () => {
+    setActiveScreenIndex((current) => Math.max(0, current - 1))
+  }
+
+  const goToNextScreen = () => {
+    setActiveScreenIndex((current) => Math.min(screens.length - 1, current + 1))
+  }
+
+  const handleKeyDown = useCallback(
+    (event: KeyboardEvent) => {
+      if (screens.length === 0) return
+
+      const target = event.target as HTMLElement
+      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable) {
+        return
+      }
+
+      if (event.key === "ArrowRight" || event.key === " ") {
+        event.preventDefault()
+        setActiveScreenIndex((current) => Math.min(screens.length - 1, current + 1))
+      } else if (event.key === "ArrowLeft") {
+        event.preventDefault()
+        setActiveScreenIndex((current) => Math.max(0, current - 1))
+      }
+    },
+    [screens.length],
+  )
+
+  useEffect(() => {
+    window.addEventListener("keydown", handleKeyDown)
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown)
+    }
+  }, [handleKeyDown])
+
   const selectHymn = async (result: HymnSearchResult) => {
     setIsLoadingHymn(true)
     const hymn = await getHymnById(result.id)
@@ -79,6 +137,8 @@ export function HymnalPanel() {
     setSelectedHymn(hymn)
     setSelectedSectionIds(defaultSelectedSectionIds(hymn))
     setActiveScreenIndex(0)
+    addRecentHymn(result.id)
+    setRecentHymnIds(getRecentHymns())
   }
 
   const toggleSection = (sectionId: string) => {
@@ -93,6 +153,48 @@ export function HymnalPanel() {
     setActiveScreenIndex(0)
   }
 
+  const skipAllRefrains = () => {
+    if (!selectedHymn) return
+    const refrainIds = selectedHymn.sections
+      .filter((section) => section.kind === "refrain")
+      .map((section) => section.id)
+    const nonRefrainIds = selectedSectionIds.filter((id) => !refrainIds.includes(id))
+    if (nonRefrainIds.length > 0) {
+      setSelectedSectionIds(nonRefrainIds)
+      setActiveScreenIndex(0)
+    }
+  }
+
+  const restoreAllSections = () => {
+    if (!selectedHymn) return
+    setSelectedSectionIds(defaultSelectedSectionIds(selectedHymn))
+    setActiveScreenIndex(0)
+  }
+
+  const repeatSelectedRefrains = () => {
+    if (!selectedHymn) return
+    const sectionsById = new Map(selectedHymn.sections.map((section) => [section.id, section]))
+    let didRepeat = false
+
+    const repeatedIds = selectedSectionIds.flatMap((sectionId) => {
+      const section = sectionsById.get(sectionId)
+      if (section?.kind !== "refrain") return [sectionId]
+      didRepeat = true
+      return [sectionId, sectionId]
+    })
+
+    if (didRepeat) {
+      setSelectedSectionIds(repeatedIds)
+      setActiveScreenIndex(0)
+    }
+  }
+
+  const handleToggleFavorite = () => {
+    if (!selectedHymn) return
+    toggleFavoriteHymn(selectedHymn.id)
+    setFavoriteHymnIds(getFavoriteHymns())
+  }
+
   const previewActiveScreen = () => {
     if (!activeScreen) return
     selectPreviewItem(createHymnPresentationItem(activeScreen))
@@ -105,15 +207,18 @@ export function HymnalPanel() {
 
   const queueScreens = () => {
     const queue = useQueueStore.getState()
-    for (const screen of screens) {
-      queue.addItem(createHymnQueueItem(screen))
-    }
+    const queueItems = createGroupedHymnQueueItems(screens)
+    queue.addItems(queueItems)
   }
+
+  const selectedHymnIsFavorite = selectedHymn ? favoriteHymnIds.includes(selectedHymn.id) : false
 
   return (
     <div
+      ref={panelRef}
       data-slot="hymnal-panel"
       className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-card"
+      tabIndex={-1}
     >
       <PanelHeader title="SDA Hymnal" icon={<ListMusicIcon className="size-3" />} step={5}>
         <Badge variant="outline" className="h-5 text-[0.5625rem] uppercase">
@@ -128,10 +233,59 @@ export function HymnalPanel() {
               <SearchIcon className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
               <Input
                 value={query}
-                onChange={(event) => setQuery(event.target.value)}
+                onChange={(event) => {
+                  setQuery(event.target.value)
+                  if (event.target.value.trim()) {
+                    setViewMode("search")
+                  }
+                }}
                 placeholder="Search number or title"
                 className="h-8 pl-7 text-xs"
               />
+            </div>
+            <div className="mt-1.5 flex gap-1">
+              <button
+                onClick={() => setViewMode("search")}
+                className={cn(
+                  "flex flex-1 items-center justify-center gap-1 rounded px-2 py-1 text-[0.625rem] transition-colors",
+                  viewMode === "search"
+                    ? "bg-primary text-primary-foreground"
+                    : "hover:bg-muted/50 text-muted-foreground",
+                )}
+              >
+                <SearchIcon className="size-2.5" />
+                Search
+              </button>
+              <button
+                onClick={() => {
+                  setViewMode("recent")
+                  setQuery("")
+                }}
+                className={cn(
+                  "flex flex-1 items-center justify-center gap-1 rounded px-2 py-1 text-[0.625rem] transition-colors",
+                  viewMode === "recent"
+                    ? "bg-primary text-primary-foreground"
+                    : "hover:bg-muted/50 text-muted-foreground",
+                )}
+              >
+                <StarIcon className="size-2.5" />
+                Recent
+              </button>
+              <button
+                onClick={() => {
+                  setViewMode("favorites")
+                  setQuery("")
+                }}
+                className={cn(
+                  "flex flex-1 items-center justify-center gap-1 rounded px-2 py-1 text-[0.625rem] transition-colors",
+                  viewMode === "favorites"
+                    ? "bg-primary text-primary-foreground"
+                    : "hover:bg-muted/50 text-muted-foreground",
+                )}
+              >
+                <HeartIcon className="size-2.5" />
+                Favorites
+              </button>
             </div>
           </div>
 
@@ -163,12 +317,30 @@ export function HymnalPanel() {
             {selectedHymn ? (
               <>
                 <div className="border-b border-border px-3 py-2">
-                  <p className="truncate text-sm font-semibold">
-                    #{selectedHymn.number} {selectedHymn.title}
-                  </p>
-                  <p className="truncate text-xs text-muted-foreground">
-                    {selectedHymn.category ?? "SDA Hymnal"}
-                  </p>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold">
+                        #{selectedHymn.number} {selectedHymn.title}
+                      </p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {selectedHymn.category ?? "SDA Hymnal"}
+                      </p>
+                    </div>
+                    <button
+                      onClick={handleToggleFavorite}
+                      className={cn(
+                        "shrink-0 rounded p-1 transition-colors",
+                        selectedHymnIsFavorite
+                          ? "text-red-500 hover:text-red-600"
+                          : "text-muted-foreground hover:text-foreground",
+                      )}
+                      title={selectedHymnIsFavorite ? "Remove from favorites" : "Add to favorites"}
+                    >
+                      <HeartIcon
+                        className={cn("size-4", selectedHymnIsFavorite && "fill-current")}
+                      />
+                    </button>
+                  </div>
                 </div>
 
                 <div className="min-h-0 flex-1 overflow-y-auto p-2">
@@ -185,13 +357,54 @@ export function HymnalPanel() {
                           className="mt-0.5"
                         />
                         <span className="min-w-0">
-                          <span className="block text-xs font-medium">{section.label}</span>
+                          <span className="block text-xs font-medium">
+                            {section.kind === "refrain" && section.afterVerseNumber !== undefined
+                              ? `Refrain after Verse ${section.afterVerseNumber}`
+                              : section.label}
+                          </span>
                           <span className="line-clamp-2 text-[0.68rem] text-muted-foreground">
                             {section.lines.join(" ")}
                           </span>
                         </span>
                       </label>
                     ))}
+                  </div>
+                  <div className="mt-2 flex gap-1 border-t border-border pt-2">
+                    <Button
+                      size="xs"
+                      variant="ghost"
+                      className="flex-1 text-[0.625rem]"
+                      onClick={skipAllRefrains}
+                      disabled={
+                        !selectedHymn.sections.some(
+                          (s) => s.kind === "refrain" && selectedSectionIds.includes(s.id),
+                        )
+                      }
+                    >
+                      Skip refrains
+                    </Button>
+                    <Button
+                      size="xs"
+                      variant="ghost"
+                      className="flex-1 text-[0.625rem]"
+                      onClick={repeatSelectedRefrains}
+                      disabled={
+                        !selectedHymn.sections.some(
+                          (s) => s.kind === "refrain" && selectedSectionIds.includes(s.id),
+                        )
+                      }
+                    >
+                      Repeat refrain
+                    </Button>
+                    <Button
+                      size="xs"
+                      variant="ghost"
+                      className="flex-1 text-[0.625rem]"
+                      onClick={restoreAllSections}
+                      disabled={selectedSectionIds.length === selectedHymn.sections.length}
+                    >
+                      Restore all
+                    </Button>
                   </div>
                 </div>
               </>
@@ -209,14 +422,34 @@ export function HymnalPanel() {
           </div>
 
           <div className="flex min-w-0 flex-col">
-            <div className="flex min-h-10 items-center justify-between gap-2 border-b border-border px-3 py-1.5">
+            <div className="grid min-h-10 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 border-b border-border px-3 py-1.5">
+              <div className="flex items-center gap-1">
+                <Button
+                  size="icon-xs"
+                  variant="ghost"
+                  disabled={!activeScreen || activeScreenIndex === 0}
+                  onClick={goToPreviousScreen}
+                  title="Previous screen"
+                >
+                  <ChevronLeftIcon className="size-3" />
+                </Button>
+                <Button
+                  size="icon-xs"
+                  variant="ghost"
+                  disabled={!activeScreen || activeScreenIndex === screens.length - 1}
+                  onClick={goToNextScreen}
+                  title="Next screen"
+                >
+                  <ChevronRightIcon className="size-3" />
+                </Button>
+              </div>
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium">
                   {activeScreen
                     ? `${activeScreen.sectionLabel} ${activeScreen.screenIndex + 1}/${activeScreen.totalScreens}`
                     : "No screen"}
                 </p>
-                <p className="text-xs text-muted-foreground">Preview or queue hymn screens.</p>
+                <p className="truncate text-xs text-muted-foreground">Preview or queue hymn screens.</p>
               </div>
               <div className="flex shrink-0 items-center gap-1">
                 <Button size="xs" variant="outline" disabled={!activeScreen} onClick={previewActiveScreen}>

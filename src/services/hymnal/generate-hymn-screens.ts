@@ -11,16 +11,20 @@ export function generateHymnScreens({
   selectedSectionIds,
   maxLinesPerScreen = 4,
 }: GenerateHymnScreensOptions): HymnScreen[] {
-  const selected = new Set(selectedSectionIds)
   const screens: HymnScreen[] = []
+  const sectionsById = new Map(hymn.sections.map((section) => [section.id, section]))
+  const occurrenceBySectionId = new Map<string, number>()
 
-  for (const section of hymn.sections) {
-    if (!selected.has(section.id)) continue
+  for (const sectionId of selectedSectionIds) {
+    const section = sectionsById.get(sectionId)
+    if (!section) continue
+    const occurrence = (occurrenceBySectionId.get(section.id) ?? 0) + 1
+    occurrenceBySectionId.set(section.id, occurrence)
     const chunks = chunkLines(section.lines, maxLinesPerScreen)
 
     chunks.forEach((lines, index) => {
       screens.push({
-        id: `${section.id}-screen-${index + 1}`,
+        id: `${section.id}-repeat-${occurrence}-screen-${index + 1}`,
         hymnId: hymn.id,
         hymnNumber: hymn.number,
         hymnTitle: hymn.title,

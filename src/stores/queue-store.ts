@@ -11,6 +11,7 @@ interface QueueState {
   highlightedId: string | null
 
   addItem: (item: QueueItem) => void
+  addItems: (items: QueueItem[]) => void
   addOrFlashItem: (item: QueueItem) => "added" | "duplicate"
   addOrFlashDetectionItem: (item: QueueItem) => "added" | "duplicate"
   removeItem: (id: string) => void
@@ -47,6 +48,20 @@ export const useQueueStore = create<QueueState>((set, get) => ({
         : state.items.some((i) => i.id === item.id)
       if (duplicate) return state
       return { items: [item, ...state.items] }
+    }),
+  addItems: (items) =>
+    set((state) => {
+      if (items.length === 0) return state
+
+      const existingIds = new Set(state.items.map((item) => item.id))
+      const newItems = items.filter((item) => !existingIds.has(item.id))
+      if (newItems.length === 0) return state
+
+      return {
+        items: [...newItems, ...state.items],
+        activeIndex:
+          state.activeIndex === null ? null : state.activeIndex + newItems.length,
+      }
     }),
   addOrFlashItem: (item) => {
     const itemVerse = getVerseFromItem(item)

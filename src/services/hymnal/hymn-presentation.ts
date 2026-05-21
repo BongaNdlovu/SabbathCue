@@ -28,6 +28,24 @@ export function createHymnQueueItem(screen: HymnScreen): QueueItem {
   }
 }
 
+export function createGroupedHymnQueueItems(screens: HymnScreen[]): QueueItem[] {
+  if (screens.length === 0) return []
+
+  const firstScreen = screens[0]
+  const groupId = `hymn-group-${firstScreen.hymnId}-${Date.now()}`
+  const groupLabel = `#${firstScreen.hymnNumber} ${firstScreen.hymnTitle} - ${screens.length} screens`
+
+  return screens.map((screen, index) => ({
+    ...createHymnQueueItem(screen),
+    hymnGroup: {
+      groupId,
+      groupLabel,
+      itemIndex: index + 1,
+      itemCount: screens.length,
+    },
+  }))
+}
+
 export function defaultSelectedSectionIds(hymn: Hymn): string[] {
   return hymn.sections.map((section) => section.id)
 }

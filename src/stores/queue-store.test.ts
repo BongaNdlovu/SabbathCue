@@ -61,6 +61,28 @@ describe("queue-store", () => {
     expect(useQueueStore.getState().activeIndex).toBe(0)
   })
 
+  it("adds multiple items at the front without reversing their order", () => {
+    useQueueStore.setState({
+      items: [makeItem("existing", 19)],
+      activeIndex: 0,
+      highlightedId: null,
+    })
+
+    useQueueStore.getState().addItems([
+      makeItem("a", 16),
+      makeItem("b", 17),
+      makeItem("c", 18),
+    ])
+
+    expect(useQueueStore.getState().items.map((i) => i.id)).toEqual([
+      "a",
+      "b",
+      "c",
+      "existing",
+    ])
+    expect(useQueueStore.getState().activeIndex).toBe(3)
+  })
+
   it("keeps active item attached when another item is dragged around it", () => {
     useQueueStore.setState({
       items: [makeItem("a", 16), makeItem("b", 17), makeItem("c", 18)],
