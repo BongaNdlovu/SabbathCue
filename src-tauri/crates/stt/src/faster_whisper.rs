@@ -134,6 +134,12 @@ impl FasterWhisperWorker {
     }
 
     fn transcribe(&mut self, samples: &[i16]) -> Result<(String, Vec<Word>, f64), SttError> {
+        if let Some(status) = self.child.try_wait().map_err(|e| {
+            SttError::ConnectionFailed(format!("failed to check faster-whisper worker: {e}"))
+        })? {
+            return Err(self.worker_exited_error(status));
+        }
+
         self.next_id += 1;
         let id = self.next_id;
         let bytes: Vec<u8> = samples.iter().flat_map(|s| s.to_le_bytes()).collect();
@@ -148,7 +154,13 @@ impl FasterWhisperWorker {
             .write_all(line.as_bytes())
             .and_then(|()| self.stdin.write_all(b"\n"))
             .and_then(|()| self.stdin.flush())
-            .map_err(|e| SttError::SendError(format!("faster-whisper worker write failed: {e}")))?;
+            .map_err(|e| {
+                if let Ok(Some(status)) = self.child.try_wait() {
+                    self.worker_exited_error(status)
+                } else {
+                    SttError::SendError(format!("faster-whisper worker write failed: {e}"))
+                }
+            })?;
 
         let mut response_line = String::new();
         let bytes_read = self.stdout.read_line(&mut response_line).map_err(|e| {
@@ -189,6 +201,23 @@ impl FasterWhisperWorker {
             .flat_map(segment_to_words)
             .collect();
         Ok((text, words, 0.9))
+    }
+
+    fn worker_exited_error(&mut self, status: std::process::ExitStatus) -> SttError {
+        let mut response_line = String::new();
+        let response_error = match self.stdout.read_line(&mut response_line) {
+            Ok(0) => None,
+            Ok(_) => serde_json::from_str::<WorkerResponse>(&response_line)
+                .ok()
+                .and_then(|response| response.error),
+            Err(_) => None,
+        };
+
+        let message = response_error.map_or_else(
+            || format!("faster-whisper worker exited with status {status}"),
+            |error| format!("faster-whisper worker error: {error}"),
+        );
+        SttError::ConnectionFailed(message)
     }
 }
 
