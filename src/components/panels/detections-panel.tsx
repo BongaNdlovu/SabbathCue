@@ -40,6 +40,9 @@ function DetectionCard({ detection }: { detection: DetectionResult }) {
     <div className="border-b border-border p-3 last:border-0">
       <div className="flex items-center gap-2">
         <ConfidenceDot confidence={detection.confidence} />
+        <span className="text-xs font-medium text-muted-foreground">
+          {Math.round(detection.confidence * 100)}%
+        </span>
         <SourceBadge source={detection.source} />
         <span className="text-sm font-semibold text-foreground">
           {detection.verse_ref}

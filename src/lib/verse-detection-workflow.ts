@@ -51,11 +51,17 @@ function selectDetectedVerse(args: {
 export function handleVerseDetections(detections: DetectionResult[]) {
   useDetectionStore.getState().addDetections(detections)
 
-  const directHit = detections.find(
+  // Preview from the incoming event's newest direct non-chapter-only detection
+  // (not from the full persisted detection store)
+  const directHits = detections.filter(
     (d) => d.source === "direct" && !d.is_chapter_only
   )
-  if (directHit && directHit.book_number > 0) {
-    selectDetectedVerse(directHit)
+  // Use the first direct hit (newest in the incoming batch)
+  if (directHits.length > 0) {
+    const directHit = directHits[0]
+    if (directHit.book_number > 0) {
+      selectDetectedVerse(directHit)
+    }
   }
 
   for (const d of detections) {

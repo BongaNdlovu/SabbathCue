@@ -382,10 +382,10 @@ pub async fn start_transcription(
     let event_app = app.clone();
 
     // Background semantic detection channel — non-blocking, drops if busy
-    let (semantic_tx, mut semantic_rx) = tokio::sync::mpsc::channel::<String>(4);
+    let (semantic_tx, mut semantic_rx) = tokio::sync::mpsc::channel::<(u64, String)>(4);
 
     // Background detection channel — direct + reading mode, non-blocking
-    let (detect_tx, mut detect_rx) = tokio::sync::mpsc::channel::<String>(16);
+    let (detect_tx, mut detect_rx) = tokio::sync::mpsc::channel::<(u64, String)>(16);
 
     // Background fast-preview channel: direct references only, latest work wins.
     // This gives preview a fast path without touching final detector/cooldown state.
@@ -400,6 +400,7 @@ pub async fn start_transcription(
     let semantic_sent = Arc::new(AtomicU64::new(0));
     let semantic_dropped = Arc::new(AtomicU64::new(0));
     let transcript_seq = Arc::new(AtomicU64::new(0));
+    let latest_accepted_seq = Arc::new(AtomicU64::new(0));
 
     // Spawn direct-preview worker. It is intentionally separate from
     // the final detector so interim text cannot consume queue cooldowns or
@@ -429,11 +430,13 @@ pub async fn start_transcription(
     // Uses spawn_blocking so ONNX doesn't starve the tokio async runtime
     // (WebSocket readers, event emitters, etc.).
     let sem_app = app.clone();
+    let sem_latest_seq = latest_accepted_seq.clone();
     tauri::async_runtime::spawn(async move {
-        while let Some(text) = semantic_rx.recv().await {
+        while let Some((seq, text)) = semantic_rx.recv().await {
             let app_clone = sem_app.clone();
+            let latest_seq = sem_latest_seq.clone();
             let _ = tokio::task::spawn_blocking(move || {
-                run_semantic_detection(&app_clone, &text);
+                run_semantic_detection(&app_clone, seq, latest_seq, &text);
             })
             .await;
         }
@@ -443,11 +446,13 @@ pub async fn start_transcription(
     // transcript delivery). Uses spawn_blocking so mutex locks and DB I/O don't
     // starve the tokio runtime.
     let det_app = app.clone();
+    let det_latest_seq = latest_accepted_seq.clone();
     tauri::async_runtime::spawn(async move {
-        while let Some(transcript) = detect_rx.recv().await {
+        while let Some((seq, transcript)) = detect_rx.recv().await {
             let app_clone = det_app.clone();
+            let latest_seq = det_latest_seq.clone();
             let _ = tokio::task::spawn_blocking(move || {
-                let direct_found = run_direct_detection(&app_clone, &transcript);
+                let direct_found = run_direct_detection(&app_clone, seq, latest_seq, &transcript);
                 check_reading_mode(&app_clone, &transcript, direct_found);
             })
             .await;
@@ -585,7 +590,8 @@ pub async fn start_transcription(
                         // Fire-and-forget: detection runs in background thread pool.
                         // Event consumer proceeds immediately to next transcript.
                         if let Some(detection_text) = route.authoritative_detection {
-                            if let Ok(()) = detect_tx.try_send(detection_text.clone()) {
+                            latest_accepted_seq.store(seq, Ordering::Relaxed);
+                            if let Ok(()) = detect_tx.try_send((seq, detection_text.clone())) {
                                 let n = detect_sent_evt.fetch_add(1, Ordering::Relaxed) + 1;
                                 if n % 25 == 0 {
                                     let depth = detect_tx.max_capacity() - detect_tx.capacity();
@@ -606,7 +612,7 @@ pub async fn start_transcription(
                             // Send accepted is_final fragments to FTS5 immediately.
                             // No sentence buffer — FTS5 is fast enough (~20-50ms)
                             // to run on every fragment without waiting for pauses.
-                            if let Ok(()) = semantic_tx.try_send(detection_text) {
+                            if let Ok(()) = semantic_tx.try_send((seq, detection_text)) {
                                 let n = semantic_sent_evt.fetch_add(1, Ordering::Relaxed) + 1;
                                 if n % 25 == 0 {
                                     let depth = semantic_tx.max_capacity() - semantic_tx.capacity();
@@ -752,7 +758,18 @@ fn run_partial_direct_preview_detection(
     clippy::similar_names,
     reason = "merger and merged are naturally named"
 )]
-fn run_direct_detection(app: &AppHandle, transcript: &str) -> bool {
+fn run_direct_detection(
+    app: &AppHandle,
+    seq: u64,
+    latest_seq: Arc<AtomicU64>,
+    transcript: &str,
+) -> bool {
+    // Stale detection suppression: if this job's sequence is older than the
+    // latest accepted transcript sequence, skip emission.
+    if seq < latest_seq.load(Ordering::Relaxed) {
+        log::debug!("[DET-DIRECT] Skipping stale job seq={seq}");
+        return false;
+    }
     use rhema_detection::{DetectionMerger, DirectDetector};
 
     let t0 = std::time::Instant::now();
@@ -846,6 +863,13 @@ fn run_direct_detection(app: &AppHandle, transcript: &str) -> bool {
         );
     }
     drop(app_state);
+
+    // Final stale check before emission
+    if seq < latest_seq.load(Ordering::Relaxed) {
+        log::debug!("[DET-DIRECT] Skipping emission for stale seq={seq}");
+        return has_high_confidence;
+    }
+
     let _ = app.emit("verse_detections", &results);
     if transcript_logging_enabled() {
         log::info!(
@@ -859,11 +883,20 @@ fn run_direct_detection(app: &AppHandle, transcript: &str) -> bool {
     has_high_confidence
 }
 
-/// Run FTS5-only detection. ONNX/vector pipeline is skipped for speed.
-/// FTS5 phrase match finds exact scripture quotes; direct detection handles
-/// verse references; ONNX can be re-enabled later with parallelized vector search.
-fn run_semantic_detection(app: &AppHandle, transcript: &str) {
-    use super::detection::{FTS5_CONFIDENCE_DECAY, FTS5_MIN_CONFIDENCE, FTS5_RANK0_CONFIDENCE};
+/// Run hybrid semantic detection combining FTS5 BM25 with vector search.
+/// Uses spawn_blocking so mutex locks and DB I/O don't starve the tokio runtime.
+fn run_semantic_detection(
+    app: &AppHandle,
+    seq: u64,
+    latest_seq: Arc<AtomicU64>,
+    transcript: &str,
+) {
+    // Stale detection suppression: if this job's sequence is older than the
+    // latest accepted transcript sequence, skip emission.
+    if seq < latest_seq.load(Ordering::Relaxed) {
+        log::debug!("[DET-SEMANTIC] Skipping stale job seq={seq}");
+        return;
+    }
 
     let t0 = std::time::Instant::now();
     if transcript_logging_enabled() {
@@ -897,59 +930,38 @@ fn run_semantic_detection(app: &AppHandle, transcript: &str) {
         return;
     }
 
-    // Build results directly from FTS5 hits — no ONNX, no vector search.
-    // Resolve verse text from DB for each FTS5 hit.
-    let managed: State<'_, Mutex<AppState>> = app.state();
-    let Ok(app_state) = managed.lock() else {
+    // Use hybrid pipeline: FTS5 + vector search when available
+    let merged = {
+        let pipeline_state: State<'_, Mutex<rhema_detection::DetectionPipeline>> = app.state();
+        let Ok(mut pipeline) = pipeline_state.lock() else {
+            log::error!("Failed to lock DetectionPipeline");
+            return;
+        };
+        pipeline.process_hybrid_with_fts(transcript, &fts)
+    };
+
+    if merged.is_empty() {
+        log::info!("[DET-SEMANTIC] No detections");
+        return;
+    }
+
+    // Resolve verse text from DB for merged results
+    let app_managed: State<'_, Mutex<AppState>> = app.state();
+    let Ok(app_state) = app_managed.lock() else {
         log::error!("Failed to lock AppState for verse resolution");
         return;
     };
 
-    let results: Vec<super::detection::DetectionResult> = fts
+    let results: Vec<super::detection::DetectionResult> = merged
         .iter()
-        .enumerate()
-        .filter_map(|(rank, hit)| {
-            #[expect(clippy::cast_precision_loss, reason = "rank is small")]
-            let confidence = FTS5_RANK0_CONFIDENCE - (rank as f64 * FTS5_CONFIDENCE_DECAY);
-            if confidence < FTS5_MIN_CONFIDENCE {
-                return None;
-            }
-
-            // Resolve verse text from active translation
-            let verse_text = app_state
-                .bible_db
-                .as_ref()
-                .and_then(|db| {
-                    db.get_verse(
-                        app_state.active_translation_id,
-                        hit.book_number,
-                        hit.chapter,
-                        hit.verse,
-                    )
-                    .ok()
-                    .flatten()
-                })
-                .map(|v| v.text)
-                .unwrap_or_default();
-
-            Some(super::detection::DetectionResult {
-                verse_ref: format!("{} {}:{}", hit.book_name, hit.chapter, hit.verse),
-                verse_text,
-                book_name: hit.book_name.clone(),
-                book_number: hit.book_number,
-                chapter: hit.chapter,
-                verse: hit.verse,
-                confidence,
-                source: "semantic".to_string(),
-                auto_queued: false,
-                transcript_snippet: truncate_safe(transcript, 100).to_string(),
-                is_chapter_only: false,
-            })
-        })
+        .map(|m| super::detection::to_result(&app_state, m))
         .collect();
 
-    if results.is_empty() {
-        log::info!("[DET-SEMANTIC] No detections");
+    drop(app_state);
+
+    // Final stale check before emission
+    if seq < latest_seq.load(Ordering::Relaxed) {
+        log::debug!("[DET-SEMANTIC] Skipping emission for stale seq={seq}");
         return;
     }
 
@@ -962,7 +974,6 @@ fn run_semantic_detection(app: &AppHandle, transcript: &str) {
             r.auto_queued
         );
     }
-    drop(app_state);
     let _ = app.emit("verse_detections", &results);
     log::info!("[DET-SEMANTIC] Total: {:?}", t0.elapsed());
 }

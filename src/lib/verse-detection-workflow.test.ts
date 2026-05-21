@@ -327,4 +327,28 @@ describe("verse detection workflow", () => {
     expect(useBroadcastStore.getState().isLive).toBe(false)
     expect(useBroadcastStore.getState().liveVerse).toBeNull()
   })
+
+  it("previews from incoming direct detection event", () => {
+    const detection = makeDetection({ verse_ref: "Romans 5:8", book_number: 45, chapter: 5, verse: 8 })
+    handleVerseDetections([detection])
+
+    expect(useBibleStore.getState().selectedVerse).toMatchObject({
+      book_number: 45,
+      chapter: 5,
+      verse: 8,
+    })
+  })
+
+  it("previews first direct detection from incoming event batch", () => {
+    const detection1 = makeDetection({ verse_ref: "Romans 5:8", book_number: 45, chapter: 5, verse: 8 })
+    const detection2 = makeDetection({ verse_ref: "Romans 8:1", book_number: 45, chapter: 8, verse: 1 })
+    handleVerseDetections([detection1, detection2])
+
+    // Should preview the first (newest in batch)
+    expect(useBibleStore.getState().selectedVerse).toMatchObject({
+      book_number: 45,
+      chapter: 5,
+      verse: 8,
+    })
+  })
 })
