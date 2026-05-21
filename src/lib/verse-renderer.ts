@@ -415,6 +415,40 @@ function drawReference(
   return ref.fontSize * 1.5
 }
 
+function drawHymnSlideCounter(
+  ctx: CanvasRenderingContext2D,
+  theme: BroadcastTheme,
+  data: PresentationRenderData
+): void {
+  const slide = data.hymnSlide
+  if (data.kind !== "hymn" || !slide || slide.slideCount <= 0) return
+
+  const text = `${slide.slideIndex + 1}/${slide.slideCount}`
+  const fontSize = Math.max(14, Math.round(theme.resolution.width * 0.018))
+  const paddingX = Math.round(fontSize * 0.75)
+  const paddingY = Math.round(fontSize * 0.35)
+  const margin = Math.round(fontSize * 1.2)
+
+  ctx.save()
+  ctx.font = `600 ${fontSize}px "Inter", sans-serif`
+  ctx.textBaseline = "middle"
+  ctx.textAlign = "center"
+
+  const textWidth = ctx.measureText(text).width
+  const boxWidth = textWidth + paddingX * 2
+  const boxHeight = fontSize + paddingY * 2
+  const x = theme.resolution.width - margin - boxWidth
+  const y = margin
+
+  ctx.fillStyle = "rgba(0, 0, 0, 0.38)"
+  roundRect(ctx, x, y, boxWidth, boxHeight, Math.max(4, fontSize * 0.25))
+  ctx.fill()
+
+  ctx.fillStyle = "rgba(255, 255, 255, 0.86)"
+  ctx.fillText(text, x + boxWidth / 2, y + boxHeight / 2)
+  ctx.restore()
+}
+
 function drawVerseText(
   ctx: CanvasRenderingContext2D,
   theme: BroadcastTheme,
@@ -1056,6 +1090,7 @@ function renderPresentationImpl(
       referenceRect.y
     )
   }
+  drawHymnSlideCounter(ctx, scaledTheme, data as PresentationRenderData)
 
   ctx.restore()
   return metrics

@@ -1,13 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { PanelHeader } from "@/components/ui/panel-header"
 import { SERVICE_PLAN_TEMPLATES } from "@/lib/service-plan/service-plan-templates"
@@ -67,10 +60,7 @@ function ServicePlanEditor() {
 
   return (
     <div className="flex h-full min-h-0 flex-col" data-slot="service-plan-editor">
-      <PanelHeader
-        title={activePlan.title}
-        icon={<ClipboardListIcon className="size-4" />}
-      >
+      <PanelHeader title={activePlan.title} icon={<ClipboardListIcon className="size-4" />}>
         <Badge variant="outline" className="text-[0.5625rem] uppercase">
           {activePlan.status}
         </Badge>
@@ -168,8 +158,8 @@ function ServicePlanEditor() {
         <div className="border-t border-border px-3 py-2 text-xs text-muted-foreground">
           <div className="font-medium text-foreground">Post-service report</div>
           <div>
-            {lastReport.completedItems}/{lastReport.totalItems} items completed ·{" "}
-            {lastReport.skippedItems} skipped · ~{lastReport.durationEstimateMinutes} min planned
+            {lastReport.completedItems}/{lastReport.totalItems} items completed -{" "}
+            {lastReport.skippedItems} skipped - ~{lastReport.durationEstimateMinutes} min planned
           </div>
         </div>
       )}
@@ -229,10 +219,7 @@ export function ServicePlanLibraryPanel() {
       data-slot="service-plan-page"
     >
       <div className="space-y-3 overflow-y-auto p-3">
-        <PanelHeader
-          title="Service Plan"
-          icon={<ClipboardListIcon className="size-4" />}
-        />
+        <PanelHeader title="Service Plan" icon={<ClipboardListIcon className="size-4" />} />
         <ServicePlanSummaryWidget />
         <div className="grid gap-2">
           {SERVICE_PLAN_TEMPLATES.map((template) => (
@@ -274,50 +261,50 @@ export function ServicePlanLibraryPanel() {
   )
 }
 
-export function ServicePlanDialog() {
-  const plannerOpen = useServicePlanStore((s) => s.plannerOpen)
-  const closePlanner = useServicePlanStore((s) => s.closePlanner)
+export function ServicePlanWorkspace() {
   const activePlan = useServicePlanStore((s) => s.activePlan)
 
   return (
-    <Dialog open={plannerOpen} onOpenChange={(open) => !open && closePlanner()}>
-      <DialogContent className="flex h-[85vh] max-w-5xl flex-col gap-0 p-0">
-        <DialogHeader className="border-b border-border px-4 py-3">
-          <DialogTitle>{activePlan?.title ?? "Service Plan"}</DialogTitle>
-          <DialogDescription>
-            Plan worship flow, practice in preview-only mode, and run live service with a
-            lightweight context panel.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="min-h-0 flex-1">
-          {plannerOpen && (
-            <Suspense
-              fallback={
-                <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-                  Loading planner…
-                </div>
-              }
-            >
-              <LazyServicePlanEditor />
-            </Suspense>
-          )}
-        </div>
-      </DialogContent>
-    </Dialog>
+    <div
+      className="grid h-full min-h-0 gap-2 p-3 lg:grid-cols-[320px_minmax(0,1fr)]"
+      data-slot="service-plan-workspace"
+    >
+      <ServicePlanLibraryPanel />
+      <div className="min-h-0 overflow-hidden rounded-lg border border-border bg-card">
+        {activePlan ? (
+          <Suspense
+            fallback={
+              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                Loading planner...
+              </div>
+            }
+          >
+            <LazyServicePlanEditor />
+          </Suspense>
+        ) : (
+          <div className="flex h-full items-center justify-center px-6 text-center text-sm text-muted-foreground">
+            Choose a recent plan or create one from a template to begin.
+          </div>
+        )}
+      </div>
+    </div>
   )
 }
 
+export function ServicePlanDialog() {
+  return <ServicePlanWorkspace />
+}
+
 export function ServicePlanPage() {
-  return (
-    <>
-      <ServicePlanLibraryPanel />
-      <ServicePlanDialog />
-    </>
-  )
+  return <ServicePlanWorkspace />
 }
 
 export const LazyServicePlanLibraryPanel = lazy(async () => ({
   default: ServicePlanLibraryPanel,
+}))
+
+export const LazyServicePlanWorkspace = lazy(async () => ({
+  default: ServicePlanWorkspace,
 }))
 
 export const LazyServicePlanDialog = lazy(async () => ({

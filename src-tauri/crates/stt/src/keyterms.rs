@@ -75,16 +75,7 @@ pub fn bible_keyterms() -> Vec<String> {
     ];
     terms.extend(books.iter().map(ToString::to_string));
 
-    // Common abbreviations
-    let abbreviations = [
-        "Gen", "Exod", "Lev", "Num", "Deut", "Josh", "Judg", "Sam", "Kgs", "Chr", "Neh", "Esth",
-        "Ps", "Prov", "Eccl", "Isa", "Jer", "Lam", "Ezek", "Dan", "Hos", "Obad", "Mic", "Nah",
-        "Hab", "Zeph", "Hag", "Zech", "Mal", "Matt", "Mk", "Lk", "Jn", "Rom", "Cor", "Gal", "Eph",
-        "Phil", "Col", "Thess", "Tim", "Tit", "Phlm", "Heb", "Jas", "Pet", "Rev",
-    ];
-    terms.extend(abbreviations.iter().map(ToString::to_string));
-
-    // Spoken forms
+    // Spoken forms. These matter more than abbreviations for microphone input.
     let spoken = [
         "First Samuel",
         "Second Samuel",
@@ -142,6 +133,16 @@ pub fn bible_keyterms() -> Vec<String> {
         "Nebuchadnezzar",
     ];
     terms.extend(theological.iter().map(ToString::to_string));
+
+    // Common abbreviations. These come last so the 100-keyterm cap prioritizes
+    // words and phrases a speaker is likely to say aloud.
+    let abbreviations = [
+        "Gen", "Exod", "Lev", "Num", "Deut", "Josh", "Judg", "Sam", "Kgs", "Chr", "Neh", "Esth",
+        "Ps", "Prov", "Eccl", "Isa", "Jer", "Lam", "Ezek", "Dan", "Hos", "Obad", "Mic", "Nah",
+        "Hab", "Zeph", "Hag", "Zech", "Mal", "Matt", "Mk", "Lk", "Jn", "Rom", "Cor", "Gal", "Eph",
+        "Phil", "Col", "Thess", "Tim", "Tit", "Phlm", "Heb", "Jas", "Pet", "Rev",
+    ];
+    terms.extend(abbreviations.iter().map(ToString::to_string));
 
     terms
 }

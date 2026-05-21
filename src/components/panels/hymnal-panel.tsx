@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -7,6 +7,7 @@ import { PanelEmptyState } from "@/components/ui/panel-empty-state"
 import { cn } from "@/lib/utils"
 import { presentItem, selectPreviewItem } from "@/lib/presentation-workflow"
 import { useQueueStore } from "@/stores/queue-store"
+import { useHymnSlideStore } from "@/stores/hymn-slide-store"
 import {
   defaultSelectedSectionIds,
   createHymnPresentationItem,
@@ -93,6 +94,10 @@ export function HymnalPanel() {
   )
 
   const activeScreen = screens[Math.min(activeScreenIndex, Math.max(0, screens.length - 1))]
+  const presentationDeck = useMemo(
+    () => screens.map((screen) => createHymnPresentationItem(screen)),
+    [screens],
+  )
 
   const goToPreviousScreen = () => {
     setActiveScreenIndex((current) => Math.max(0, current - 1))
@@ -101,33 +106,6 @@ export function HymnalPanel() {
   const goToNextScreen = () => {
     setActiveScreenIndex((current) => Math.min(screens.length - 1, current + 1))
   }
-
-  const handleKeyDown = useCallback(
-    (event: KeyboardEvent) => {
-      if (screens.length === 0) return
-
-      const target = event.target as HTMLElement
-      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable) {
-        return
-      }
-
-      if (event.key === "ArrowRight" || event.key === " ") {
-        event.preventDefault()
-        setActiveScreenIndex((current) => Math.min(screens.length - 1, current + 1))
-      } else if (event.key === "ArrowLeft") {
-        event.preventDefault()
-        setActiveScreenIndex((current) => Math.max(0, current - 1))
-      }
-    },
-    [screens.length],
-  )
-
-  useEffect(() => {
-    window.addEventListener("keydown", handleKeyDown)
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown)
-    }
-  }, [handleKeyDown])
 
   const selectHymn = async (result: HymnSearchResult) => {
     setIsLoadingHymn(true)
@@ -202,6 +180,7 @@ export function HymnalPanel() {
 
   const presentActiveScreen = () => {
     if (!activeScreen) return
+    useHymnSlideStore.getState().setDeck(presentationDeck, activeScreenIndex)
     presentItem(createHymnPresentationItem(activeScreen))
   }
 
@@ -209,6 +188,7 @@ export function HymnalPanel() {
     const queue = useQueueStore.getState()
     const queueItems = createGroupedHymnQueueItems(screens)
     queue.addItems(queueItems)
+    useHymnSlideStore.getState().setDeck(presentationDeck, activeScreenIndex)
   }
 
   const selectedHymnIsFavorite = selectedHymn ? favoriteHymnIds.includes(selectedHymn.id) : false

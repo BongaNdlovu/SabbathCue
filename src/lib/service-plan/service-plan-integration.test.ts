@@ -7,11 +7,11 @@ function readSource(relativePath: string): string {
 }
 
 describe("service plan shell integration", () => {
-  it("mounts the planner dialog from the dashboard shell", () => {
+  it("mounts the service plan workspace from the dashboard shell", () => {
     const dashboard = readSource("src/components/layout/dashboard.tsx")
-    expect(dashboard).toContain("LazyServicePlanDialog")
-    expect(dashboard).toContain("LazyServicePlanLibraryPanel")
-    expect(dashboard).toContain('"service-plan"')
+    expect(dashboard).toContain("LazyServicePlanWorkspace")
+    expect(dashboard).toContain("Service Plans")
+    expect(dashboard).not.toContain("LazyServicePlanDialog")
   })
 
   it("hydrates service plans during app boot", () => {

@@ -11,6 +11,11 @@ export interface PresentationRenderData {
   reference: string
   segments: PresentationSegment[]
   kind?: PresentationItemKind
+  hymnSlide?: {
+    screenId: string
+    slideIndex: number
+    slideCount: number
+  }
 }
 
 export interface ScripturePresentationItemData {
@@ -25,6 +30,8 @@ export interface HymnPresentationItemData {
   hymnNumber: number
   hymnTitle: string
   screenId: string
+  slideIndex: number
+  slideCount: number
   reference: string
   segments: PresentationSegment[]
 }
@@ -61,6 +68,11 @@ export function getPresentationRenderData(item: PresentationItem): PresentationR
       kind: "hymn",
       reference: item.reference,
       segments: item.segments,
+      hymnSlide: {
+        screenId: item.screenId,
+        slideIndex: item.slideIndex,
+        slideCount: item.slideCount,
+      },
     }
   }
 

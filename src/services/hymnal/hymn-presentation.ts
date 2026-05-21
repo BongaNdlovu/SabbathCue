@@ -13,6 +13,8 @@ export function createHymnPresentationItem(screen: HymnScreen): HymnPresentation
     hymnNumber: screen.hymnNumber,
     hymnTitle: screen.hymnTitle,
     screenId: screen.id,
+    slideIndex: screen.screenIndex,
+    slideCount: screen.totalScreens,
     reference: `#${screen.hymnNumber} ${screen.hymnTitle} - ${label}`,
     segments: screen.lines.map((text) => ({ text })),
   }

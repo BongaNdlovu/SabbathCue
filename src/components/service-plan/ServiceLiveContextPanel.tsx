@@ -19,7 +19,7 @@ export function ServiceLiveContextPanel() {
   const skipActiveItem = useServicePlanStore((s) => s.skipActiveItem)
   const enqueuePreparedResources = useServicePlanStore((s) => s.enqueuePreparedResources)
 
-  if (!context.planId) return null
+  if (!context.planId || context.mode === "planning") return null
 
   return (
     <div

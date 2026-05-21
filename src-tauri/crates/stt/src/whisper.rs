@@ -102,8 +102,8 @@ impl WhisperProfile {
 
     pub(crate) const fn live_chunk_samples(self) -> usize {
         match self {
-            Self::Fast => 16_000 + 2_000,
-            Self::Balanced => 16_000 * 2,
+            Self::Fast => 16_000,
+            Self::Balanced => 16_000 + 8_000,
         }
     }
 
@@ -112,16 +112,13 @@ impl WhisperProfile {
     }
 
     pub(crate) const fn use_context(self) -> bool {
-        match self {
-            Self::Fast => false,
-            Self::Balanced => true,
-        }
+        true
     }
 
     pub(crate) const fn no_speech_threshold(self) -> f32 {
         match self {
-            Self::Fast => 0.5,
-            Self::Balanced => 0.6,
+            Self::Fast => 0.65,
+            Self::Balanced => 0.7,
         }
     }
 }
@@ -289,7 +286,7 @@ impl SttProvider for WhisperProvider {
                 silence_threshold: 0.002,
                 frame_threshold: 0.001,
                 min_voice_frames: 2,
-                silence_frame_count: 8,
+                silence_frame_count: 6,
                 ..VadConfig::default()
             };
             let mut vad = Vad::new(vad_config);
@@ -499,7 +496,7 @@ mod tests {
             balanced.sampling_strategy(),
             SamplingStrategy::Greedy { best_of: 1 }
         ));
-        assert!(!fast.use_context());
+        assert!(fast.use_context());
         assert!(balanced.use_context());
     }
 
