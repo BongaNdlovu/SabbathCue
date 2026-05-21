@@ -2,6 +2,10 @@ import { invoke } from "@tauri-apps/api/core"
 import { useDetectionStore } from "@/stores/detection-store"
 import type { DetectionResult } from "@/types"
 
+export interface DetectionControlStatus {
+  detection_paused: boolean
+}
+
 // Stable action functions (same pattern as use-bible.ts)
 async function detectVerses(text: string) {
   const results = await invoke<DetectionResult[]>("detect_verses", { text })
@@ -17,9 +21,19 @@ async function getDetectionStatus() {
   )
 }
 
+async function setDetectionPaused(paused: boolean) {
+  return invoke<boolean>("set_detection_paused", { paused })
+}
+
+async function getDetectionControlStatus() {
+  return invoke<DetectionControlStatus>("detection_control_status")
+}
+
 export const detectionActions = {
   detectVerses,
   getDetectionStatus,
+  setDetectionPaused,
+  getDetectionControlStatus,
   clearDetections: () => useDetectionStore.getState().clearDetections(),
   removeDetection: (verseRef: string) =>
     useDetectionStore.getState().removeDetection(verseRef),

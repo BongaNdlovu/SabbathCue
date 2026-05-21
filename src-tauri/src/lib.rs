@@ -46,6 +46,8 @@ pub fn run() {
             commands::detection::reading_mode_status,
             commands::detection::stop_reading_mode,
             commands::detection::update_detection_settings,
+            commands::detection::set_detection_paused,
+            commands::detection::detection_control_status,
             commands::assets::asset_status,
             commands::audio::get_audio_devices,
             commands::stt::start_transcription,

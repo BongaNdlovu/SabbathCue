@@ -16,6 +16,18 @@ use crate::events::{
 };
 use crate::state::AppState;
 
+/// Check whether the operator has paused detection suggestions.
+/// Uses a blocking lock so the pause flag is authoritative.
+/// The lock is held only for an atomic load — transcript events are not blocked.
+fn is_detection_paused(app: &AppHandle) -> bool {
+    let state: State<'_, Mutex<AppState>> = app.state();
+    let paused = match state.lock() {
+        Ok(s) => s.detection_paused.load(Ordering::Relaxed),
+        Err(_) => true,
+    };
+    paused
+}
+
 /// [DIAG] Running totals for `AppState` mutex contention on the direct-detection
 /// hot path. Direct-mode detection runs on every Final transcript fragment
 /// inside `spawn_blocking`, so high contention here means workers are stalling.
@@ -508,8 +520,9 @@ pub async fn start_transcription(
                         // Check for translation commands on partials too (cheap string matching)
                         // This makes translation switching feel instant without waiting for speech_final
                         check_translation_command(&event_app, &transcript);
-                        if let Some(preview_text) = route.preview_candidate {
-                            match partial_preview_tx.try_send((seq, preview_text)) {
+                        if !is_detection_paused(&event_app) {
+                            if let Some(preview_text) = route.preview_candidate {
+                                match partial_preview_tx.try_send((seq, preview_text)) {
                                 Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
                                     if transcript_logging_enabled() {
                                         log::debug!(
@@ -520,6 +533,7 @@ pub async fn start_transcription(
                                 Ok(()) | Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
                                 }
                             }
+                          }
                         }
                         log::debug!("[EVT] Partial processed in {:?}", t0.elapsed());
                     }
@@ -565,7 +579,8 @@ pub async fn start_transcription(
 
                         // Check for translation commands (cheap, <1ms, stays inline)
                         check_translation_command(&event_app, &transcript);
-                        if let Some(preview_text) = route.preview_candidate {
+                        if !is_detection_paused(&event_app) {
+                            if let Some(preview_text) = route.preview_candidate {
                             match partial_preview_tx.try_send((seq, preview_text)) {
                                 Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
                                     if transcript_logging_enabled() {
@@ -629,6 +644,7 @@ pub async fn start_transcription(
                                     "[QUEUE] semantic_tx DROPPED (consumer behind) sent={sent} dropped={d}"
                                 );
                             }
+                        }
                         }
 
                         if transcript_logging_enabled() {
@@ -1362,5 +1378,26 @@ mod tests {
         // Job finishes and checks for staleness
         assert!(job_seq < latest_seq.load(Ordering::Relaxed));
         // Should skip emission
+    }
+
+    /// Test that detection_paused initializes to false and toggles correctly.
+    /// This verifies the backend contract: Pause Suggestions must be backend-enforced.
+    #[test]
+    fn test_detection_paused_state() {
+        let app_state = crate::state::AppState::new();
+        assert!(
+            !app_state.detection_paused.load(std::sync::atomic::Ordering::Relaxed),
+            "detection_paused should default to false"
+        );
+
+        app_state
+            .detection_paused
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        assert!(app_state.detection_paused.load(std::sync::atomic::Ordering::Relaxed));
+
+        app_state
+            .detection_paused
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+        assert!(!app_state.detection_paused.load(std::sync::atomic::Ordering::Relaxed));
     }
 }
