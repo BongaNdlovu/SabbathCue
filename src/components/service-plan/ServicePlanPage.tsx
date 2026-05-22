@@ -3,6 +3,10 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { PanelHeader } from "@/components/ui/panel-header"
+import { LiveOutputPanel } from "@/components/panels/live-output-panel"
+import { PreviewPanel } from "@/components/panels/preview-panel"
+import { QueuePanel } from "@/components/panels/queue-panel"
+import { TranscriptPanel } from "@/components/panels/transcript-panel"
 import { SERVICE_PLAN_TEMPLATES } from "@/lib/service-plan/service-plan-templates"
 import { useServicePlanStore } from "@/stores/service-plan-store"
 import {
@@ -349,6 +353,17 @@ export function ServicePlanPage() {
   return <ServicePlanWorkspace />
 }
 
+function LiveProductionGrid() {
+  return (
+    <div className="grid min-h-[360px] grid-cols-1 gap-1.5 xl:grid-cols-[280px_minmax(300px,1fr)_minmax(300px,1fr)_300px]">
+      <TranscriptPanel />
+      <PreviewPanel />
+      <LiveOutputPanel />
+      <QueuePanel />
+    </div>
+  )
+}
+
 export function LiveServicePlanPage() {
   const activePlan = useServicePlanStore((s) => s.activePlan)
   const serviceContext = useServicePlanStore((s) => s.serviceContext)
@@ -358,108 +373,113 @@ export function LiveServicePlanPage() {
   )
 
   return (
-    <div className="grid h-full min-h-0 gap-2 p-3 lg:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
-      <section className="min-h-0 overflow-hidden rounded-lg border border-border bg-card">
-        <PanelHeader
-          title="Live Service Plan"
-          icon={<ClipboardListIcon className="size-4" />}
-        >
-          <Badge
-            variant={serviceContext.performanceMode ? "default" : "outline"}
+    <div className="flex h-full min-h-0 flex-col gap-2 overflow-hidden p-3">
+      <LiveProductionGrid />
+
+      <div className="grid min-h-0 flex-1 gap-2 lg:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
+        <section className="min-h-0 overflow-hidden rounded-lg border border-border bg-card">
+          <PanelHeader
+            title="Live Service Plan"
+            icon={<ClipboardListIcon className="size-4" />}
           >
-            {serviceContext.planStatus}
-          </Badge>
-        </PanelHeader>
-        <div className="grid gap-3 p-3 md:grid-cols-2">
-          <div className="rounded-md border border-border p-3">
-            <div className="text-[0.625rem] font-medium text-muted-foreground uppercase">
-              Active item
-            </div>
-            <div className="mt-1 text-lg font-semibold">
-              {serviceContext.activeItem?.title ?? "Nothing active"}
-            </div>
-            <div className="mt-1 text-xs text-muted-foreground capitalize">
-              {serviceContext.activeItem?.kind ??
-                "Start a service plan to populate this view"}
-            </div>
-          </div>
-          <div className="rounded-md border border-border p-3">
-            <div className="text-[0.625rem] font-medium text-muted-foreground uppercase">
-              Up next
-            </div>
-            <div className="mt-1 text-lg font-semibold">
-              {serviceContext.nextItem?.title ?? "No next item"}
-            </div>
-            <div className="mt-1 text-xs text-muted-foreground capitalize">
-              {serviceContext.nextItem?.kind ?? "End of plan"}
-            </div>
-          </div>
-        </div>
-        <div className="min-h-0 px-3 pb-3">
-          <div className="max-h-[calc(100vh-260px)] overflow-y-auto rounded-md border border-border">
-            {orderedItems.length === 0 ? (
-              <div className="p-6 text-center text-sm text-muted-foreground">
-                No service plan is loaded.
+            <Badge
+              variant={serviceContext.performanceMode ? "default" : "outline"}
+            >
+              {serviceContext.planStatus}
+            </Badge>
+          </PanelHeader>
+          <div className="grid gap-3 p-3 md:grid-cols-2">
+            <div className="rounded-md border border-border p-3">
+              <div className="text-[0.625rem] font-medium text-muted-foreground uppercase">
+                Active item
               </div>
-            ) : (
-              orderedItems.map((item) => (
-                <div
-                  key={item.id}
-                  className="flex items-center justify-between gap-3 border-b border-border px-3 py-2 last:border-b-0"
-                >
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-medium">
-                      {item.title}
-                    </div>
-                    <div className="text-xs text-muted-foreground capitalize">
-                      {item.kind}
-                    </div>
-                  </div>
-                  <Badge
-                    variant={item.status === "active" ? "default" : "outline"}
-                  >
-                    {item.status}
-                  </Badge>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      </section>
-      <section className="min-h-0 overflow-hidden rounded-lg border border-border bg-card">
-        <PanelHeader
-          title="Live Context"
-          icon={<FileTextIcon className="size-4" />}
-        />
-        <div className="space-y-4 overflow-y-auto p-3 text-sm">
-          <div>
-            <div className="text-[0.625rem] font-medium text-muted-foreground uppercase">
-              Expected references
+              <div className="mt-1 text-lg font-semibold">
+                {serviceContext.activeItem?.title ?? "Nothing active"}
+              </div>
+              <div className="mt-1 text-xs text-muted-foreground capitalize">
+                {serviceContext.activeItem?.kind ??
+                  "Start a service plan to populate this view"}
+              </div>
             </div>
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {serviceContext.expectedReferences.length > 0 ? (
-                serviceContext.expectedReferences.map((ref) => (
-                  <Badge key={ref} variant="secondary">
-                    {ref}
-                  </Badge>
-                ))
+            <div className="rounded-md border border-border p-3">
+              <div className="text-[0.625rem] font-medium text-muted-foreground uppercase">
+                Up next
+              </div>
+              <div className="mt-1 text-lg font-semibold">
+                {serviceContext.nextItem?.title ?? "No next item"}
+              </div>
+              <div className="mt-1 text-xs text-muted-foreground capitalize">
+                {serviceContext.nextItem?.kind ?? "End of plan"}
+              </div>
+            </div>
+          </div>
+          <div className="min-h-0 px-3 pb-3">
+            <div className="max-h-[calc(100vh-560px)] min-h-[180px] overflow-y-auto rounded-md border border-border">
+              {orderedItems.length === 0 ? (
+                <div className="p-6 text-center text-sm text-muted-foreground">
+                  No service plan is loaded.
+                </div>
               ) : (
-                <span className="text-xs text-muted-foreground">
-                  None for the active item.
-                </span>
+                orderedItems.map((item) => (
+                  <div
+                    key={item.id}
+                    className="flex items-center justify-between gap-3 border-b border-border px-3 py-2 last:border-b-0"
+                  >
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-medium">
+                        {item.title}
+                      </div>
+                      <div className="text-xs text-muted-foreground capitalize">
+                        {item.kind}
+                      </div>
+                    </div>
+                    <Badge
+                      variant={item.status === "active" ? "default" : "outline"}
+                    >
+                      {item.status}
+                    </Badge>
+                  </div>
+                ))
               )}
             </div>
           </div>
-          <div>
-            <div className="text-[0.625rem] font-medium text-muted-foreground uppercase">
-              Operator notes
+        </section>
+        <section className="min-h-0 overflow-hidden rounded-lg border border-border bg-card">
+          <PanelHeader
+            title="Live Context"
+            icon={<FileTextIcon className="size-4" />}
+          />
+          <div className="space-y-4 overflow-y-auto p-3 text-sm">
+            <div>
+              <div className="text-[0.625rem] font-medium text-muted-foreground uppercase">
+                Expected references
+              </div>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {serviceContext.expectedReferences.length > 0 ? (
+                  serviceContext.expectedReferences.map((ref) => (
+                    <Badge key={ref} variant="secondary">
+                      {ref}
+                    </Badge>
+                  ))
+                ) : (
+                  <span className="text-xs text-muted-foreground">
+                    None for the active item.
+                  </span>
+                )}
+              </div>
             </div>
-            <p className="mt-2 whitespace-pre-wrap text-muted-foreground">
-              {serviceContext.operatorNotes || "No notes for the active item."}
-            </p>
+            <div>
+              <div className="text-[0.625rem] font-medium text-muted-foreground uppercase">
+                Operator notes
+              </div>
+              <p className="mt-2 whitespace-pre-wrap text-muted-foreground">
+                {serviceContext.operatorNotes ||
+                  "No notes for the active item."}
+              </p>
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      </div>
     </div>
   )
 }
@@ -471,92 +491,99 @@ export function LiveHymnPage() {
   const activeSlide = deck[activeIndex] ?? null
 
   return (
-    <div className="grid h-full min-h-0 gap-2 p-3 lg:grid-cols-[minmax(0,1fr)_360px]">
-      <section className="min-h-0 overflow-hidden rounded-lg border border-border bg-card">
-        <PanelHeader
-          title="Live Hymns"
-          icon={<ListMusicIcon className="size-4" />}
-        >
-          <Badge variant="outline">
-            {deck.length > 0 ? `${activeIndex + 1}/${deck.length}` : "No deck"}
-          </Badge>
-        </PanelHeader>
-        <div className="grid gap-3 p-3 md:grid-cols-2">
-          <div className="rounded-md border border-border p-3">
-            <div className="text-[0.625rem] font-medium text-muted-foreground uppercase">
-              Current hymn slide
+    <div className="flex h-full min-h-0 flex-col gap-2 overflow-hidden p-3">
+      <LiveProductionGrid />
+
+      <div className="grid min-h-0 flex-1 gap-2 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <section className="min-h-0 overflow-hidden rounded-lg border border-border bg-card">
+          <PanelHeader
+            title="Live Hymns"
+            icon={<ListMusicIcon className="size-4" />}
+          >
+            <Badge variant="outline">
+              {deck.length > 0
+                ? `${activeIndex + 1}/${deck.length}`
+                : "No deck"}
+            </Badge>
+          </PanelHeader>
+          <div className="grid gap-3 p-3 md:grid-cols-2">
+            <div className="rounded-md border border-border p-3">
+              <div className="text-[0.625rem] font-medium text-muted-foreground uppercase">
+                Current hymn slide
+              </div>
+              <div className="mt-1 text-lg font-semibold">
+                {activeSlide?.hymnTitle ?? "No hymn live"}
+              </div>
+              <div className="mt-1 text-xs text-muted-foreground">
+                {activeSlide
+                  ? `Hymn ${activeSlide.hymnNumber}`
+                  : "Queue hymn slides to populate this page"}
+              </div>
             </div>
-            <div className="mt-1 text-lg font-semibold">
-              {activeSlide?.hymnTitle ?? "No hymn live"}
-            </div>
-            <div className="mt-1 text-xs text-muted-foreground">
-              {activeSlide
-                ? `Hymn ${activeSlide.hymnNumber}`
-                : "Queue hymn slides to populate this page"}
+            <div className="rounded-md border border-border p-3">
+              <div className="text-[0.625rem] font-medium text-muted-foreground uppercase">
+                Service-plan hymns
+              </div>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {serviceContext.hymnSummaries.length > 0 ? (
+                  serviceContext.hymnSummaries.map((hymn) => (
+                    <Badge key={hymn.hymnNumber} variant="secondary">
+                      {hymn.hymnNumber} {hymn.title}
+                    </Badge>
+                  ))
+                ) : (
+                  <span className="text-xs text-muted-foreground">
+                    No active or next hymn refs.
+                  </span>
+                )}
+              </div>
             </div>
           </div>
-          <div className="rounded-md border border-border p-3">
-            <div className="text-[0.625rem] font-medium text-muted-foreground uppercase">
-              Service-plan hymns
-            </div>
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {serviceContext.hymnSummaries.length > 0 ? (
-                serviceContext.hymnSummaries.map((hymn) => (
-                  <Badge key={hymn.hymnNumber} variant="secondary">
-                    {hymn.hymnNumber} {hymn.title}
-                  </Badge>
-                ))
+          <div className="min-h-0 px-3 pb-3">
+            <div className="max-h-[calc(100vh-560px)] min-h-[180px] overflow-y-auto rounded-md border border-border">
+              {deck.length === 0 ? (
+                <div className="p-6 text-center text-sm text-muted-foreground">
+                  No hymn slide deck is loaded.
+                </div>
               ) : (
-                <span className="text-xs text-muted-foreground">
-                  No active or next hymn refs.
-                </span>
+                deck.map((slide, index) => (
+                  <div
+                    key={slide.screenId}
+                    className="flex items-center justify-between gap-3 border-b border-border px-3 py-2 last:border-b-0"
+                  >
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-medium">
+                        {slide.reference}
+                      </div>
+                      <div className="truncate text-xs text-muted-foreground">
+                        {slide.hymnTitle}
+                      </div>
+                    </div>
+                    <Badge
+                      variant={index === activeIndex ? "default" : "outline"}
+                    >
+                      {index === activeIndex ? "live" : index + 1}
+                    </Badge>
+                  </div>
+                ))
               )}
             </div>
           </div>
-        </div>
-        <div className="min-h-0 px-3 pb-3">
-          <div className="max-h-[calc(100vh-240px)] overflow-y-auto rounded-md border border-border">
-            {deck.length === 0 ? (
-              <div className="p-6 text-center text-sm text-muted-foreground">
-                No hymn slide deck is loaded.
-              </div>
-            ) : (
-              deck.map((slide, index) => (
-                <div
-                  key={slide.screenId}
-                  className="flex items-center justify-between gap-3 border-b border-border px-3 py-2 last:border-b-0"
-                >
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-medium">
-                      {slide.reference}
-                    </div>
-                    <div className="truncate text-xs text-muted-foreground">
-                      {slide.hymnTitle}
-                    </div>
-                  </div>
-                  <Badge
-                    variant={index === activeIndex ? "default" : "outline"}
-                  >
-                    {index === activeIndex ? "live" : index + 1}
-                  </Badge>
-                </div>
-              ))
-            )}
+        </section>
+        <section className="min-h-0 overflow-hidden rounded-lg border border-border bg-card">
+          <PanelHeader
+            title="Current Lyrics"
+            icon={<FileTextIcon className="size-4" />}
+          />
+          <div className="overflow-y-auto p-3">
+            <p className="text-lg leading-8 whitespace-pre-wrap">
+              {activeSlide?.segments
+                .map((segment) => segment.text)
+                .join("\n") || "No lyrics are currently selected."}
+            </p>
           </div>
-        </div>
-      </section>
-      <section className="min-h-0 overflow-hidden rounded-lg border border-border bg-card">
-        <PanelHeader
-          title="Current Lyrics"
-          icon={<FileTextIcon className="size-4" />}
-        />
-        <div className="overflow-y-auto p-3">
-          <p className="text-lg leading-8 whitespace-pre-wrap">
-            {activeSlide?.segments.map((segment) => segment.text).join("\n") ||
-              "No lyrics are currently selected."}
-          </p>
-        </div>
-      </section>
+        </section>
+      </div>
     </div>
   )
 }
