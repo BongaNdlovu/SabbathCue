@@ -3,6 +3,7 @@
     reason = "Tauri command extractors require pass-by-value"
 )]
 
+use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -33,6 +34,7 @@ fn is_detection_paused(app: &AppHandle) -> bool {
 /// inside `spawn_blocking`, so high contention here means workers are stalling.
 static DIRECT_LOCK_OK: AtomicU64 = AtomicU64::new(0);
 static DIRECT_LOCK_CONTENDED: AtomicU64 = AtomicU64::new(0);
+const SEMANTIC_WINDOW_SEGMENTS: usize = 4;
 
 fn transcript_logging_enabled() -> bool {
     matches!(
@@ -55,7 +57,7 @@ fn truncate_safe(s: &str, max_bytes: usize) -> &str {
     &s[..end]
 }
 use rhema_audio::{AudioConfig, AudioFrame};
-use rhema_stt::{DeepgramClient, SttConfig, SttProvider, TranscriptEvent, Word};
+use rhema_stt::{DeepgramClient, SttConfig, SttProvider, TranscriptEvent, VoskProvider, Word};
 
 use crate::commands::secrets;
 use crate::commands::transcript_router::{
@@ -85,7 +87,7 @@ fn to_word_payloads(words: Vec<Word>) -> Vec<WordPayload> {
 ///
 /// 1. Opens the microphone via cpal (on a dedicated thread so the non-Send
 ///    `AudioCapture` never crosses thread boundaries).
-/// 2. Connects to the selected STT provider (Deepgram cloud or Whisper local).
+/// 2. Connects to the selected STT provider (Deepgram cloud or Vosk local).
 /// 3. Fans audio out to both the level meter (emits `audio_level` events) and STT.
 /// 4. Receives transcripts and emits `transcript_partial` / `transcript_final` events.
 /// 5. On final transcripts, runs the detection pipeline and emits `verse_detected` events.
@@ -100,7 +102,7 @@ pub async fn start_transcription(
     device_id: Option<String>,
     gain: Option<f32>,
     provider: Option<String>,
-    whisper_profile: Option<String>,
+    _whisper_profile: Option<String>,
 ) -> Result<(), String> {
     // ── 1. Guard: already running? ──────────────────────────────────────
     let (stt_active, audio_active) = {
@@ -111,45 +113,41 @@ pub async fn start_transcription(
         (app_state.stt_active.clone(), app_state.audio_active.clone())
     };
 
-    let provider_name = provider.as_deref().unwrap_or("whisper");
+    let provider_name = provider.as_deref().unwrap_or("vosk");
 
     // ── 2. Build the STT provider ───────────────────────────────────────
     let stt_provider: Box<dyn SttProvider> = match provider_name {
-        #[cfg(feature = "whisper")]
-        "whisper" => {
-            // Resolve bundled Whisper model path.
-            // Dev: {CARGO_MANIFEST_DIR}/../models/whisper/ggml-tiny.en.bin
-            // Prod: resource_dir()/models/whisper/ggml-tiny.en.bin
-            let model_path = asset_paths::whisper_model_path(&app);
+        "vosk" | "whisper" => {
+            let model_path = asset_paths::vosk_model_path(&app);
             if !model_path.exists() {
                 return Err(format!(
-                    "Whisper model not found at {}. Open Settings > Speech Recognition and install the local model, or run bun run download:whisper in development.",
+                    "Vosk model not found at {}. Install a small English Vosk model into models/vosk/vosk-model-small-en-us.",
                     model_path.display()
                 ));
             }
-
-            let parallelism = std::thread::available_parallelism().map_or(4, usize::from);
-            let profile_log = whisper_profile.as_deref().unwrap_or("balanced");
-            let n_threads = i32::try_from(parallelism).unwrap_or(4).max(1);
+            let worker_path = asset_paths::vosk_worker_path(&app);
+            if !worker_path.exists() {
+                return Err(format!("Vosk worker not found at {}", worker_path.display()));
+            }
 
             log::info!(
-                "Starting Whisper transcription: model={}, profile={profile_log}, threads={n_threads}, device_id={device_id:?}",
-                model_path.display()
+                "Starting Vosk transcription: model={}, worker={}, device_id={device_id:?}",
+                model_path.display(),
+                worker_path.display()
             );
 
-            Box::new(rhema_stt::WhisperProvider::new(
-                model_path,
-                None,
-                n_threads,
-                whisper_profile.as_deref(),
-            ))
+            Box::new(VoskProvider::new(model_path, worker_path))
         }
-        #[cfg(not(feature = "whisper"))]
-        "whisper" => {
-            return Err("Whisper support not compiled. Rebuild with --features whisper".into());
+        #[cfg(feature = "whisper")]
+        "legacy-whisper" => {
+            let model_path = asset_paths::vosk_model_path(&app);
+            return Err(format!(
+                "Legacy Whisper is no longer the local provider. Use Vosk; expected Vosk model at {}.",
+                model_path.display()
+            ));
         }
         "faster-whisper" => {
-            return Err("faster-whisper has been removed. Choose Local Whisper or Deepgram.".into());
+            return Err("faster-whisper has been removed. Choose Vosk or Deepgram.".into());
         }
         _ => {
             // Deepgram (default)
@@ -346,7 +344,7 @@ pub async fn start_transcription(
     let provider_log_name = stt_provider.name().to_string();
     let provider_log_name_task_a = provider_log_name.clone();
 
-    // Task A: run the STT provider (Deepgram WS+REST or Whisper local).
+    // Task A: run the STT provider (Deepgram WS+REST or Vosk local).
     tauri::async_runtime::spawn(async move {
         let result = stt_provider.start(audio_send_rx, event_tx).await;
         if let Err(e) = result {
@@ -445,6 +443,8 @@ pub async fn start_transcription(
 
     tauri::async_runtime::spawn(async move {
         let mut transcript_router = TranscriptRouter::default();
+        let mut semantic_window: VecDeque<String> =
+            VecDeque::with_capacity(SEMANTIC_WINDOW_SEGMENTS);
 
         while let Some(event) = event_rx.recv().await {
             if !evt_active.load(Ordering::SeqCst) {
@@ -594,7 +594,17 @@ pub async fn start_transcription(
                             // Send accepted is_final fragments to FTS5 immediately.
                             // No sentence buffer — FTS5 is fast enough (~20-50ms)
                             // to run on every fragment without waiting for pauses.
-                            if let Ok(()) = semantic_tx.try_send((seq, detection_text)) {
+                            semantic_window.push_back(detection_text.clone());
+                            while semantic_window.len() > SEMANTIC_WINDOW_SEGMENTS {
+                                semantic_window.pop_front();
+                            }
+                            let semantic_text = semantic_window
+                                .iter()
+                                .cloned()
+                                .collect::<Vec<_>>()
+                                .join(" ");
+
+                            if let Ok(()) = semantic_tx.try_send((seq, semantic_text)) {
                                 let n = semantic_sent_evt.fetch_add(1, Ordering::Relaxed) + 1;
                                 if n % 25 == 0 {
                                     let depth = semantic_tx.max_capacity() - semantic_tx.capacity();

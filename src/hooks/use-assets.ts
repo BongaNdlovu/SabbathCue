@@ -3,7 +3,8 @@ import { invoke } from "@tauri-apps/api/core"
 
 export interface AssetStatus {
   bible_db: boolean
-  whisper_model: boolean
+  vosk_model: boolean
+  vosk_worker: boolean
   onnx_model: boolean
   tokenizer: boolean
   embeddings: boolean

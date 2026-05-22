@@ -16,13 +16,14 @@ export type ServiceAttachmentStatus = "pending" | "ready" | "failed" | "preloadi
 
 export interface ServiceAttachment {
   id: string
-  kind: "media" | "slide" | "document"
+  kind: "media" | "slide" | "document" | "deck"
   label: string
   path?: string
   status: ServiceAttachmentStatus
   thumbnailUrl?: string
   mimeType?: string
   sizeBytes?: number
+  deckId?: string
 }
 
 export interface ServiceChecklistItem {
@@ -42,6 +43,7 @@ export interface HymnRef {
   hymnId?: string
   hymnNumber?: number
   title?: string
+  deckId?: string
 }
 
 export interface MediaRef {
@@ -64,6 +66,7 @@ export interface ServiceItem {
   attachments: ServiceAttachment[]
   checklist: ServiceChecklistItem[]
   outputTemplateId?: string
+  slideDeckIds?: string[]
 }
 
 export interface ServicePlanSummary {

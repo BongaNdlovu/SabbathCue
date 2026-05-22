@@ -43,7 +43,7 @@ function createPlaceholderScripturePresentation(
 
 function createMediaPresentation(
   input: Pick<ServiceAttachment, "id" | "kind" | "label"> | MediaRef,
-  kind: "media" | "slide" | "document",
+  kind: "media" | "slide" | "document" | "deck",
 ): PresentationItem {
   const title = input.label
   return {
@@ -51,13 +51,15 @@ function createMediaPresentation(
     mediaId: "id" in input ? input.id : input.attachmentId,
     mediaKind: kind,
     title,
-    reference: planReference(`${kind === "slide" ? "Slide" : "Media"} - ${title}`),
+    reference: planReference(`${kind === "deck" ? "Deck" : kind === "slide" ? "Slide" : "Media"} - ${title}`),
     segments: [
       {
         text:
-          kind === "slide"
-            ? "Prepared slide attachment. Open from the Service Plan to preview the selected file."
-            : "Prepared media attachment. Open from the Service Plan to preview the selected file.",
+          kind === "deck"
+            ? "Prepared slide deck. Open from the Service Plan to preview the selected deck."
+            : kind === "slide"
+              ? "Prepared slide attachment. Open from the Service Plan to preview the selected file."
+              : "Prepared media attachment. Open from the Service Plan to preview the selected file.",
       },
     ],
   }
@@ -157,7 +159,7 @@ export async function enqueuePreparedResourcesForItem(item: ServiceItem): Promis
   }
 
   for (const attachment of item.attachments) {
-    if (attachment.kind !== "media" && attachment.kind !== "slide") continue
+    if (attachment.kind !== "media" && attachment.kind !== "slide" && attachment.kind !== "deck") continue
     queuePreparedItem(createMediaPresentation(attachment, attachment.kind))
     queued += 1
   }

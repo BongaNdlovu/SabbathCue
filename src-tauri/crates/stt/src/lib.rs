@@ -2,7 +2,7 @@
 //!
 //! Provides real-time transcription via multiple providers:
 //! - **Deepgram** (cloud) — WebSocket streaming with keyword boosting
-//! - **Whisper** (local) — offline inference via whisper.cpp
+//! - **Vosk** (local) — offline low-latency streaming via a worker process
 //!
 //! # Key types
 //!
@@ -24,6 +24,7 @@ pub mod keyterms;
 pub mod provider;
 pub mod rest;
 pub mod types;
+pub mod vosk;
 
 #[cfg(feature = "faster-whisper")]
 pub mod faster_whisper;
@@ -35,6 +36,7 @@ pub use error::SttError;
 pub use keyterms::bible_keyterms;
 pub use provider::SttProvider;
 pub use types::{SttConfig, TranscriptEvent, Word};
+pub use vosk::VoskProvider;
 
 #[cfg(feature = "faster-whisper")]
 pub use faster_whisper::FasterWhisperProvider;

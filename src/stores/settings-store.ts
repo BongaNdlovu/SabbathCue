@@ -2,8 +2,7 @@ import { create } from "zustand"
 import { load, type Store } from "@tauri-apps/plugin-store"
 import { isTauriRuntime, invokeTauri } from "@/lib/tauri-runtime"
 
-type SttProvider = "deepgram" | "whisper"
-type WhisperProfile = "fast" | "balanced"
+type SttProvider = "deepgram" | "vosk"
 
 interface SettingsState {
   hasDeepgramApiKey: boolean
@@ -14,7 +13,6 @@ interface SettingsState {
   cooldownMs: number
   onboardingComplete: boolean
   sttProvider: SttProvider
-  whisperProfile: WhisperProfile
 
   setHasDeepgramApiKey: (has: boolean) => void
   setAudioDeviceId: (id: string | null) => void
@@ -24,7 +22,6 @@ interface SettingsState {
   setCooldownMs: (ms: number) => void
   setOnboardingComplete: (complete: boolean) => void
   setSttProvider: (provider: SttProvider) => void
-  setWhisperProfile: (profile: WhisperProfile) => void
 }
 
 export const useSettingsStore = create<SettingsState>((set) => ({
@@ -35,8 +32,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   confidenceThreshold: 0.8,
   cooldownMs: 2500,
   onboardingComplete: false,
-  sttProvider: "whisper",
-  whisperProfile: "balanced",
+  sttProvider: "vosk",
 
   setHasDeepgramApiKey: (hasDeepgramApiKey) => set({ hasDeepgramApiKey }),
   setAudioDeviceId: (audioDeviceId) => set({ audioDeviceId }),
@@ -46,7 +42,6 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   setCooldownMs: (cooldownMs) => set({ cooldownMs }),
   setOnboardingComplete: (onboardingComplete) => set({ onboardingComplete }),
   setSttProvider: (sttProvider) => set({ sttProvider }),
-  setWhisperProfile: (whisperProfile) => set({ whisperProfile }),
 }))
 
 const PERSISTED_KEYS = [
@@ -57,7 +52,6 @@ const PERSISTED_KEYS = [
   "cooldownMs",
   "onboardingComplete",
   "sttProvider",
-  "whisperProfile",
 ] as const satisfies readonly (keyof SettingsState)[]
 
 let tauriStore: Store | null = null
@@ -85,9 +79,7 @@ export function hydrateSettings(): Promise<void> {
         const value = await store.get(key)
         if (value !== undefined && value !== null) {
           if (key === "sttProvider") {
-            patch.sttProvider = value === "deepgram" ? "deepgram" : "whisper"
-          } else if (key === "whisperProfile") {
-            patch.whisperProfile = value === "fast" ? "fast" : "balanced"
+            patch.sttProvider = value === "deepgram" ? "deepgram" : "vosk"
           } else {
             ;(patch as Record<string, unknown>)[key] = value
           }

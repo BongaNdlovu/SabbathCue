@@ -204,8 +204,6 @@ function SpeechSection() {
   const {
     sttProvider,
     setSttProvider,
-    whisperProfile,
-    setWhisperProfile,
     hasDeepgramApiKey,
     setHasDeepgramApiKey,
   } = useSettingsStore()
@@ -242,15 +240,9 @@ function SpeechSection() {
     }
   }
 
-  const handleProviderChange = (provider: "deepgram" | "whisper") => {
+  const handleProviderChange = (provider: "deepgram" | "vosk") => {
     if (provider === sttProvider || switchingStt) return
     setSttProvider(provider)
-    void restartActiveTranscription()
-  }
-
-  const handleWhisperProfileChange = (profile: "fast" | "balanced") => {
-    if (profile === whisperProfile || switchingStt) return
-    setWhisperProfile(profile)
     void restartActiveTranscription()
   }
 
@@ -295,7 +287,7 @@ function SpeechSection() {
 
         <RadioGroup
           value={sttProvider}
-          onValueChange={(v) => handleProviderChange(v as "deepgram" | "whisper")}
+          onValueChange={(v) => handleProviderChange(v as "deepgram" | "vosk")}
           disabled={switchingStt}
           className="gap-3"
         >
@@ -318,27 +310,27 @@ function SpeechSection() {
             </div>
           </label>
 
-          {/* Whisper (local) */}
+          {/* Vosk (local) */}
           <label
             className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors has-data-[state=checked]:border-primary/50 has-data-[state=checked]:bg-primary/5 has-data-[state=checked]:ring-1 has-data-[state=checked]:ring-primary/20 ${
-              sttProvider !== "whisper" ? "hover:border-muted-foreground/25" : ""
+              sttProvider !== "vosk" ? "hover:border-muted-foreground/25" : ""
             }`}
           >
-            <RadioGroupItem value="whisper" className="mt-0.5" />
+            <RadioGroupItem value="vosk" className="mt-0.5" />
             <div className="flex flex-col gap-1">
               <span className="text-xs font-medium text-foreground">
-                Local (Whisper)
+                Local (Vosk)
               </span>
               <p className="text-[0.625rem] leading-relaxed text-muted-foreground">
-                Runs Whisper locally on your device. Free after the model is installed,
-                works offline, and audio never leaves your machine.
+                Streams speech locally for low-latency offline captions. Free after
+                the model is installed, and audio never leaves your machine.
               </p>
             </div>
           </label>
         </RadioGroup>
       </div>
 
-      {sttProvider === "whisper" && (
+      {sttProvider === "vosk" && (
         <div className="flex flex-col gap-3 rounded-lg border border-border bg-muted/30 p-3">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
@@ -350,38 +342,19 @@ function SpeechSection() {
             <Badge variant="outline" className="text-[0.5rem]">
               {assetsLoading
                 ? "Checking"
-                : assetStatus?.whisper_model
+                : assetStatus?.vosk_model && assetStatus?.vosk_worker
                   ? "Installed"
                   : "Missing"}
             </Badge>
           </div>
 
           <p className="text-[0.625rem] leading-relaxed text-muted-foreground">
-            Whisper uses the bundled tiny English model for fast local
-            transcription. If the model is missing, transcription will not start
-            until it is installed.
+            Vosk uses a small English model for fast local streaming. If the model
+            is missing, transcription will not start until it is installed.
           </p>
-          <div className="flex flex-col gap-2">
-            <label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              Live profile
-            </label>
-            <Select
-              value={whisperProfile}
-              onValueChange={(v) => handleWhisperProfileChange(v as "fast" | "balanced")}
-              disabled={switchingStt}
-            >
-              <SelectTrigger className="h-8 text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="fast">Fast</SelectItem>
-                <SelectItem value="balanced">Balanced</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          {!assetsLoading && !assetStatus?.whisper_model && (
+          {!assetsLoading && (!assetStatus?.vosk_model || !assetStatus?.vosk_worker) && (
             <p className="rounded-md bg-background px-2 py-1.5 font-mono text-[0.625rem] text-muted-foreground">
-              bun run download:whisper
+              models/vosk/vosk-model-small-en-us
             </p>
           )}
 
@@ -568,8 +541,8 @@ function ApiKeysSection() {
           )}
         </div>
         <p className="text-[0.625rem] text-muted-foreground">
-          {sttProvider === "whisper"
-            ? "Not required when using local Whisper. "
+          {sttProvider === "vosk"
+            ? "Not required when using local Vosk. "
             : "Required for cloud transcription. "}
           Configure in the Speech Recognition section.
         </p>

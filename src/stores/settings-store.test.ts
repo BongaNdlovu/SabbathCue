@@ -35,8 +35,7 @@ describe("settings store", () => {
   it("hydrate merges persisted values over defaults", async () => {
     mockGet.mockImplementation(async (key: string) => {
       if (key === "gain") return 2.5
-      if (key === "sttProvider") return "whisper"
-      if (key === "whisperProfile") return "fast"
+      if (key === "sttProvider") return "vosk"
       return null
     })
 
@@ -45,8 +44,7 @@ describe("settings store", () => {
 
     const state = useSettingsStore.getState()
     expect(state.gain).toBe(2.5)
-    expect(state.sttProvider).toBe("whisper")
-    expect(state.whisperProfile).toBe("fast")
+    expect(state.sttProvider).toBe("vosk")
     // Defaults remain for keys with null
     expect(state.autoMode).toBe(false)
     expect(state.confidenceThreshold).toBe(0.8)
@@ -60,8 +58,7 @@ describe("settings store", () => {
     const after = useSettingsStore.getState()
 
     expect(after.gain).toBe(1.0)
-    expect(after.sttProvider).toBe("whisper")
-    expect(after.whisperProfile).toBe("balanced")
+    expect(after.sttProvider).toBe("vosk")
     expect(after.autoMode).toBe(false)
   })
 
@@ -78,19 +75,7 @@ describe("settings store", () => {
     expect(mockGet).not.toHaveBeenCalledWith("hasDeepgramApiKey")
   })
 
-  it("hydrate maps removed accurate whisper profile to balanced", async () => {
-    mockGet.mockImplementation(async (key: string) => {
-      if (key === "whisperProfile") return "accurate"
-      return null
-    })
-
-    const { hydrateSettings, useSettingsStore } = await import("./settings-store")
-    await hydrateSettings()
-
-    expect(useSettingsStore.getState().whisperProfile).toBe("balanced")
-  })
-
-  it("hydrate maps removed faster-whisper provider to local whisper", async () => {
+  it("hydrate maps removed faster-whisper provider to local vosk", async () => {
     mockGet.mockImplementation(async (key: string) => {
       if (key === "sttProvider") return "faster-whisper"
       return null
@@ -99,7 +84,7 @@ describe("settings store", () => {
     const { hydrateSettings, useSettingsStore } = await import("./settings-store")
     await hydrateSettings()
 
-    expect(useSettingsStore.getState().sttProvider).toBe("whisper")
+    expect(useSettingsStore.getState().sttProvider).toBe("vosk")
   })
 
   it("a setter call after hydration writes the full snapshot to disk", async () => {

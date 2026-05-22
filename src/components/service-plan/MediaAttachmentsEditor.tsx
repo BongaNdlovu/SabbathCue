@@ -89,7 +89,7 @@ export function MediaAttachmentsEditor({ attachments, onChange }: MediaAttachmen
         <div className="space-y-1 text-xs">
           {attachments.map((attachment) => (
             <div key={attachment.id} className="flex items-center justify-between rounded-md border border-border px-2 py-1">
-              <span className="truncate">
+          <span className="truncate">
                 {attachment.label} <span className="text-muted-foreground">({attachment.kind})</span>
                 {typeof attachment.sizeBytes === "number" && (
                   <span className="text-muted-foreground">

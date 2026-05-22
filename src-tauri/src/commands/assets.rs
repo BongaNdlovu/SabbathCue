@@ -33,7 +33,8 @@ pub struct ServiceAttachmentValidation {
 )]
 pub struct AssetStatus {
     pub bible_db: bool,
-    pub whisper_model: bool,
+    pub vosk_model: bool,
+    pub vosk_worker: bool,
     pub onnx_model: bool,
     pub tokenizer: bool,
     pub embeddings: bool,
@@ -45,7 +46,8 @@ pub struct AssetStatus {
 #[tauri::command]
 pub fn asset_status(app: AppHandle) -> AssetStatus {
     let bible_db = asset_paths::bible_db_path(&app).exists();
-    let whisper_model = asset_paths::whisper_model_path(&app).exists();
+    let vosk_model = asset_paths::vosk_model_path(&app).exists();
+    let vosk_worker = asset_paths::vosk_worker_path(&app).exists();
     let onnx_model = asset_paths::onnx_model_path(&app).exists();
     let tokenizer = asset_paths::tokenizer_path(&app).exists();
     let embeddings = asset_paths::embeddings_path(&app).exists();
@@ -54,7 +56,8 @@ pub fn asset_status(app: AppHandle) -> AssetStatus {
 
     AssetStatus {
         bible_db,
-        whisper_model,
+        vosk_model,
+        vosk_worker,
         onnx_model,
         tokenizer,
         embeddings,
@@ -83,7 +86,9 @@ fn extension_from_path(path: &str) -> String {
 }
 
 fn attachment_kind_from_extension(extension: &str) -> &'static str {
-    if matches!(extension, "png" | "jpg" | "jpeg" | "webp" | "gif" | "pdf") {
+    if extension == "pdf" {
+        "deck"
+    } else if matches!(extension, "png" | "jpg" | "jpeg" | "webp" | "gif") {
         "slide"
     } else if matches!(extension, "mp4" | "mov" | "webm") {
         "media"

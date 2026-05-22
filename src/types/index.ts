@@ -31,6 +31,12 @@ export type {
   PresentationRenderData,
   ScripturePresentationItemData,
   HymnPresentationItemData,
+  MediaPresentationItemData,
+  SlideDeck,
+  SlideDeckPresentationItemData,
+  SlideDeckSection,
+  SlideDeckSectionKind,
+  SlideDeckSlide,
   PresentationItem,
 } from "./presentation"
 export {

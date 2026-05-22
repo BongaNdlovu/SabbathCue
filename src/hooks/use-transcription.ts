@@ -43,7 +43,6 @@ export const transcriptionActions = {
         deviceId: settings.audioDeviceId,
         gain: settings.gain,
         provider: settings.sttProvider,
-        whisperProfile: settings.whisperProfile,
       })
       transcript.setTranscribing(true)
     } catch (e) {

@@ -45,15 +45,14 @@ describe("use-transcription", () => {
   })
 
   describe("transcriptionActions.start", () => {
-    it("invokes start_transcription with settings-derived params for whisper", async () => {
+    it("invokes start_transcription with settings-derived params for vosk", async () => {
       mockInvoke.mockResolvedValue(undefined)
       const { useSettingsStore, transcriptionActions } = await loadModules()
 
       useSettingsStore.setState({
-        sttProvider: "whisper",
+        sttProvider: "vosk",
         audioDeviceId: "dev-42",
         gain: 1.5,
-        whisperProfile: "fast",
       })
 
       await transcriptionActions.start()
@@ -61,8 +60,7 @@ describe("use-transcription", () => {
       expect(mockInvoke).toHaveBeenCalledWith("start_transcription", {
         deviceId: "dev-42",
         gain: 1.5,
-        provider: "whisper",
-        whisperProfile: "fast",
+        provider: "vosk",
       })
     })
 
@@ -74,7 +72,6 @@ describe("use-transcription", () => {
         sttProvider: "deepgram",
         audioDeviceId: null,
         gain: 1.0,
-        whisperProfile: "balanced",
       })
 
       await transcriptionActions.start()
@@ -85,7 +82,6 @@ describe("use-transcription", () => {
           provider: "deepgram",
           deviceId: null,
           gain: 1.0,
-          whisperProfile: "balanced",
         })
       )
     })

@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use tauri::{AppHandle, Manager};
 
-pub const WHISPER_MODEL_FILENAME: &str = "ggml-tiny.en.bin";
+pub const VOSK_MODEL_DIRNAME: &str = "vosk-model-small-en-us";
 
 fn dev_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..")
@@ -30,21 +30,16 @@ pub fn bible_db_path(app: &AppHandle) -> PathBuf {
     .unwrap_or_else(|| dev_root().join("data").join("rhema.db"))
 }
 
-pub fn whisper_model_path(app: &AppHandle) -> PathBuf {
+pub fn vosk_model_path(app: &AppHandle) -> PathBuf {
     let candidates = [
         app_data_dir(app)
             .ok()
-            .map(|p| p.join("models").join("whisper").join(WHISPER_MODEL_FILENAME)),
+            .map(|p| p.join("models").join("vosk").join(VOSK_MODEL_DIRNAME)),
         app.path()
             .resource_dir()
             .ok()
-            .map(|p| p.join("models").join("whisper").join(WHISPER_MODEL_FILENAME)),
-        Some(
-            dev_root()
-                .join("models")
-                .join("whisper")
-                .join(WHISPER_MODEL_FILENAME),
-        ),
+            .map(|p| p.join("models").join("vosk").join(VOSK_MODEL_DIRNAME)),
+        Some(dev_root().join("models").join("vosk").join(VOSK_MODEL_DIRNAME)),
     ]
     .into_iter()
     .flatten();
@@ -53,9 +48,24 @@ pub fn whisper_model_path(app: &AppHandle) -> PathBuf {
         app_data_dir(app)
             .unwrap_or_else(|_| dev_root())
             .join("models")
-            .join("whisper")
-            .join(WHISPER_MODEL_FILENAME)
+            .join("vosk")
+            .join(VOSK_MODEL_DIRNAME)
     })
+}
+
+pub fn vosk_worker_path(app: &AppHandle) -> PathBuf {
+    first_existing(
+        [
+            app.path()
+                .resource_dir()
+                .ok()
+                .map(|p| p.join("scripts").join("vosk_worker.py")),
+            Some(dev_root().join("scripts").join("vosk_worker.py")),
+        ]
+        .into_iter()
+        .flatten(),
+    )
+    .unwrap_or_else(|| dev_root().join("scripts").join("vosk_worker.py"))
 }
 
 pub fn onnx_model_path(app: &AppHandle) -> PathBuf {

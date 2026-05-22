@@ -21,7 +21,6 @@ const DEFAULT_CONFIDENCE_THRESHOLD: f64 = 0.50;
 pub struct SemanticDetector {
     embedder: Box<dyn TextEmbedder>,
     index: Box<dyn VectorIndex>,
-    #[allow(dead_code)]
     chunker: Chunker,
     cache: EmbeddingCache,
     confidence_threshold: f64,
@@ -113,35 +112,42 @@ impl SemanticDetector {
                 }
             }
         } else {
-            // Single direct embedding: fast (~1 embed call), good for exact quotes.
-            let results = if let Some((_embedding, results)) = self.cache.get(text) {
-                results.clone()
-            } else {
-                let Ok(embedding) = self.embedder.embed(text) else {
-                    return vec![];
-                };
-                let Ok(results) = self.index.search(&embedding, 5) else {
-                    return vec![];
-                };
-
-                // Cache for future lookups.
-                self.cache
-                    .insert(text.to_string(), (embedding, results.clone()));
-                results
-            };
-
             let now = Self::timestamp_ms();
             let mut seen_verse_ids = HashSet::new();
-            for result in &results {
-                if result.similarity >= self.confidence_threshold
-                    && seen_verse_ids.insert(result.verse_id)
-                {
-                    detections.push(Self::make_detection(
-                        result.verse_id,
-                        result.similarity,
-                        text,
-                        now,
-                    ));
+            let chunks = self.chunker.chunk(text);
+            let search_chunks = if chunks.is_empty() {
+                vec![text.to_string()]
+            } else {
+                chunks
+            };
+
+            for chunk in search_chunks {
+                let results = if let Some((_embedding, results)) = self.cache.get(&chunk) {
+                    results.clone()
+                } else {
+                    let Ok(embedding) = self.embedder.embed(&chunk) else {
+                        continue;
+                    };
+                    let Ok(results) = self.index.search(&embedding, 5) else {
+                        continue;
+                    };
+
+                    self.cache
+                        .insert(chunk.clone(), (embedding, results.clone()));
+                    results
+                };
+
+                for result in &results {
+                    if result.similarity >= self.confidence_threshold
+                        && seen_verse_ids.insert(result.verse_id)
+                    {
+                        detections.push(Self::make_detection(
+                            result.verse_id,
+                            result.similarity,
+                            &chunk,
+                            now,
+                        ));
+                    }
                 }
             }
         }

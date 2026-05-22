@@ -73,7 +73,7 @@ function mediaSummariesForItems(
 
   const append = (item: ServiceItem, scope: "active" | "next") => {
     for (const attachment of item.attachments) {
-      if (attachment.kind !== "media" && attachment.kind !== "slide") continue
+      if (attachment.kind !== "media" && attachment.kind !== "slide" && attachment.kind !== "deck") continue
       summaries.push({
         id: attachment.id,
         label: attachment.path ?? attachment.label,
