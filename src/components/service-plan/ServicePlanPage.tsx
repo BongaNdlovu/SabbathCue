@@ -8,12 +8,15 @@ import { useServicePlanStore } from "@/stores/service-plan-store"
 import {
   CalendarClockIcon,
   ClipboardListIcon,
+  FileTextIcon,
   PlayIcon,
   RadioIcon,
   SkipForwardIcon,
+  ListMusicIcon,
 } from "lucide-react"
 import { ServiceTimeline } from "./ServiceTimeline"
 import { ServiceItemDetailsPanel } from "./ServiceItemDetailsPanel"
+import { useHymnSlideStore } from "@/stores/hymn-slide-store"
 
 export { ServiceLiveContextPanel } from "./ServiceLiveContextPanel"
 
@@ -38,16 +41,24 @@ function ServicePlanEditor() {
   const startPractice = useServicePlanStore((s) => s.startPractice)
   const startLiveService = useServicePlanStore((s) => s.startLiveService)
   const completeService = useServicePlanStore((s) => s.completeService)
-  const enqueuePreparedResources = useServicePlanStore((s) => s.enqueuePreparedResources)
-  const practicePreviewActiveItem = useServicePlanStore((s) => s.practicePreviewActiveItem)
-  const generatePostServiceReport = useServicePlanStore((s) => s.generatePostServiceReport)
+  const enqueuePreparedResources = useServicePlanStore(
+    (s) => s.enqueuePreparedResources
+  )
+  const practicePreviewActiveItem = useServicePlanStore(
+    (s) => s.practicePreviewActiveItem
+  )
+  const generatePostServiceReport = useServicePlanStore(
+    (s) => s.generatePostServiceReport
+  )
   const addItem = useServicePlanStore((s) => s.addItem)
   const pendingReport = useServicePlanStore((s) => s.pendingReport)
   const lastReport = useServicePlanStore((s) => s.lastReport)
 
   const selectedItem = useMemo(
-    () => activePlan?.items.find((item) => item.id === activePlan.activeItemId) ?? null,
-    [activePlan],
+    () =>
+      activePlan?.items.find((item) => item.id === activePlan.activeItemId) ??
+      null,
+    [activePlan]
   )
 
   if (!activePlan) {
@@ -59,8 +70,14 @@ function ServicePlanEditor() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col" data-slot="service-plan-editor">
-      <PanelHeader title={activePlan.title} icon={<ClipboardListIcon className="size-4" />}>
+    <div
+      className="flex h-full min-h-0 flex-col"
+      data-slot="service-plan-editor"
+    >
+      <PanelHeader
+        title={activePlan.title}
+        icon={<ClipboardListIcon className="size-4" />}
+      >
         <Badge variant="outline" className="text-[0.5625rem] uppercase">
           {activePlan.status}
         </Badge>
@@ -77,7 +94,9 @@ function ServicePlanEditor() {
       <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
         <div className="flex min-h-0 flex-col border-r border-border">
           <div className="flex items-center justify-between border-b border-border px-3 py-2">
-            <span className="text-xs font-medium text-muted-foreground">Timeline</span>
+            <span className="text-xs font-medium text-muted-foreground">
+              Timeline
+            </span>
             <Button
               size="sm"
               variant="outline"
@@ -126,7 +145,11 @@ function ServicePlanEditor() {
       </div>
 
       <div className="flex flex-wrap items-center gap-2 border-t border-border px-3 py-2">
-        <Button size="sm" variant="outline" onClick={() => void startPractice()}>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => void startPractice()}
+        >
           <PlayIcon className="size-3.5" />
           Practice
         </Button>
@@ -134,21 +157,37 @@ function ServicePlanEditor() {
           <RadioIcon className="size-3.5" />
           Start service
         </Button>
-        <Button size="sm" variant="outline" onClick={() => void goToPreviousItem()}>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => void goToPreviousItem()}
+        >
           Previous
         </Button>
         <Button size="sm" variant="outline" onClick={() => void goToNextItem()}>
           <SkipForwardIcon className="size-3.5" />
           Next
         </Button>
-        <Button size="sm" variant="outline" onClick={() => void skipActiveItem()}>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => void skipActiveItem()}
+        >
           Skip
         </Button>
-        <Button size="sm" variant="secondary" onClick={() => void completeService()}>
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={() => void completeService()}
+        >
           Complete service
         </Button>
         {pendingReport && (
-          <Button size="sm" variant="outline" onClick={generatePostServiceReport}>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={generatePostServiceReport}
+          >
             <CalendarClockIcon className="size-3.5" />
             Generate report
           </Button>
@@ -158,8 +197,9 @@ function ServicePlanEditor() {
         <div className="border-t border-border px-3 py-2 text-xs text-muted-foreground">
           <div className="font-medium text-foreground">Post-service report</div>
           <div>
-            {lastReport.completedItems}/{lastReport.totalItems} items completed -{" "}
-            {lastReport.skippedItems} skipped - ~{lastReport.durationEstimateMinutes} min planned
+            {lastReport.completedItems}/{lastReport.totalItems} items completed
+            - {lastReport.skippedItems} skipped - ~
+            {lastReport.durationEstimateMinutes} min planned
           </div>
         </div>
       )}
@@ -195,7 +235,12 @@ export function ServicePlanSummaryWidget() {
           </span>
         </button>
       ))}
-      <Button size="sm" variant="outline" className="w-full" onClick={openPlanner}>
+      <Button
+        size="sm"
+        variant="outline"
+        className="w-full"
+        onClick={openPlanner}
+      >
         Open planner
       </Button>
     </div>
@@ -219,7 +264,10 @@ export function ServicePlanLibraryPanel() {
       data-slot="service-plan-page"
     >
       <div className="space-y-3 overflow-y-auto p-3">
-        <PanelHeader title="Service Plan" icon={<ClipboardListIcon className="size-4" />} />
+        <PanelHeader
+          title="Service Plan"
+          icon={<ClipboardListIcon className="size-4" />}
+        />
         <ServicePlanSummaryWidget />
         <div className="grid gap-2">
           {SERVICE_PLAN_TEMPLATES.map((template) => (
@@ -232,14 +280,16 @@ export function ServicePlanLibraryPanel() {
             >
               <div>
                 <div className="text-xs font-medium">{template.label}</div>
-                <div className="text-[0.625rem] text-muted-foreground">{template.description}</div>
+                <div className="text-[0.625rem] text-muted-foreground">
+                  {template.description}
+                </div>
               </div>
             </Button>
           ))}
         </div>
         {isHydrated && summaries.length > 0 && (
           <div className="space-y-1">
-            <div className="text-[0.625rem] font-medium uppercase text-muted-foreground">
+            <div className="text-[0.625rem] font-medium text-muted-foreground uppercase">
               Recent plans
             </div>
             {summaries.map((summary) => (
@@ -297,6 +347,218 @@ export function ServicePlanDialog() {
 
 export function ServicePlanPage() {
   return <ServicePlanWorkspace />
+}
+
+export function LiveServicePlanPage() {
+  const activePlan = useServicePlanStore((s) => s.activePlan)
+  const serviceContext = useServicePlanStore((s) => s.serviceContext)
+  const orderedItems = useMemo(
+    () => [...(activePlan?.items ?? [])].sort((a, b) => a.order - b.order),
+    [activePlan?.items]
+  )
+
+  return (
+    <div className="grid h-full min-h-0 gap-2 p-3 lg:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
+      <section className="min-h-0 overflow-hidden rounded-lg border border-border bg-card">
+        <PanelHeader
+          title="Live Service Plan"
+          icon={<ClipboardListIcon className="size-4" />}
+        >
+          <Badge
+            variant={serviceContext.performanceMode ? "default" : "outline"}
+          >
+            {serviceContext.planStatus}
+          </Badge>
+        </PanelHeader>
+        <div className="grid gap-3 p-3 md:grid-cols-2">
+          <div className="rounded-md border border-border p-3">
+            <div className="text-[0.625rem] font-medium text-muted-foreground uppercase">
+              Active item
+            </div>
+            <div className="mt-1 text-lg font-semibold">
+              {serviceContext.activeItem?.title ?? "Nothing active"}
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground capitalize">
+              {serviceContext.activeItem?.kind ??
+                "Start a service plan to populate this view"}
+            </div>
+          </div>
+          <div className="rounded-md border border-border p-3">
+            <div className="text-[0.625rem] font-medium text-muted-foreground uppercase">
+              Up next
+            </div>
+            <div className="mt-1 text-lg font-semibold">
+              {serviceContext.nextItem?.title ?? "No next item"}
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground capitalize">
+              {serviceContext.nextItem?.kind ?? "End of plan"}
+            </div>
+          </div>
+        </div>
+        <div className="min-h-0 px-3 pb-3">
+          <div className="max-h-[calc(100vh-260px)] overflow-y-auto rounded-md border border-border">
+            {orderedItems.length === 0 ? (
+              <div className="p-6 text-center text-sm text-muted-foreground">
+                No service plan is loaded.
+              </div>
+            ) : (
+              orderedItems.map((item) => (
+                <div
+                  key={item.id}
+                  className="flex items-center justify-between gap-3 border-b border-border px-3 py-2 last:border-b-0"
+                >
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium">
+                      {item.title}
+                    </div>
+                    <div className="text-xs text-muted-foreground capitalize">
+                      {item.kind}
+                    </div>
+                  </div>
+                  <Badge
+                    variant={item.status === "active" ? "default" : "outline"}
+                  >
+                    {item.status}
+                  </Badge>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </section>
+      <section className="min-h-0 overflow-hidden rounded-lg border border-border bg-card">
+        <PanelHeader
+          title="Live Context"
+          icon={<FileTextIcon className="size-4" />}
+        />
+        <div className="space-y-4 overflow-y-auto p-3 text-sm">
+          <div>
+            <div className="text-[0.625rem] font-medium text-muted-foreground uppercase">
+              Expected references
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {serviceContext.expectedReferences.length > 0 ? (
+                serviceContext.expectedReferences.map((ref) => (
+                  <Badge key={ref} variant="secondary">
+                    {ref}
+                  </Badge>
+                ))
+              ) : (
+                <span className="text-xs text-muted-foreground">
+                  None for the active item.
+                </span>
+              )}
+            </div>
+          </div>
+          <div>
+            <div className="text-[0.625rem] font-medium text-muted-foreground uppercase">
+              Operator notes
+            </div>
+            <p className="mt-2 whitespace-pre-wrap text-muted-foreground">
+              {serviceContext.operatorNotes || "No notes for the active item."}
+            </p>
+          </div>
+        </div>
+      </section>
+    </div>
+  )
+}
+
+export function LiveHymnPage() {
+  const serviceContext = useServicePlanStore((s) => s.serviceContext)
+  const deck = useHymnSlideStore((s) => s.deck)
+  const activeIndex = useHymnSlideStore((s) => s.activeIndex)
+  const activeSlide = deck[activeIndex] ?? null
+
+  return (
+    <div className="grid h-full min-h-0 gap-2 p-3 lg:grid-cols-[minmax(0,1fr)_360px]">
+      <section className="min-h-0 overflow-hidden rounded-lg border border-border bg-card">
+        <PanelHeader
+          title="Live Hymns"
+          icon={<ListMusicIcon className="size-4" />}
+        >
+          <Badge variant="outline">
+            {deck.length > 0 ? `${activeIndex + 1}/${deck.length}` : "No deck"}
+          </Badge>
+        </PanelHeader>
+        <div className="grid gap-3 p-3 md:grid-cols-2">
+          <div className="rounded-md border border-border p-3">
+            <div className="text-[0.625rem] font-medium text-muted-foreground uppercase">
+              Current hymn slide
+            </div>
+            <div className="mt-1 text-lg font-semibold">
+              {activeSlide?.hymnTitle ?? "No hymn live"}
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground">
+              {activeSlide
+                ? `Hymn ${activeSlide.hymnNumber}`
+                : "Queue hymn slides to populate this page"}
+            </div>
+          </div>
+          <div className="rounded-md border border-border p-3">
+            <div className="text-[0.625rem] font-medium text-muted-foreground uppercase">
+              Service-plan hymns
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {serviceContext.hymnSummaries.length > 0 ? (
+                serviceContext.hymnSummaries.map((hymn) => (
+                  <Badge key={hymn.hymnNumber} variant="secondary">
+                    {hymn.hymnNumber} {hymn.title}
+                  </Badge>
+                ))
+              ) : (
+                <span className="text-xs text-muted-foreground">
+                  No active or next hymn refs.
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+        <div className="min-h-0 px-3 pb-3">
+          <div className="max-h-[calc(100vh-240px)] overflow-y-auto rounded-md border border-border">
+            {deck.length === 0 ? (
+              <div className="p-6 text-center text-sm text-muted-foreground">
+                No hymn slide deck is loaded.
+              </div>
+            ) : (
+              deck.map((slide, index) => (
+                <div
+                  key={slide.screenId}
+                  className="flex items-center justify-between gap-3 border-b border-border px-3 py-2 last:border-b-0"
+                >
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium">
+                      {slide.reference}
+                    </div>
+                    <div className="truncate text-xs text-muted-foreground">
+                      {slide.hymnTitle}
+                    </div>
+                  </div>
+                  <Badge
+                    variant={index === activeIndex ? "default" : "outline"}
+                  >
+                    {index === activeIndex ? "live" : index + 1}
+                  </Badge>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </section>
+      <section className="min-h-0 overflow-hidden rounded-lg border border-border bg-card">
+        <PanelHeader
+          title="Current Lyrics"
+          icon={<FileTextIcon className="size-4" />}
+        />
+        <div className="overflow-y-auto p-3">
+          <p className="text-lg leading-8 whitespace-pre-wrap">
+            {activeSlide?.segments.map((segment) => segment.text).join("\n") ||
+              "No lyrics are currently selected."}
+          </p>
+        </div>
+      </section>
+    </div>
+  )
 }
 
 export const LazyServicePlanLibraryPanel = lazy(async () => ({

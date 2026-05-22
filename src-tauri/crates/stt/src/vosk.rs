@@ -17,6 +17,7 @@ use serde::Deserialize;
 use tokio::sync::mpsc;
 
 use crate::error::SttError;
+use crate::keyterms::bible_keyterms;
 use crate::provider::SttProvider;
 use crate::types::{TranscriptEvent, Word};
 
@@ -33,9 +34,26 @@ pub struct VoskProvider {
 #[serde(tag = "type", rename_all = "snake_case")]
 enum WorkerEvent {
     Ready,
-    Partial { text: String },
-    Final { text: String },
+    Partial {
+        text: String,
+        #[serde(default)]
+        words: Vec<VoskWord>,
+    },
+    Final {
+        text: String,
+        #[serde(default)]
+        words: Vec<VoskWord>,
+    },
     Error { message: String },
+}
+
+#[derive(Debug, Deserialize)]
+struct VoskWord {
+    word: String,
+    start: f64,
+    end: f64,
+    #[serde(default)]
+    conf: f64,
 }
 
 impl VoskProvider {
@@ -67,6 +85,8 @@ impl VoskProvider {
             .arg(&self.model_path)
             .arg("--sample-rate")
             .arg("16000")
+            .arg("--grammar-json")
+            .arg(vosk_grammar_json()?)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -92,8 +112,64 @@ fn write_samples(stdin: &mut ChildStdin, samples: &[i16]) -> Result<(), SttError
         .map_err(|e| SttError::SendError(format!("Vosk worker write failed: {e}")))
 }
 
-fn empty_words() -> Vec<Word> {
-    Vec::new()
+fn to_words(words: Vec<VoskWord>) -> Vec<Word> {
+    words
+        .into_iter()
+        .map(|word| Word {
+            text: word.word.clone(),
+            start: word.start,
+            end: word.end,
+            confidence: word.conf,
+            punctuated_word: Some(word.word),
+        })
+        .collect()
+}
+
+fn average_confidence(words: &[Word]) -> f64 {
+    let scored = words
+        .iter()
+        .filter(|word| word.confidence > 0.0)
+        .collect::<Vec<_>>();
+    if scored.is_empty() {
+        return 0.75;
+    }
+    scored.iter().map(|word| word.confidence).sum::<f64>() / scored.len() as f64
+}
+
+fn vosk_grammar_json() -> Result<String, SttError> {
+    let mut phrases = vec![
+        "[unk]".to_string(),
+        "chapter".to_string(),
+        "verse".to_string(),
+        "verses".to_string(),
+        "psalm".to_string(),
+        "psalms".to_string(),
+        "sabbath".to_string(),
+        "scripture reading".to_string(),
+        "responsive reading".to_string(),
+        "opening hymn".to_string(),
+        "closing hymn".to_string(),
+        "hymn number".to_string(),
+        "holy spirit".to_string(),
+        "jesus christ".to_string(),
+        "king james".to_string(),
+    ];
+    phrases.extend(bible_keyterms().into_iter().map(|term| term.to_lowercase()));
+    phrases.extend(
+        [
+            "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
+            "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen",
+            "eighteen", "nineteen", "twenty", "thirty", "forty", "fifty", "sixty",
+            "seventy", "eighty", "ninety",
+        ]
+        .iter()
+        .map(|term| (*term).to_string()),
+    );
+
+    phrases.sort();
+    phrases.dedup();
+    serde_json::to_string(&phrases)
+        .map_err(|e| SttError::ConnectionFailed(format!("failed to build Vosk grammar: {e}")))
 }
 
 #[async_trait::async_trait]
@@ -128,17 +204,19 @@ impl SttProvider for VoskProvider {
                         WorkerEvent::Ready => {
                             let _ = reader_tx.blocking_send(TranscriptEvent::Connected);
                         }
-                        WorkerEvent::Partial { text } if !text.trim().is_empty() => {
+                        WorkerEvent::Partial { text, words } if !text.trim().is_empty() => {
                             let _ = reader_tx.blocking_send(TranscriptEvent::Partial {
                                 transcript: text,
-                                words: empty_words(),
+                                words: to_words(words),
                             });
                         }
-                        WorkerEvent::Final { text } if !text.trim().is_empty() => {
+                        WorkerEvent::Final { text, words } if !text.trim().is_empty() => {
+                            let words = to_words(words);
+                            let confidence = average_confidence(&words);
                             let _ = reader_tx.blocking_send(TranscriptEvent::Final {
                                 transcript: text,
-                                words: empty_words(),
-                                confidence: 0.75,
+                                words,
+                                confidence,
                                 speech_final: true,
                             });
                             let _ = reader_tx.blocking_send(TranscriptEvent::UtteranceEnd);

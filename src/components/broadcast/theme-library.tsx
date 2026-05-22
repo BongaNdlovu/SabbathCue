@@ -317,6 +317,11 @@ export function ThemeLibrary() {
           Export
         </Button>
       </div>
+      <p className="px-3 pb-3 text-[0.6875rem] leading-4 text-muted-foreground">
+        Import expects a SabbathCue theme JSON file exported from this library.
+        Background images are chosen separately in the designer as PNG, JPEG,
+        WebP, GIF, or BMP files.
+      </p>
 
       {/* Theme list */}
       <ScrollArea className="min-h-0 flex-1">

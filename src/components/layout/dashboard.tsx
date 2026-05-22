@@ -30,13 +30,25 @@ import { useServicePlanStore } from "@/stores/service-plan-store"
 const LazyHymnWorkspace = lazy(() =>
   import("@/components/hymnal/HymnWorkspace").then((mod) => ({
     default: mod.HymnWorkspace,
-  })),
+  }))
 )
 
 const LazyServicePlanWorkspace = lazy(() =>
   import("@/components/service-plan/ServicePlanPage").then((mod) => ({
     default: mod.ServicePlanWorkspace,
-  })),
+  }))
+)
+
+const LazyLiveServicePlanPage = lazy(() =>
+  import("@/components/service-plan/ServicePlanPage").then((mod) => ({
+    default: mod.LiveServicePlanPage,
+  }))
+)
+
+const LazyLiveHymnPage = lazy(() =>
+  import("@/components/service-plan/ServicePlanPage").then((mod) => ({
+    default: mod.LiveHymnPage,
+  }))
 )
 
 function ResizeHandle({
@@ -57,8 +69,8 @@ function ResizeHandle({
       onPointerDown={onPointerDown}
       className={
         axis === "x"
-          ? "relative cursor-col-resize rounded-sm bg-border/40 transition-colors hover:bg-primary/50 after:absolute after:inset-y-1 after:left-1/2 after:w-px after:-translate-x-1/2 after:bg-muted-foreground/40"
-          : "relative cursor-row-resize rounded-sm bg-border/40 transition-colors hover:bg-primary/50 after:absolute after:left-1 after:right-1 after:top-1/2 after:h-px after:-translate-y-1/2 after:bg-muted-foreground/40"
+          ? "relative cursor-col-resize rounded-sm bg-border/40 transition-colors after:absolute after:inset-y-1 after:left-1/2 after:w-px after:-translate-x-1/2 after:bg-muted-foreground/40 hover:bg-primary/50"
+          : "relative cursor-row-resize rounded-sm bg-border/40 transition-colors after:absolute after:top-1/2 after:right-1 after:left-1 after:h-px after:-translate-y-1/2 after:bg-muted-foreground/40 hover:bg-primary/50"
       }
     />
   )
@@ -67,7 +79,7 @@ function ResizeHandle({
 export function Dashboard() {
   const contentRef = useRef<HTMLDivElement>(null)
   const [windowWidth, setWindowWidth] = useState(() =>
-    typeof window === "undefined" ? 1920 : window.innerWidth,
+    typeof window === "undefined" ? 1920 : window.innerWidth
   )
   const workspace = useDashboardWorkspaceStore((s) => s.workspace)
   const setWorkspace = useDashboardWorkspaceStore((s) => s.setWorkspace)
@@ -108,80 +120,104 @@ export function Dashboard() {
     setLayout(layoutStateFromPreset("balanced"))
   }
 
-  const startTopResize = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
-    event.preventDefault()
-    const content = contentRef.current
-    if (!content) return
+  const startTopResize = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      event.preventDefault()
+      const content = contentRef.current
+      if (!content) return
 
-    const rect = content.getBoundingClientRect()
-    const onMove = (moveEvent: PointerEvent) => {
-      const next = ((moveEvent.clientY - rect.top) / rect.height) * 100
-      setLayout((current) => ({
-        ...current,
-        topHeightPercent: clampNumber(next, 34, 68),
-      }))
-    }
-    const onUp = () => {
-      window.removeEventListener("pointermove", onMove)
-      window.removeEventListener("pointerup", onUp)
-    }
-    window.addEventListener("pointermove", onMove)
-    window.addEventListener("pointerup", onUp)
-  }, [])
+      const rect = content.getBoundingClientRect()
+      const onMove = (moveEvent: PointerEvent) => {
+        const next = ((moveEvent.clientY - rect.top) / rect.height) * 100
+        setLayout((current) => ({
+          ...current,
+          topHeightPercent: clampNumber(next, 34, 68),
+        }))
+      }
+      const onUp = () => {
+        window.removeEventListener("pointermove", onMove)
+        window.removeEventListener("pointerup", onUp)
+      }
+      window.addEventListener("pointermove", onMove)
+      window.addEventListener("pointerup", onUp)
+    },
+    []
+  )
 
-  const startTranscriptResize = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
-    event.preventDefault()
-    const startX = event.clientX
-    const startWidth = transcriptWidth
-    const onMove = (moveEvent: PointerEvent) => {
-      setLayout((current) => ({
-        ...current,
-        transcriptWidth: clampNumber(startWidth + moveEvent.clientX - startX, 240, 520),
-      }))
-    }
-    const onUp = () => {
-      window.removeEventListener("pointermove", onMove)
-      window.removeEventListener("pointerup", onUp)
-    }
-    window.addEventListener("pointermove", onMove)
-    window.addEventListener("pointerup", onUp)
-  }, [transcriptWidth])
+  const startTranscriptResize = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      event.preventDefault()
+      const startX = event.clientX
+      const startWidth = transcriptWidth
+      const onMove = (moveEvent: PointerEvent) => {
+        setLayout((current) => ({
+          ...current,
+          transcriptWidth: clampNumber(
+            startWidth + moveEvent.clientX - startX,
+            240,
+            520
+          ),
+        }))
+      }
+      const onUp = () => {
+        window.removeEventListener("pointermove", onMove)
+        window.removeEventListener("pointerup", onUp)
+      }
+      window.addEventListener("pointermove", onMove)
+      window.addEventListener("pointerup", onUp)
+    },
+    [transcriptWidth]
+  )
 
-  const startQueueResize = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
-    event.preventDefault()
-    const startX = event.clientX
-    const startWidth = queueWidth
-    const onMove = (moveEvent: PointerEvent) => {
-      setLayout((current) => ({
-        ...current,
-        queueWidth: clampNumber(startWidth - (moveEvent.clientX - startX), 240, 520),
-      }))
-    }
-    const onUp = () => {
-      window.removeEventListener("pointermove", onMove)
-      window.removeEventListener("pointerup", onUp)
-    }
-    window.addEventListener("pointermove", onMove)
-    window.addEventListener("pointerup", onUp)
-  }, [queueWidth])
+  const startQueueResize = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      event.preventDefault()
+      const startX = event.clientX
+      const startWidth = queueWidth
+      const onMove = (moveEvent: PointerEvent) => {
+        setLayout((current) => ({
+          ...current,
+          queueWidth: clampNumber(
+            startWidth - (moveEvent.clientX - startX),
+            240,
+            520
+          ),
+        }))
+      }
+      const onUp = () => {
+        window.removeEventListener("pointermove", onMove)
+        window.removeEventListener("pointerup", onUp)
+      }
+      window.addEventListener("pointermove", onMove)
+      window.addEventListener("pointerup", onUp)
+    },
+    [queueWidth]
+  )
 
-  const startDetectionsResize = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
-    event.preventDefault()
-    const startX = event.clientX
-    const startWidth = detectionsWidth
-    const onMove = (moveEvent: PointerEvent) => {
-      setLayout((current) => ({
-        ...current,
-        detectionsWidth: clampNumber(startWidth - (moveEvent.clientX - startX), 360, 760),
-      }))
-    }
-    const onUp = () => {
-      window.removeEventListener("pointermove", onMove)
-      window.removeEventListener("pointerup", onUp)
-    }
-    window.addEventListener("pointermove", onMove)
-    window.addEventListener("pointerup", onUp)
-  }, [detectionsWidth])
+  const startDetectionsResize = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      event.preventDefault()
+      const startX = event.clientX
+      const startWidth = detectionsWidth
+      const onMove = (moveEvent: PointerEvent) => {
+        setLayout((current) => ({
+          ...current,
+          detectionsWidth: clampNumber(
+            startWidth - (moveEvent.clientX - startX),
+            360,
+            760
+          ),
+        }))
+      }
+      const onUp = () => {
+        window.removeEventListener("pointermove", onMove)
+        window.removeEventListener("pointerup", onUp)
+      }
+      window.addEventListener("pointermove", onMove)
+      window.addEventListener("pointerup", onUp)
+    },
+    [detectionsWidth]
+  )
 
   return (
     <div className="fixed inset-0 flex flex-col overflow-hidden bg-background">
@@ -213,6 +249,17 @@ export function Dashboard() {
         </Button>
         <Button
           size="xs"
+          variant={workspace === "live-service" ? "default" : "outline"}
+          aria-pressed={workspace === "live-service"}
+          onClick={() => {
+            closePlanner()
+            setWorkspace("live-service")
+          }}
+        >
+          Live Service
+        </Button>
+        <Button
+          size="xs"
           variant={workspace === "hymns" ? "default" : "outline"}
           aria-pressed={workspace === "hymns"}
           onClick={() => {
@@ -221,6 +268,17 @@ export function Dashboard() {
           }}
         >
           Hymns
+        </Button>
+        <Button
+          size="xs"
+          variant={workspace === "live-hymns" ? "default" : "outline"}
+          aria-pressed={workspace === "live-hymns"}
+          onClick={() => {
+            closePlanner()
+            setWorkspace("live-hymns")
+          }}
+        >
+          Live Hymns
         </Button>
 
         {workspace === "live" && (
@@ -240,7 +298,12 @@ export function Dashboard() {
             <span className="ml-2 text-xs text-muted-foreground">
               Drag labeled dividers to resize panels
             </span>
-            <Button size="xs" variant="ghost" onClick={resetLayout} className="ml-auto">
+            <Button
+              size="xs"
+              variant="ghost"
+              onClick={resetLayout}
+              className="ml-auto"
+            >
               Reset layout
             </Button>
           </>
@@ -249,18 +312,49 @@ export function Dashboard() {
 
       {workspace === "service-plans" ? (
         <div className="min-h-0 flex-1 overflow-hidden">
-          <Suspense fallback={<div className="h-full rounded-lg border border-border bg-card" />}>
+          <Suspense
+            fallback={
+              <div className="h-full rounded-lg border border-border bg-card" />
+            }
+          >
             <LazyServicePlanWorkspace />
           </Suspense>
         </div>
       ) : workspace === "hymns" ? (
         <div className="min-h-0 flex-1 overflow-hidden">
-          <Suspense fallback={<div className="h-full rounded-lg border border-border bg-card" />}>
+          <Suspense
+            fallback={
+              <div className="h-full rounded-lg border border-border bg-card" />
+            }
+          >
             <LazyHymnWorkspace />
           </Suspense>
         </div>
+      ) : workspace === "live-service" ? (
+        <div className="min-h-0 flex-1 overflow-hidden">
+          <Suspense
+            fallback={
+              <div className="h-full rounded-lg border border-border bg-card" />
+            }
+          >
+            <LazyLiveServicePlanPage />
+          </Suspense>
+        </div>
+      ) : workspace === "live-hymns" ? (
+        <div className="min-h-0 flex-1 overflow-hidden">
+          <Suspense
+            fallback={
+              <div className="h-full rounded-lg border border-border bg-card" />
+            }
+          >
+            <LazyLiveHymnPage />
+          </Suspense>
+        </div>
       ) : (
-        <div ref={contentRef} className="flex min-h-0 flex-1 flex-col gap-1.5 p-3">
+        <div
+          ref={contentRef}
+          className="flex min-h-0 flex-1 flex-col gap-1.5 p-3"
+        >
           <div
             className="grid min-h-0 gap-1.5 *:min-h-0"
             style={{
@@ -268,7 +362,9 @@ export function Dashboard() {
               gridTemplateColumns: isCompact
                 ? `minmax(0, 1fr) minmax(0, 1fr)`
                 : `${transcriptWidth}px 6px minmax(280px, 1fr) minmax(280px, 1fr) 6px ${queueWidth}px`,
-              gridTemplateRows: isCompact ? `minmax(0, 1fr) minmax(0, 0.8fr)` : undefined,
+              gridTemplateRows: isCompact
+                ? `minmax(0, 1fr) minmax(0, 0.8fr)`
+                : undefined,
             }}
           >
             <div className={isCompact ? "min-h-0" : "contents"}>
@@ -307,7 +403,9 @@ export function Dashboard() {
               gridTemplateColumns: isCompact
                 ? "minmax(0, 1fr)"
                 : `minmax(0, 1fr) 6px ${detectionsWidth}px`,
-              gridTemplateRows: isCompact ? "minmax(0, 1fr) minmax(220px, 0.55fr)" : undefined,
+              gridTemplateRows: isCompact
+                ? "minmax(0, 1fr) minmax(220px, 0.55fr)"
+                : undefined,
             }}
           >
             <SearchPanel />

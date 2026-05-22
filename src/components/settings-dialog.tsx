@@ -349,8 +349,9 @@ function SpeechSection() {
           </div>
 
           <p className="text-[0.625rem] leading-relaxed text-muted-foreground">
-            Vosk uses a small English model for fast local streaming. If the model
-            is missing, transcription will not start until it is installed.
+            Vosk now uses Bible and worship phrase hints for better local recognition.
+            For the best accuracy, replace this folder with a larger English Vosk model
+            using the same folder name.
           </p>
           {!assetsLoading && (!assetStatus?.vosk_model || !assetStatus?.vosk_worker) && (
             <p className="rounded-md bg-background px-2 py-1.5 font-mono text-[0.625rem] text-muted-foreground">

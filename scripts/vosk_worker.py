@@ -20,6 +20,11 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", required=True)
     parser.add_argument("--sample-rate", type=int, default=16000)
+    parser.add_argument(
+        "--grammar-json",
+        default=None,
+        help="Optional JSON array of domain phrases. Include [unk] to keep open dictation.",
+    )
     args = parser.parse_args()
 
     try:
@@ -30,8 +35,12 @@ def main() -> int:
 
     try:
         model = Model(args.model)
-        recognizer = KaldiRecognizer(model, args.sample_rate)
+        if args.grammar_json:
+            recognizer = KaldiRecognizer(model, args.sample_rate, args.grammar_json)
+        else:
+            recognizer = KaldiRecognizer(model, args.sample_rate)
         recognizer.SetWords(True)
+        recognizer.SetPartialWords(True)
         emit({"type": "ready"})
 
         while True:
@@ -42,17 +51,29 @@ def main() -> int:
                 result = json.loads(recognizer.Result())
                 text = (result.get("text") or "").strip()
                 if text:
-                    emit({"type": "final", "text": text})
+                    emit(
+                        {
+                            "type": "final",
+                            "text": text,
+                            "words": result.get("result") or [],
+                        }
+                    )
             else:
                 partial = json.loads(recognizer.PartialResult())
                 text = (partial.get("partial") or "").strip()
                 if text:
-                    emit({"type": "partial", "text": text})
+                    emit(
+                        {
+                            "type": "partial",
+                            "text": text,
+                            "words": partial.get("partial_result") or [],
+                        }
+                    )
 
         final = json.loads(recognizer.FinalResult())
         text = (final.get("text") or "").strip()
         if text:
-            emit({"type": "final", "text": text})
+            emit({"type": "final", "text": text, "words": final.get("result") or []})
     except Exception as exc:
         emit({"type": "error", "message": f"Vosk worker failed: {exc}"})
         return 1

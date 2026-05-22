@@ -180,7 +180,7 @@ impl DeepgramClient {
         let (ws_tx, mut ws_rx) = tokio::sync::mpsc::channel::<WsCommand>(64);
 
         // Part 1: Blocking thread reads audio from crossbeam channel
-        let audio_reader = {
+        let mut audio_reader = {
             let ws_tx = ws_tx.clone();
             let cancelled = send_cancelled.clone();
             tokio::task::spawn_blocking(move || {
@@ -240,7 +240,7 @@ impl DeepgramClient {
         };
 
         // Part 2: Async task writes to WebSocket (non-blocking, doesn't starve tokio)
-        let ws_writer = tokio::spawn(async move {
+        let mut ws_writer = tokio::spawn(async move {
             while let Some(cmd) = ws_rx.recv().await {
                 match cmd {
                     WsCommand::Audio(data) => {
@@ -269,7 +269,7 @@ impl DeepgramClient {
         });
 
         // Receiver task: reads text frames and parses Deepgram JSON.
-        let receiver = tokio::spawn(async move {
+        let mut receiver = tokio::spawn(async move {
             while let Some(msg_result) = read.next().await {
                 if recv_cancelled.load(Ordering::SeqCst) {
                     break;
@@ -283,6 +283,14 @@ impl DeepgramClient {
                     }
                     Ok(Message::Close(_)) => {
                         log::info!("DeepgramClient receiver: server closed connection");
+                        if !recv_cancelled.load(Ordering::SeqCst) {
+                            recv_err.store(true, Ordering::SeqCst);
+                            let _ = event_tx
+                                .send(TranscriptEvent::Error(
+                                    "Deepgram WebSocket closed unexpectedly".into(),
+                                ))
+                                .await;
+                        }
                         break;
                     }
                     Ok(_) => {
@@ -300,7 +308,18 @@ impl DeepgramClient {
             }
         });
 
-        // Wait for all tasks
+        // Return promptly when any connection side finishes. On errors, this lets the outer
+        // reconnect loop run instead of waiting for audio capture to stop.
+        tokio::select! {
+            _ = &mut audio_reader => {}
+            _ = &mut ws_writer => {}
+            _ = &mut receiver => {}
+        }
+
+        audio_reader.abort();
+        ws_writer.abort();
+        receiver.abort();
+
         let _ = tokio::join!(audio_reader, ws_writer, receiver);
 
         // If either side had an unexpected error, return Err so the connection loop retries.
@@ -489,7 +508,7 @@ impl SttProvider for DeepgramClient {
                 .await;
 
             let rest_client = crate::rest::DeepgramRestClient::new(self.config.clone());
-            let flush_interval = std::time::Duration::from_secs(4);
+            let flush_interval = std::time::Duration::from_millis(1500);
             let cancelled = self.cancelled.clone();
             let (rest_audio_tx, mut rest_audio_rx) = mpsc::channel::<Vec<i16>>(4);
 
