@@ -21,7 +21,7 @@ use crate::keyterms::bible_keyterms;
 use crate::provider::SttProvider;
 use crate::types::{TranscriptEvent, Word};
 
-const DEFAULT_CHUNK_SAMPLES: usize = 800;
+const DEFAULT_CHUNK_SAMPLES: usize = 1600;
 
 #[derive(Debug)]
 pub struct VoskProvider {
@@ -262,7 +262,7 @@ impl SttProvider for VoskProvider {
                 if writer_cancelled.load(Ordering::SeqCst) {
                     break;
                 }
-                match audio_rx.recv_timeout(Duration::from_millis(20)) {
+                match audio_rx.recv_timeout(Duration::from_millis(50)) {
                     Ok(samples) => {
                         pending.extend(samples);
                         while pending.len() >= DEFAULT_CHUNK_SAMPLES {
