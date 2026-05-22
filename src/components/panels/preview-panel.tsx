@@ -7,11 +7,13 @@ import { PanelEmptyState } from "@/components/ui/panel-empty-state"
 import { bibleActions } from "@/hooks/use-bible"
 import {
   commitPreviewToLive,
+  selectPreviewItem,
   selectPreviewVerse,
 } from "@/lib/presentation-workflow"
 import { useBibleStore } from "@/stores/bible-store"
 import { useBroadcastStore } from "@/stores/broadcast-store"
-import { MonitorIcon, SendIcon, XIcon } from "lucide-react"
+import { useHymnSlideStore } from "@/stores/hymn-slide-store"
+import { ChevronLeftIcon, ChevronRightIcon, MonitorIcon, SendIcon, XIcon } from "lucide-react"
 
 export function PreviewPanel() {
   const activeTranslationId = useBibleStore((s) => s.activeTranslationId)
@@ -47,6 +49,24 @@ export function PreviewPanel() {
     useBibleStore.getState().selectVerse(null)
   }
 
+  const previewDeckIndex = previewItem?.kind === "hymn"
+    ? useHymnSlideStore
+        .getState()
+        .deck.findIndex((item) => item.screenId === previewItem.hymnSlide?.screenId)
+    : -1
+  const canNavigateHymn = previewDeckIndex >= 0
+  const navigateHymnPreview = (delta: number) => {
+    const hymnSlides = useHymnSlideStore.getState()
+    const currentIndex =
+      hymnSlides.deck.findIndex((item) => item.screenId === previewItem?.hymnSlide?.screenId)
+    if (currentIndex < 0) return
+    const nextIndex = Math.max(0, Math.min(hymnSlides.deck.length - 1, currentIndex + delta))
+    const next = hymnSlides.deck[nextIndex]
+    if (!next || nextIndex === currentIndex) return
+    hymnSlides.setDeck(hymnSlides.deck, nextIndex)
+    selectPreviewItem(next)
+  }
+
   return (
     <div
       data-slot="preview-panel"
@@ -64,11 +84,36 @@ export function PreviewPanel() {
             {previewItem?.reference ?? "No item selected"}
           </p>
           <p className="text-xs text-muted-foreground">
-            Preview only. Audience output changes when sent live.
+            Preview only. Verses, hymns, and songs change audience output when sent live.
           </p>
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
+          {previewItem?.kind === "hymn" && (
+            <div className="flex items-center gap-1">
+              <Button
+                size="icon-xs"
+                variant="outline"
+                disabled={!canNavigateHymn || previewDeckIndex <= 0}
+                onClick={() => navigateHymnPreview(-1)}
+                title="Previous hymn or song slide"
+              >
+                <ChevronLeftIcon className="size-3" />
+              </Button>
+              <span className="min-w-12 text-center text-[0.625rem] tabular-nums text-muted-foreground">
+                {(previewItem.hymnSlide?.slideIndex ?? 0) + 1}/{previewItem.hymnSlide?.slideCount ?? 1}
+              </span>
+              <Button
+                size="icon-xs"
+                variant="outline"
+                disabled={!canNavigateHymn || previewDeckIndex >= useHymnSlideStore.getState().deck.length - 1}
+                onClick={() => navigateHymnPreview(1)}
+                title="Next hymn or song slide"
+              >
+                <ChevronRightIcon className="size-3" />
+              </Button>
+            </div>
+          )}
           <Button
             size="sm"
             variant="outline"
@@ -102,8 +147,8 @@ export function PreviewPanel() {
         ) : (
           <PanelEmptyState
             icon={<MonitorIcon className="size-8" />}
-            title="No verse selected"
-            description="Detected, searched, or queued verses appear here before going live."
+            title="No item selected"
+            description="Detected verses, searched passages, hymns, and song slides appear here before going live."
           />
         )}
       </div>

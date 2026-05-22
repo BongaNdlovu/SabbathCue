@@ -509,12 +509,12 @@ function DisplayModeSection() {
         </RadioGroup>
       </div>
 
-      {/* Confidence threshold — only when auto */}
+      {/* Auto-live threshold — only when auto */}
       {autoMode && (
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
             <label className="text-xs font-medium tracking-wider text-muted-foreground uppercase">
-              Confidence Threshold
+              Auto-live Threshold
             </label>
             <span className="text-xs text-muted-foreground tabular-nums">
               {thresholdPercent}%
@@ -528,8 +528,8 @@ function DisplayModeSection() {
             onValueChange={([v]) => setConfidenceThreshold(v / 100)}
           />
           <p className="text-[0.625rem] text-muted-foreground">
-            Only verses with confidence above this threshold will be sent to
-            broadcast automatically. Higher values reduce false positives.
+            Only verses above this threshold are sent live automatically.
+            Semantic and testimony-based suggestions still appear for review.
           </p>
         </div>
       )}

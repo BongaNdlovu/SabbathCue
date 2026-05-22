@@ -1,9 +1,11 @@
+import { useEffect, useState } from "react"
 import { PanelHeader } from "@/components/ui/panel-header"
 import { PanelEmptyState } from "@/components/ui/panel-empty-state"
 import { ConfidenceDot } from "@/components/ui/confidence-dot"
 import { Button } from "@/components/ui/button"
-import { EyeIcon, PlayIcon, PlusIcon, RadarIcon } from "lucide-react"
+import { BrainCircuitIcon, EyeIcon, PlayIcon, PlusIcon, RadarIcon } from "lucide-react"
 import { useDetection, detectionActions } from "@/hooks/use-detection"
+import { useSettingsStore } from "@/stores/settings-store"
 import { useQueueStore } from "@/stores/queue-store"
 import {
   detectionToVerse,
@@ -90,6 +92,29 @@ function DetectionCard({ detection }: { detection: DetectionResult }) {
 
 export function DetectionsPanel() {
   const { detections } = useDetection()
+  const confidenceThreshold = useSettingsStore((s) => s.confidenceThreshold)
+  const [semanticStatus, setSemanticStatus] = useState<{
+    has_semantic: boolean
+    paraphrase_enabled: boolean
+  } | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    detectionActions
+      .getDetectionStatus()
+      .then((status) => {
+        if (!cancelled) {
+          setSemanticStatus({
+            has_semantic: status.has_semantic,
+            paraphrase_enabled: status.paraphrase_enabled,
+          })
+        }
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   return (
     <div
@@ -97,12 +122,24 @@ export function DetectionsPanel() {
       className="flex h-full flex-col overflow-hidden rounded-lg border border-border bg-card"
     >
       <PanelHeader title="Recent detections" icon={<RadarIcon className="size-3" />} step={6}>
-        <button
-          onClick={() => detectionActions.clearDetections()}
-          className="text-[0.625rem] text-muted-foreground transition-colors hover:text-foreground"
-        >
-          Clear all
-        </button>
+        <div className="flex items-center gap-2">
+          <span
+            className="inline-flex items-center gap-1 rounded border border-border px-1.5 py-0.5 text-[0.5625rem] uppercase text-muted-foreground"
+            title="Semantic detections remain visible from 42%; the threshold controls automatic output only."
+          >
+            <BrainCircuitIcon className="size-2.5" />
+            {semanticStatus?.has_semantic ? "Semantic" : "Keyword"}
+            {semanticStatus?.paraphrase_enabled ? " + paraphrase" : ""}
+            {" "}
+            auto {Math.round(confidenceThreshold * 100)}%
+          </span>
+          <button
+            onClick={() => detectionActions.clearDetections()}
+            className="text-[0.625rem] text-muted-foreground transition-colors hover:text-foreground"
+          >
+            Clear all
+          </button>
+        </div>
       </PanelHeader>
 
       <div className="min-h-0 flex-1 overflow-y-auto">

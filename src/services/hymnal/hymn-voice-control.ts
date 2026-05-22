@@ -7,6 +7,7 @@ import {
 } from "@/services/hymnal/hymn-presentation"
 import { addRecentHymn } from "@/services/hymnal/hymnal-history"
 import { getHymnByNumber } from "@/services/hymnal/hymnal-repository"
+import { useHymnSlideStore } from "@/stores/hymn-slide-store"
 
 const VALID_HYMN_NUMBERS: Set<number> = new Set(SDA_HYMNAL_INDEX.map((hymn) => hymn.number))
 const DEDUPE_WINDOW_MS = 5000
@@ -145,7 +146,9 @@ export async function handleHymnVoiceControl(text: string): Promise<boolean> {
   const firstScreen = screens[0]
   if (!firstScreen) return false
 
-  selectPreviewItem(createHymnPresentationItem(firstScreen))
+  const deck = screens.map((screen) => createHymnPresentationItem(screen))
+  useHymnSlideStore.getState().setDeck(deck, 0)
+  selectPreviewItem(deck[0])
   addRecentHymn(hymn.id)
   lastHandled = { hymnNumber, at: Date.now() }
   return true

@@ -22,6 +22,10 @@ pub(crate) const FTS5_CONFIDENCE_DECAY: f64 = 0.04;
 /// FTS5 results below this confidence are not included.
 pub(crate) const FTS5_MIN_CONFIDENCE: f64 = 0.42;
 
+/// Detection results at or above this confidence are visible to operators.
+/// Auto-live/auto-queue uses the UI threshold separately.
+pub(crate) const OPERATOR_DETECTION_THRESHOLD: f64 = 0.42;
+
 /// Serializable detection result for the frontend
 #[derive(Clone, Serialize)]
 pub struct DetectionResult {
@@ -296,28 +300,30 @@ pub fn update_detection_settings(
 
     {
         let mut merger = merger_state.lock().map_err(|e| e.to_string())?;
-        merger.set_confidence_threshold(threshold);
-        merger.set_auto_queue_threshold(auto_threshold);
-        merger.set_cooldown_ms(cooldown_ms.clamp(250, 60_000));
+        apply_detection_settings_to_merger(&mut merger, auto_threshold, cooldown_ms);
     }
 
     {
         let mut pipeline = pipeline_state.lock().map_err(|e| e.to_string())?;
-        pipeline.merger_mut().set_confidence_threshold(threshold);
-        pipeline
-            .merger_mut()
-            .set_auto_queue_threshold(auto_threshold);
-        pipeline
-            .merger_mut()
-            .set_cooldown_ms(cooldown_ms.clamp(250, 60_000));
+        apply_detection_settings_to_merger(pipeline.merger_mut(), auto_threshold, cooldown_ms);
     }
 
     log::info!(
-        "[DET] Settings updated: auto_mode={auto_mode}, threshold={threshold:.2}, cooldown_ms={}",
+        "[DET] Settings updated: auto_mode={auto_mode}, operator_threshold={OPERATOR_DETECTION_THRESHOLD:.2}, auto_threshold={auto_threshold:.2}, cooldown_ms={}",
         cooldown_ms.clamp(250, 60_000)
     );
 
     Ok(())
+}
+
+fn apply_detection_settings_to_merger(
+    merger: &mut rhema_detection::DetectionMerger,
+    auto_threshold: f64,
+    cooldown_ms: u64,
+) {
+    merger.set_confidence_threshold(OPERATOR_DETECTION_THRESHOLD);
+    merger.set_auto_queue_threshold(auto_threshold);
+    merger.set_cooldown_ms(cooldown_ms.clamp(250, 60_000));
 }
 
 #[derive(Serialize)]
@@ -347,4 +353,56 @@ pub fn detection_control_status(
         .detection_paused
         .load(std::sync::atomic::Ordering::Relaxed);
     Ok(DetectionControlStatus { detection_paused })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rhema_detection::{Detection, DetectionMerger, DetectionSource, VerseRef};
+
+    fn semantic_detection(confidence: f64) -> Detection {
+        Detection {
+            verse_ref: VerseRef {
+                book_number: 43,
+                book_name: "John".to_string(),
+                chapter: 3,
+                verse_start: 16,
+                verse_end: None,
+            },
+            verse_id: None,
+            confidence,
+            source: DetectionSource::Semantic {
+                similarity: confidence,
+            },
+            transcript_snippet: "testimony about grace and rescue".to_string(),
+            detected_at: 0,
+            is_chapter_only: false,
+        }
+    }
+
+    #[test]
+    fn detection_settings_keep_semantic_results_visible_below_auto_threshold() {
+        let mut merger = DetectionMerger::new();
+
+        apply_detection_settings_to_merger(&mut merger, 0.80, 2500);
+
+        let results = merger.merge(vec![], vec![semantic_detection(0.50)]);
+
+        assert_eq!(merger.confidence_threshold(), OPERATOR_DETECTION_THRESHOLD);
+        assert_eq!(merger.auto_queue_threshold(), 0.80);
+        assert_eq!(results.len(), 1);
+        assert!(!results[0].auto_queued);
+    }
+
+    #[test]
+    fn manual_mode_disables_auto_queue_without_hiding_semantic_results() {
+        let mut merger = DetectionMerger::new();
+
+        apply_detection_settings_to_merger(&mut merger, 2.0, 2500);
+
+        let results = merger.merge(vec![], vec![semantic_detection(0.72)]);
+
+        assert_eq!(results.len(), 1);
+        assert!(!results[0].auto_queued);
+    }
 }

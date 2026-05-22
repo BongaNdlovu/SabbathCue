@@ -6,10 +6,11 @@ import { PanelHeader } from "@/components/ui/panel-header"
 import { PanelEmptyState } from "@/components/ui/panel-empty-state"
 import { Switch } from "@/components/ui/switch"
 import { isPanelFullscreen, togglePanelFullscreen } from "@/components/panels/live-output-panel-fullscreen"
-import { commitPreviewToLive } from "@/lib/presentation-workflow"
+import { commitPreviewToLive, presentItem } from "@/lib/presentation-workflow"
 import { cn } from "@/lib/utils"
 import { useBroadcastStore } from "@/stores/broadcast-store"
-import { EyeIcon, EyeOffIcon, RadioIcon, SendIcon, Maximize2Icon, Minimize2Icon } from "lucide-react"
+import { useHymnSlideStore } from "@/stores/hymn-slide-store"
+import { ChevronLeftIcon, ChevronRightIcon, EyeIcon, EyeOffIcon, RadioIcon, SendIcon, Maximize2Icon, Minimize2Icon } from "lucide-react"
 import { toast } from "sonner"
 import { ServiceLiveContextPanel } from "@/components/service-plan/ServiceLiveContextPanel"
 
@@ -33,6 +34,24 @@ export function LiveOutputPanel() {
     [isLive, liveItem],
   )
   const canCommitPreview = Boolean(previewItem)
+  const liveDeckIndex = liveItem?.kind === "hymn"
+    ? useHymnSlideStore
+        .getState()
+        .deck.findIndex((item) => item.screenId === liveItem.hymnSlide?.screenId)
+    : -1
+  const canNavigateLiveHymn = isLive && liveDeckIndex >= 0
+
+  const navigateLiveHymn = (delta: number) => {
+    const hymnSlides = useHymnSlideStore.getState()
+    const currentIndex =
+      hymnSlides.deck.findIndex((item) => item.screenId === liveItem?.hymnSlide?.screenId)
+    if (currentIndex < 0) return
+    const nextIndex = Math.max(0, Math.min(hymnSlides.deck.length - 1, currentIndex + delta))
+    const next = hymnSlides.deck[nextIndex]
+    if (!next || nextIndex === currentIndex) return
+    hymnSlides.setDeck(hymnSlides.deck, nextIndex)
+    presentItem(next)
+  }
 
   const toggleFullscreen = async () => {
     const panel = panelRef.current
@@ -103,20 +122,47 @@ export function LiveOutputPanel() {
       <ServiceLiveContextPanel />
 
       <div className={cn("flex min-h-10 items-center justify-between gap-2 border-b border-border px-3 py-1.5", isFullscreen && "hidden")}>
-        <Button
-          size="sm"
-          disabled={!canCommitPreview}
-          className="gap-1.5"
-          onClick={() => commitPreviewToLive()}
-          title={
-            canCommitPreview
-              ? "Send the Program Preview verse to Live Output"
-              : "Select a verse before sending live"
-          }
-        >
-          <SendIcon className="size-3.5" />
-          Send Preview Live
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            disabled={!canCommitPreview}
+            className="gap-1.5"
+            onClick={() => commitPreviewToLive()}
+            title={
+              canCommitPreview
+                ? "Send the Program Preview item to Live Output"
+                : "Select a verse, hymn, or song before sending live"
+            }
+          >
+            <SendIcon className="size-3.5" />
+            Send Preview Live
+          </Button>
+          {liveItem?.kind === "hymn" && (
+            <div className="flex items-center gap-1">
+              <Button
+                size="icon-xs"
+                variant="outline"
+                disabled={!canNavigateLiveHymn || liveDeckIndex <= 0}
+                onClick={() => navigateLiveHymn(-1)}
+                title="Previous hymn or song slide"
+              >
+                <ChevronLeftIcon className="size-3" />
+              </Button>
+              <span className="min-w-12 text-center text-[0.625rem] tabular-nums text-muted-foreground">
+                {(liveItem.hymnSlide?.slideIndex ?? 0) + 1}/{liveItem.hymnSlide?.slideCount ?? 1}
+              </span>
+              <Button
+                size="icon-xs"
+                variant="outline"
+                disabled={!canNavigateLiveHymn || liveDeckIndex >= useHymnSlideStore.getState().deck.length - 1}
+                onClick={() => navigateLiveHymn(1)}
+                title="Next hymn or song slide"
+              >
+                <ChevronRightIcon className="size-3" />
+              </Button>
+            </div>
+          )}
+        </div>
 
         <label className="flex items-center gap-2">
           {isLive ? (
@@ -167,7 +213,7 @@ export function LiveOutputPanel() {
           <PanelEmptyState
             icon={<EyeOffIcon className="size-8" />}
             title="Nothing live"
-            description="Send a verse or toggle visibility to show audience output."
+            description="Send a verse, hymn, or song slide to show audience output."
           />
         )}
       </div>

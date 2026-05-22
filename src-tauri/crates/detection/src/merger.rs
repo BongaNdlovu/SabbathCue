@@ -129,6 +129,14 @@ impl DetectionMerger {
     pub fn set_cooldown_ms(&mut self, ms: u64) {
         self.cooldown_ms = ms;
     }
+
+    pub fn confidence_threshold(&self) -> f64 {
+        self.confidence_threshold
+    }
+
+    pub fn auto_queue_threshold(&self) -> f64 {
+        self.auto_queue_threshold
+    }
 }
 
 impl Default for DetectionMerger {

@@ -5,6 +5,7 @@ import {
   resetHymnVoiceControlState,
   shouldSuppressDuplicateHymnCommand,
 } from "./hymn-voice-control"
+import { useHymnSlideStore } from "@/stores/hymn-slide-store"
 
 const selectPreviewItemMock = vi.fn()
 const getHymnByNumberMock = vi.fn()
@@ -49,6 +50,16 @@ const sampleScreen = {
   lines: ["Line one"],
 }
 
+const secondSampleScreen = {
+  ...sampleScreen,
+  id: "v1-screen-2",
+  screenIndex: 1,
+  sectionScreenIndex: 1,
+  sectionScreenCount: 2,
+  totalScreens: 2,
+  lines: ["Line two"],
+}
+
 describe("hymn voice control", () => {
   beforeEach(() => {
     resetHymnVoiceControlState()
@@ -56,12 +67,14 @@ describe("hymn voice control", () => {
     getHymnByNumberMock.mockReset()
     generateHymnScreensMock.mockReset()
     addRecentHymnMock.mockReset()
+    useHymnSlideStore.getState().setDeck([], 0)
     vi.useFakeTimers()
   })
 
   afterEach(() => {
     vi.useRealTimers()
     resetHymnVoiceControlState()
+    useHymnSlideStore.getState().setDeck([], 0)
   })
 
   describe("parseHymnCommand", () => {
@@ -89,18 +102,22 @@ describe("hymn voice control", () => {
   })
 
   describe("handleHymnVoiceControl", () => {
-    it("stages the first hymn screen in preview for valid commands", async () => {
+    it("stages the full hymn deck and first screen in preview for valid commands", async () => {
       getHymnByNumberMock.mockResolvedValue(sampleHymn)
-      generateHymnScreensMock.mockReturnValue([sampleScreen])
+      generateHymnScreensMock.mockReturnValue([sampleScreen, secondSampleScreen])
 
       const handled = await handleHymnVoiceControl("please open hymn 12")
 
       expect(handled).toBe(true)
       expect(getHymnByNumberMock).toHaveBeenCalledWith(12)
+      const hymnSlides = useHymnSlideStore.getState()
+      expect(hymnSlides.deck).toHaveLength(2)
+      expect(hymnSlides.activeIndex).toBe(0)
       expect(selectPreviewItemMock).toHaveBeenCalledWith(
         expect.objectContaining({
           kind: "hymn",
           hymnNumber: 12,
+          screenId: "v1-screen-1",
         }),
       )
       expect(addRecentHymnMock).toHaveBeenCalledWith("sda-12")

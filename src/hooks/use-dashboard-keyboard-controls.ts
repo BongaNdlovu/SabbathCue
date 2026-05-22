@@ -57,13 +57,16 @@ function presentActiveQueueItem(): void {
 
 function advanceLiveHymnSlide(delta: number): boolean {
   const broadcast = useBroadcastStore.getState()
-  if (!broadcast.isLive || broadcast.liveItem?.kind !== "hymn") return false
+  const previewItem = broadcast.previewItem
+  const isLiveHymn = broadcast.isLive && broadcast.liveItem?.kind === "hymn"
+  const isPreviewHymn = previewItem?.kind === "hymn"
+  if (!isLiveHymn && !isPreviewHymn) return false
 
   const queue = useQueueStore.getState()
   const activeQueueItem =
     queue.activeIndex === null ? null : queue.items[queue.activeIndex] ?? null
 
-  if (activeQueueItem?.presentation.kind === "hymn" && activeQueueItem.hymnGroup) {
+  if (isLiveHymn && activeQueueItem?.presentation.kind === "hymn" && activeQueueItem.hymnGroup) {
     const activeGroup = activeQueueItem.hymnGroup
     const targetItemIndex = activeGroup.itemIndex + delta
     const targetQueueIndex = queue.items.findIndex(
@@ -87,111 +90,119 @@ function advanceLiveHymnSlide(delta: number): boolean {
   const hymnSlides = useHymnSlideStore.getState()
   if (hymnSlides.deck.length === 0) return false
 
-  const liveScreenId = broadcast.liveItem.hymnSlide?.screenId
-  const liveIndex = hymnSlides.deck.findIndex((item) => item.screenId === liveScreenId)
-  const currentIndex = liveIndex === -1 ? hymnSlides.activeIndex : liveIndex
+  const currentScreenId = isLiveHymn
+    ? broadcast.liveItem?.hymnSlide?.screenId
+    : previewItem?.hymnSlide?.screenId
+  const currentDeckIndex = hymnSlides.deck.findIndex(
+    (item) => item.screenId === currentScreenId,
+  )
+  const currentIndex = currentDeckIndex === -1 ? hymnSlides.activeIndex : currentDeckIndex
   const nextIndex = Math.max(0, Math.min(hymnSlides.deck.length - 1, currentIndex + delta))
   const next = hymnSlides.deck[nextIndex]
   if (!next || nextIndex === currentIndex) return true
 
   hymnSlides.setDeck(hymnSlides.deck, nextIndex)
-  presentItem(next)
+  if (isLiveHymn) {
+    presentItem(next)
+  } else {
+    selectPreviewItem(next)
+  }
   return true
 }
 
 export function useDashboardKeyboardControls(): void {
   useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || event.repeat || isEditableTarget(event.target)) return
-
-      const key = event.key.toLowerCase()
-      const mod = event.ctrlKey || event.metaKey
-
-      if (!mod && !event.altKey && !event.shiftKey && event.key === "ArrowRight") {
-        if (advanceLiveHymnSlide(1)) event.preventDefault()
-        return
-      }
-
-      if (!mod && !event.altKey && !event.shiftKey && event.key === "ArrowLeft") {
-        if (advanceLiveHymnSlide(-1)) event.preventDefault()
-        return
-      }
-
-      if (event.altKey && key === "1") {
-        event.preventDefault()
-        useDashboardWorkspaceStore.getState().setWorkspace("live")
-        useServicePlanStore.getState().closePlanner()
-        return
-      }
-
-      if (event.altKey && key === "2") {
-        event.preventDefault()
-        useDashboardWorkspaceStore.getState().setWorkspace("service-plans")
-        useServicePlanStore.getState().openPlanner()
-        return
-      }
-
-      if (event.altKey && key === "3") {
-        event.preventDefault()
-        useDashboardWorkspaceStore.getState().setWorkspace("hymns")
-        useServicePlanStore.getState().closePlanner()
-        return
-      }
-
-      if (mod && event.key === "Enter" && event.shiftKey) {
-        event.preventDefault()
-        presentActiveQueueItem()
-        return
-      }
-
-      if (mod && event.key === "Enter") {
-        event.preventDefault()
-        commitPreviewToLive()
-        return
-      }
-
-      if (mod && key === "l") {
-        event.preventDefault()
-        const broadcast = useBroadcastStore.getState()
-        broadcast.setLive(!broadcast.isLive)
-        return
-      }
-
-      if (mod && key === "m") {
-        event.preventDefault()
-        if (useTranscriptStore.getState().isTranscribing) {
-          void transcriptionActions.stop()
-        } else {
-          void transcriptionActions.start()
-        }
-        return
-      }
-
-      if (event.altKey && event.key === "ArrowRight") {
-        event.preventDefault()
-        void useServicePlanStore.getState().goToNextItem()
-        return
-      }
-
-      if (event.altKey && event.key === "ArrowLeft") {
-        event.preventDefault()
-        void useServicePlanStore.getState().goToPreviousItem()
-        return
-      }
-
-      if (event.altKey && event.key === "ArrowDown") {
-        event.preventDefault()
-        selectQueueItem(1)
-        return
-      }
-
-      if (event.altKey && event.key === "ArrowUp") {
-        event.preventDefault()
-        selectQueueItem(-1)
-      }
-    }
-
-    window.addEventListener("keydown", handleKeyDown)
-    return () => window.removeEventListener("keydown", handleKeyDown)
+    window.addEventListener("keydown", handleDashboardKeyboardEvent)
+    return () => window.removeEventListener("keydown", handleDashboardKeyboardEvent)
   }, [])
+}
+
+export function handleDashboardKeyboardEvent(event: KeyboardEvent): void {
+  if (event.defaultPrevented || event.repeat || isEditableTarget(event.target)) return
+
+  const key = event.key.toLowerCase()
+  const mod = event.ctrlKey || event.metaKey
+
+  if (!mod && !event.altKey && !event.shiftKey && event.key === "ArrowRight") {
+    if (advanceLiveHymnSlide(1)) event.preventDefault()
+    return
+  }
+
+  if (!mod && !event.altKey && !event.shiftKey && event.key === "ArrowLeft") {
+    if (advanceLiveHymnSlide(-1)) event.preventDefault()
+    return
+  }
+
+  if (event.altKey && key === "1") {
+    event.preventDefault()
+    useDashboardWorkspaceStore.getState().setWorkspace("live")
+    useServicePlanStore.getState().closePlanner()
+    return
+  }
+
+  if (event.altKey && key === "2") {
+    event.preventDefault()
+    useDashboardWorkspaceStore.getState().setWorkspace("service-plans")
+    useServicePlanStore.getState().openPlanner()
+    return
+  }
+
+  if (event.altKey && key === "3") {
+    event.preventDefault()
+    useDashboardWorkspaceStore.getState().setWorkspace("hymns")
+    useServicePlanStore.getState().closePlanner()
+    return
+  }
+
+  if (mod && event.key === "Enter" && event.shiftKey) {
+    event.preventDefault()
+    presentActiveQueueItem()
+    return
+  }
+
+  if (mod && event.key === "Enter") {
+    event.preventDefault()
+    commitPreviewToLive()
+    return
+  }
+
+  if (mod && key === "l") {
+    event.preventDefault()
+    const broadcast = useBroadcastStore.getState()
+    broadcast.setLive(!broadcast.isLive)
+    return
+  }
+
+  if (mod && key === "m") {
+    event.preventDefault()
+    if (useTranscriptStore.getState().isTranscribing) {
+      void transcriptionActions.stop()
+    } else {
+      void transcriptionActions.start()
+    }
+    return
+  }
+
+  if (event.altKey && event.key === "ArrowRight") {
+    event.preventDefault()
+    void useServicePlanStore.getState().goToNextItem()
+    return
+  }
+
+  if (event.altKey && event.key === "ArrowLeft") {
+    event.preventDefault()
+    void useServicePlanStore.getState().goToPreviousItem()
+    return
+  }
+
+  if (event.altKey && event.key === "ArrowDown") {
+    event.preventDefault()
+    selectQueueItem(1)
+    return
+  }
+
+  if (event.altKey && event.key === "ArrowUp") {
+    event.preventDefault()
+    selectQueueItem(-1)
+  }
 }

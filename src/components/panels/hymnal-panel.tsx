@@ -175,6 +175,7 @@ export function HymnalPanel() {
 
   const previewActiveScreen = () => {
     if (!activeScreen) return
+    useHymnSlideStore.getState().setDeck(presentationDeck, activeScreenIndex)
     selectPreviewItem(createHymnPresentationItem(activeScreen))
   }
 
