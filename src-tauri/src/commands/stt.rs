@@ -36,7 +36,7 @@ fn is_detection_paused(app: &AppHandle) -> bool {
 static DIRECT_LOCK_OK: AtomicU64 = AtomicU64::new(0);
 static DIRECT_LOCK_CONTENDED: AtomicU64 = AtomicU64::new(0);
 const SEMANTIC_WINDOW_SEGMENTS: usize = 8;
-const PARTIAL_SEMANTIC_DEBOUNCE: Duration = Duration::from_millis(400);
+const PARTIAL_SEMANTIC_DEBOUNCE: Duration = Duration::from_millis(250);
 const PARTIAL_SEMANTIC_MIN_WORDS: usize = 4;
 
 fn transcript_logging_enabled() -> bool {
@@ -145,7 +145,7 @@ pub async fn start_transcription(
             let model_path = asset_paths::vosk_model_path(&app);
             if !model_path.exists() {
                 return Err(format!(
-                    "Vosk model not found at {}. Install the English Vosk model at C:\\Users\\fanel\\Downloads\\vosk-model-en-us-0.22-lgraph, set SABBATHCUE_VOSK_MODEL_DIR, or place it into models/vosk/vosk-model-en-us-0.22-lgraph.",
+                    "Vosk model not found at {}. Install the small English Vosk model at C:\\Users\\fanel\\Downloads\\vosk-model-small-en-us, set SABBATHCUE_VOSK_MODEL_DIR, or place it into models/vosk/vosk-model-small-en-us.",
                     model_path.display()
                 ));
             }
@@ -394,7 +394,7 @@ pub async fn start_transcription(
     // Background fast-preview channel: direct references only, latest work wins.
     // This gives preview a fast path without touching final detector/cooldown state.
     let (partial_preview_tx, mut partial_preview_rx) =
-        tokio::sync::mpsc::channel::<(u64, String)>(4);
+        tokio::sync::mpsc::channel::<(u64, String)>(32);
 
     // [DIAG] Counters so we can see whether transcripts are being dropped
     // because the detection workers can't keep up. Logged every 25 sends
@@ -417,7 +417,7 @@ pub async fn start_transcription(
             let app_clone = partial_app.clone();
             let latest_seq = partial_latest_seq.clone();
             let detector = partial_detector.clone();
-            let _ = tokio::task::spawn_blocking(move || {
+            tokio::task::spawn_blocking(move || {
                 run_partial_direct_preview_detection(
                     &app_clone,
                     &detector,
@@ -425,8 +425,7 @@ pub async fn start_transcription(
                     latest_seq,
                     &transcript,
                 );
-            })
-            .await;
+            });
         }
     });
 
