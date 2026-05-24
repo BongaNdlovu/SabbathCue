@@ -10,6 +10,8 @@ interface DetectionResultWithMeta extends DetectionResult {
   received_at?: number
 }
 
+const MAX_RECENT_DETECTIONS = 12
+
 interface DetectionState {
   detections: DetectionResult[]
   autoMode: boolean
@@ -52,7 +54,7 @@ export const useDetectionStore = create<DetectionState>((set) => ({
           if (bTime !== aTime) return bTime - aTime
           return b.confidence - a.confidence
         })
-        return { detections: newDetections.slice(0, 50) as DetectionResult[] }
+        return { detections: newDetections.slice(0, MAX_RECENT_DETECTIONS) as DetectionResult[] }
       }
       
       // New detection
@@ -64,7 +66,7 @@ export const useDetectionStore = create<DetectionState>((set) => ({
         if (bTime !== aTime) return bTime - aTime
         return b.confidence - a.confidence
       })
-      return { detections: newDetections.slice(0, 50) as DetectionResult[] }
+      return { detections: newDetections.slice(0, MAX_RECENT_DETECTIONS) as DetectionResult[] }
     }),
   addDetections: (incoming) =>
     set((state) => {
@@ -125,7 +127,7 @@ export const useDetectionStore = create<DetectionState>((set) => ({
           return b.detection.confidence - a.detection.confidence
         })
         .map((item) => ({ ...item.detection, received_at: item.received_at } as DetectionResultWithMeta))
-        .slice(0, 50) as DetectionResult[]
+        .slice(0, MAX_RECENT_DETECTIONS) as DetectionResult[]
       
       return { detections: sorted }
     }),

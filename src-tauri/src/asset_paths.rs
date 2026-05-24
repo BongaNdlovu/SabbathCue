@@ -2,7 +2,8 @@ use std::path::PathBuf;
 
 use tauri::{AppHandle, Manager};
 
-pub const VOSK_MODEL_DIRNAME: &str = "vosk-model-small-en-us";
+pub const VOSK_MODEL_DIRNAME: &str = "vosk-model-en-us-0.22";
+const USER_DEFAULT_VOSK_MODEL_DIR: &str = r"C:\Users\fanel\Downloads\vosk-model-en-us-0.22";
 const VOSK_MODEL_DIRNAMES: &[&str] = &[
     "vosk-model-en-us-0.22",
     "vosk-model-en-us-0.42-gigaspeech",
@@ -43,6 +44,7 @@ pub fn vosk_model_path(app: &AppHandle) -> PathBuf {
             candidates.push(PathBuf::from(path));
         }
     }
+    candidates.push(PathBuf::from(USER_DEFAULT_VOSK_MODEL_DIR));
 
     let roots = [
         app_data_dir(app)

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useState } from "react"
 import { PanelHeader } from "@/components/ui/panel-header"
 import { PanelEmptyState } from "@/components/ui/panel-empty-state"
 import { ConfidenceDot } from "@/components/ui/confidence-dot"
@@ -98,11 +98,6 @@ export function DetectionsPanel() {
     paraphrase_enabled: boolean
   } | null>(null)
 
-  const sortedDetections = useMemo(
-    () => [...detections].sort((a, b) => b.confidence - a.confidence),
-    [detections],
-  )
-
   useEffect(() => {
     let cancelled = false
     detectionActions
@@ -149,7 +144,7 @@ export function DetectionsPanel() {
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="flex flex-col gap-0">
-          {sortedDetections.length === 0 && (
+          {detections.length === 0 && (
             <div className="flex min-h-0 flex-1 items-center justify-center">
               <PanelEmptyState
                 icon={<RadarIcon className="size-8" />}
@@ -158,7 +153,7 @@ export function DetectionsPanel() {
               />
             </div>
           )}
-          {sortedDetections.map((detection, i) => (
+          {detections.map((detection, i) => (
             <DetectionCard key={`${detection.verse_ref}-${i}`} detection={detection} />
           ))}
         </div>

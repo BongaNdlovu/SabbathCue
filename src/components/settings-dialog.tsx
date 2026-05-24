@@ -370,7 +370,7 @@ function SpeechSection() {
           {!assetsLoading &&
             (!assetStatus?.vosk_model || !assetStatus?.vosk_worker) && (
               <p className="rounded-md bg-background px-2 py-1.5 font-mono text-[0.625rem] text-muted-foreground">
-                models/vosk/vosk-model-small-en-us
+                C:\Users\fanel\Downloads\vosk-model-en-us-0.22
               </p>
             )}
 

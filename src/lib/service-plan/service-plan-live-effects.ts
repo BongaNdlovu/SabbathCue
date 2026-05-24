@@ -1,4 +1,11 @@
 import { buildServiceContext } from "@/lib/service-plan/service-context"
+import { selectPreviewItem } from "@/lib/presentation-workflow"
+import { generateHymnScreens } from "@/services/hymnal/generate-hymn-screens"
+import {
+  createHymnPresentationItem,
+  defaultSelectedSectionIds,
+} from "@/services/hymnal/hymn-presentation"
+import { getHymnByNumber } from "@/services/hymnal/hymnal-repository"
 import { mediaPreloadManager } from "@/services/media/media-preload-manager"
 import type { ServiceContext, ServiceItem, ServicePlan } from "@/types/service-plan"
 
@@ -27,13 +34,6 @@ export function releaseAllServiceMedia(): void {
 }
 
 export async function previewFirstHymnForItem(item: ServiceItem): Promise<void> {
-  const { selectPreviewItem } = await import("@/lib/presentation-workflow")
-  const { createHymnPresentationItem, defaultSelectedSectionIds } = await import(
-    "@/services/hymnal/hymn-presentation"
-  )
-  const { generateHymnScreens } = await import("@/services/hymnal/generate-hymn-screens")
-  const { getHymnByNumber } = await import("@/services/hymnal/hymnal-repository")
-
   for (const hymnRef of item.hymnRefs) {
     if (!hymnRef.hymnNumber) continue
     try {
