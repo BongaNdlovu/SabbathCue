@@ -68,7 +68,7 @@ fn read_pcm16_wav(path: &Path) -> Result<(u32, Vec<f32>), String> {
 
     let samples = data
         .chunks_exact(2)
-        .map(|chunk| i16::from_le_bytes([chunk[0], chunk[1]]) as f32 / 32768.0)
+        .map(|chunk| f32::from(i16::from_le_bytes([chunk[0], chunk[1]])) / 32768.0)
         .collect();
 
     Ok((sample_rate, samples))

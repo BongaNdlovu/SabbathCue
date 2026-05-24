@@ -225,6 +225,10 @@ impl ReadingMode {
     /// requested, `None` otherwise.
     ///
     /// Also sets `bare_number_context` when "chapter" keyword is detected without a number.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "chapter command parsing is intentionally kept together for readability"
+    )]
     pub fn check_chapter_command(&mut self, text: &str) -> Option<ChapterChange> {
         if self.verses.is_empty() {
             return None;

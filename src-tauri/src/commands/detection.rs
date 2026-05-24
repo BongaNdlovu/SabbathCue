@@ -388,8 +388,10 @@ mod tests {
 
         let results = merger.merge(vec![], vec![semantic_detection(0.50)]);
 
-        assert_eq!(merger.confidence_threshold(), OPERATOR_DETECTION_THRESHOLD);
-        assert_eq!(merger.auto_queue_threshold(), 0.80);
+        assert!(
+            (merger.confidence_threshold() - OPERATOR_DETECTION_THRESHOLD).abs() < f64::EPSILON
+        );
+        assert!((merger.auto_queue_threshold() - 0.80).abs() < f64::EPSILON);
         assert_eq!(results.len(), 1);
         assert!(!results[0].auto_queued);
     }

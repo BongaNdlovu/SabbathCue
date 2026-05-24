@@ -13,9 +13,7 @@ use crate::asset_paths;
 const MAX_SLIDE_SIZE_BYTES: u64 = 100 * 1024 * 1024;
 const MAX_MEDIA_SIZE_BYTES: u64 = 750 * 1024 * 1024;
 
-const SUPPORTED_ATTACHMENT_EXTENSIONS: &[&str] = &[
-    "png", "jpg", "jpeg", "webp", "gif", "pdf",
-];
+const SUPPORTED_ATTACHMENT_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "webp", "gif", "pdf"];
 
 /// Response DTO for `validate_service_attachment_path`.
 #[derive(Debug, Serialize)]
@@ -278,7 +276,8 @@ mod tests {
 
     #[test]
     fn accepts_valid_pdf() {
-        let dir = std::env::temp_dir().join(format!("sabbathcue-attach-pdf-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("sabbathcue-attach-pdf-{}", std::process::id()));
         fs::create_dir_all(&dir).expect("temp dir");
         let file_path = dir.join("sample.pdf");
         let mut file = fs::File::create(&file_path).expect("create file");
@@ -293,7 +292,8 @@ mod tests {
 
     #[test]
     fn rejects_video_extension() {
-        let dir = std::env::temp_dir().join(format!("sabbathcue-attach-video-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("sabbathcue-attach-video-{}", std::process::id()));
         fs::create_dir_all(&dir).expect("temp dir");
         let file_path = dir.join("sample.mp4");
         let mut file = fs::File::create(&file_path).expect("create file");

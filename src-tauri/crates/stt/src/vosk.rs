@@ -134,7 +134,8 @@ fn average_confidence(words: &[Word]) -> f64 {
     if scored.is_empty() {
         return 0.75;
     }
-    scored.iter().map(|word| word.confidence).sum::<f64>() / scored.len() as f64
+    let scored_len = u32::try_from(scored.len()).expect("word count fits in u32");
+    scored.iter().map(|word| word.confidence).sum::<f64>() / f64::from(scored_len)
 }
 
 #[allow(dead_code)]
@@ -351,7 +352,11 @@ mod tests {
         let before = parsed.len();
         parsed.sort();
         parsed.dedup();
-        assert_eq!(before, parsed.len(), "grammar must not contain duplicate phrases");
+        assert_eq!(
+            before,
+            parsed.len(),
+            "grammar must not contain duplicate phrases"
+        );
     }
 
     #[test]

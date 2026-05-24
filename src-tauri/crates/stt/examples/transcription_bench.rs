@@ -7,8 +7,7 @@ use rhema_stt::bench::{score_fixture, TranscriptFixture};
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let fixture_dir = std::env::args()
         .nth(1)
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("fixtures/stt"));
+        .map_or_else(|| PathBuf::from("fixtures/stt"), PathBuf::from);
 
     if !fixture_dir.exists() {
         println!(

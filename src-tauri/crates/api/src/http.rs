@@ -354,8 +354,11 @@ mod tests {
         let body_str = body.unwrap_or("");
         let extra_headers = headers
             .iter()
-            .map(|(name, value)| format!("{name}: {value}\r\n"))
-            .collect::<String>();
+            .fold(String::new(), |mut output, (name, value)| {
+                use std::fmt::Write as _;
+                write!(&mut output, "{name}: {value}\r\n").expect("write to String");
+                output
+            });
         let request = if body.is_some() {
             format!(
                 "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n{extra_headers}Content-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body_str}",

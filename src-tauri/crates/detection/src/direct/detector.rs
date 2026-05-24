@@ -1012,7 +1012,9 @@ mod tests {
         // Simulate timeout by replacing with an expired timestamp (exceeds 15s)
         detector.incomplete = Some(IncompleteRef {
             verse_ref: detector.incomplete.as_ref().unwrap().verse_ref.clone(),
-            timestamp: Instant::now() - std::time::Duration::from_secs(20),
+            timestamp: Instant::now()
+                .checked_sub(std::time::Duration::from_secs(20))
+                .unwrap(),
             chapter_is_default: detector.incomplete.as_ref().unwrap().chapter_is_default,
         });
 

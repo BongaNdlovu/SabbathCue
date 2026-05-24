@@ -107,11 +107,11 @@ impl WhisperProfile {
         }
     }
 
-    pub(crate) const fn sampling_strategy(self) -> SamplingStrategy {
+    pub(crate) const fn sampling_strategy() -> SamplingStrategy {
         SamplingStrategy::Greedy { best_of: 1 }
     }
 
-    pub(crate) const fn use_context(self) -> bool {
+    pub(crate) const fn use_context() -> bool {
         true
     }
 
@@ -398,7 +398,7 @@ impl SttProvider for WhisperProvider {
 
                 let audio_f32 = i16_to_f32(&audio_i16);
 
-                let mut params = FullParams::new(profile.sampling_strategy());
+                let mut params = FullParams::new(WhisperProfile::sampling_strategy());
                 params.set_language(Some(language.as_deref().unwrap_or("en")));
                 params.set_n_threads(n_threads);
                 params.set_print_progress(false);
@@ -406,7 +406,7 @@ impl SttProvider for WhisperProvider {
                 params.set_print_realtime(false);
                 let initial_prompt = rolling_prompt.prompt();
                 params.set_initial_prompt(&initial_prompt);
-                params.set_no_context(!profile.use_context());
+                params.set_no_context(!WhisperProfile::use_context());
                 params.set_no_timestamps(false);
                 params.set_single_segment(true);
                 params.set_token_timestamps(false);
@@ -489,15 +489,15 @@ mod tests {
 
         assert!(fast.live_chunk_samples() < balanced.live_chunk_samples());
         assert!(matches!(
-            fast.sampling_strategy(),
+            WhisperProfile::sampling_strategy(),
             SamplingStrategy::Greedy { best_of: 1 }
         ));
         assert!(matches!(
-            balanced.sampling_strategy(),
+            WhisperProfile::sampling_strategy(),
             SamplingStrategy::Greedy { best_of: 1 }
         ));
-        assert!(fast.use_context());
-        assert!(balanced.use_context());
+        assert!(WhisperProfile::use_context());
+        assert!(WhisperProfile::use_context());
     }
 
     #[test]

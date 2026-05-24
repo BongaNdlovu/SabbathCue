@@ -24,6 +24,7 @@ export default async function AppleIcon() {
           background: "#000000",
         }}
       >
+        {/* eslint-disable-next-line @next/next/no-img-element -- next/og ImageResponse supports plain img data URLs. */}
         <img src={iconDataUrl} width={180} height={180} alt="" />
       </div>
     ),

@@ -5,59 +5,39 @@
 targets = ["x86_64-pc-windows-msvc"]
 
 [advisories]
-vulnerability = "deny"
-unmaintained = "warn"
-unsound = "warn"
+unmaintained = "workspace"
+unsound = "workspace"
 yanked = "deny"
-notice = "warn"
+ignore = []
 
 [licenses]
-unlicensed = "deny"
 allow = [
     "MIT",
     "Apache-2.0",
-    "Apache-2.0 WITH LLVM-exception",
     "BSD-3-Clause",
     "Unicode-3.0",
-    "Unicode-DFS-2016",
     "ISC",
-    "OpenSSL",
     "CC0-1.0",
     "BSL-1.0",
     "MPL-2.0",
     "Zlib",
     "0BSD",
+    "Unlicense",
+    "CDLA-Permissive-2.0",
 ]
-copyleft = "deny"
+confidence-threshold = 0.8
 
-[[licenses.exceptions]]
-name = "rhema-stt"
-allow = ["MPL-2.0"]
-
-[[licenses.exceptions]]
-name = "rhema-audio"
-allow = ["MPL-2.0"]
-
-[[licenses.exceptions]]
-name = "rhema-bible"
-allow = ["MPL-2.0"]
-
-[[licenses.exceptions]]
-name = "rhema-detection"
-allow = ["MPL-2.0"]
-
-[[licenses.exceptions]]
-name = "rhema-api"
-allow = ["MPL-2.0"]
-
-[[licenses.exceptions]]
-name = "rhema-broadcast"
-allow = ["MPL-2.0"]
-
-[[licenses.exceptions]]
-name = "rhema-notes"
-allow = ["MPL-2.0"]
+[licenses.private]
+ignore = true
 
 [bans]
 multiple-versions = "warn"
+wildcards = "allow"
+allow-workspace = true
 deny = []
+
+[sources]
+unknown-registry = "warn"
+unknown-git = "warn"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

@@ -373,7 +373,7 @@ mod tests {
     #[test]
     fn streaming_resampler_matches_single_pass_across_callback_boundaries() {
         let input = (0..5000)
-            .map(|i| ((i % 200) - 100) as i16)
+            .map(|i| i16::try_from((i % 200) - 100).unwrap())
             .collect::<Vec<_>>();
 
         let mut single_pass = LinearResampler::new(44_100, 16_000);

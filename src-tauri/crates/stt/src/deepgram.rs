@@ -283,15 +283,15 @@ impl DeepgramClient {
                         }
                     }
                     Ok(Message::Close(close)) => {
-                        let reason = close
-                            .as_ref()
-                            .map(|frame| {
+                        let reason = close.as_ref().map_or_else(
+                            || "server closed connection without a reason".into(),
+                            |frame| {
                                 format!(
                                     "server closed connection: code={} reason={}",
                                     frame.code, frame.reason
                                 )
-                            })
-                            .unwrap_or_else(|| "server closed connection without a reason".into());
+                            },
+                        );
                         log::info!("DeepgramClient receiver: {reason}");
                         if !recv_cancelled.load(Ordering::SeqCst) {
                             recv_err.store(true, Ordering::SeqCst);
@@ -730,7 +730,7 @@ mod tests {
                 ..
             }) => {
                 assert_eq!(transcript, "John 3:16");
-                assert_eq!(confidence, 0.97);
+                assert!((confidence - 0.97).abs() < f64::EPSILON);
                 assert!(speech_final);
             }
             other => panic!("expected final, got {other:?}"),

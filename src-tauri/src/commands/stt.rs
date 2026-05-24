@@ -16,6 +16,7 @@ use crate::events::{
     EVENT_AUDIO_SOURCE_RECOVERED, EVENT_TRANSCRIPT_FINAL, EVENT_TRANSCRIPT_PARTIAL,
 };
 use crate::state::AppState;
+use rhema_detection::{DetectionMerger, DirectDetector};
 
 /// Check whether the operator has paused detection suggestions.
 /// Uses a blocking lock so the pause flag is authoritative.
@@ -97,7 +98,8 @@ fn average_word_confidence(words: &[Word], fallback: f64) -> f64 {
     if count == 0 {
         fallback
     } else {
-        total / count as f64
+        let count = u32::try_from(count).expect("word count fits in u32");
+        total / f64::from(count)
     }
 }
 
@@ -810,7 +812,8 @@ fn run_partial_direct_preview_detection(
 /// Returns true if high-confidence results were found (>= 0.90).
 #[expect(
     clippy::similar_names,
-    reason = "merger and merged are naturally named"
+    clippy::too_many_lines,
+    reason = "direct detection orchestration is intentionally kept together"
 )]
 fn run_direct_detection(
     app: &AppHandle,
@@ -824,8 +827,6 @@ fn run_direct_detection(
         log::debug!("[DET-DIRECT] Skipping stale job seq={seq}");
         return false;
     }
-    use rhema_detection::{DetectionMerger, DirectDetector};
-
     let t0 = std::time::Instant::now();
     let detector_state: State<'_, Mutex<DirectDetector>> = app.state();
     let mut detector = match detector_state.lock() {
@@ -943,7 +944,7 @@ fn run_direct_detection(
 }
 
 /// Run hybrid semantic detection combining FTS5 BM25 with vector search.
-/// Uses spawn_blocking so mutex locks and DB I/O don't starve the tokio runtime.
+/// Uses `spawn_blocking` so mutex locks and DB I/O don't starve the tokio runtime.
 fn run_semantic_detection(app: &AppHandle, seq: u64, latest_seq: Arc<AtomicU64>, transcript: &str) {
     // Stale detection suppression: if this job's sequence is older than the
     // latest accepted transcript sequence, skip emission.
@@ -1357,8 +1358,8 @@ mod tests {
     use std::sync::Arc;
 
     /// Test helper to verify stale sequence suppression logic.
-    /// This simulates the sequence checking used in run_direct_detection
-    /// and run_semantic_detection to ensure stale jobs don't emit.
+    /// This simulates the sequence checking used in `run_direct_detection`
+    /// and `run_semantic_detection` to ensure stale jobs don't emit.
     #[test]
     fn test_stale_sequence_suppression() {
         let latest_seq = Arc::new(AtomicU64::new(10));
@@ -1411,7 +1412,7 @@ mod tests {
         // Should skip emission
     }
 
-    /// Test that detection_paused initializes to false and toggles correctly.
+    /// Test that `detection_paused` initializes to false and toggles correctly.
     /// This verifies the backend contract: Pause Suggestions must be backend-enforced.
     #[test]
     fn test_detection_paused_state() {

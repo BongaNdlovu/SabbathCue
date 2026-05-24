@@ -14,7 +14,7 @@ pub struct TranscriptRoute {
     pub suppress_reason: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct TranscriptRouteInput<'a> {
     pub provider: &'a str,
     pub kind: TranscriptEventKind,
@@ -282,7 +282,7 @@ fn has_two_numbers(lower: &str) -> bool {
 mod tests {
     use super::*;
 
-    fn input<'a>(kind: TranscriptEventKind, transcript: &'a str) -> TranscriptRouteInput<'a> {
+    fn input(kind: TranscriptEventKind, transcript: &str) -> TranscriptRouteInput<'_> {
         TranscriptRouteInput {
             provider: "test",
             kind,
