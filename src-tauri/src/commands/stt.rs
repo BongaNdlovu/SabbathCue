@@ -145,7 +145,7 @@ pub async fn start_transcription(
             let model_path = asset_paths::vosk_model_path(&app);
             if !model_path.exists() {
                 return Err(format!(
-                    "Vosk model not found at {}. Install the English Vosk model at C:\\Users\\fanel\\Downloads\\vosk-model-en-us-0.22, set SABBATHCUE_VOSK_MODEL_DIR, or place it into models/vosk/vosk-model-en-us-0.22.",
+                    "Vosk model not found at {}. Install the English Vosk model at C:\\Users\\fanel\\Downloads\\vosk-model-en-us-0.22-lgraph, set SABBATHCUE_VOSK_MODEL_DIR, or place it into models/vosk/vosk-model-en-us-0.22-lgraph.",
                     model_path.display()
                 ));
             }
