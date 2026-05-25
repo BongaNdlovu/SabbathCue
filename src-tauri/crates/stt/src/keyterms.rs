@@ -258,10 +258,34 @@ pub fn verse_only_keyterms() -> Vec<String> {
 
     // Number words for chapter/verse parsing, including high-chapter support
     let numbers = [
-        "one", "two", "three", "four", "five", "six", "seven", "eight",
-        "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen",
-        "sixteen", "seventeen", "eighteen", "nineteen", "twenty", "thirty",
-        "forty", "fifty", "sixty", "seventy", "eighty", "ninety", "hundred",
+        "one",
+        "two",
+        "three",
+        "four",
+        "five",
+        "six",
+        "seven",
+        "eight",
+        "nine",
+        "ten",
+        "eleven",
+        "twelve",
+        "thirteen",
+        "fourteen",
+        "fifteen",
+        "sixteen",
+        "seventeen",
+        "eighteen",
+        "nineteen",
+        "twenty",
+        "thirty",
+        "forty",
+        "fifty",
+        "sixty",
+        "seventy",
+        "eighty",
+        "ninety",
+        "hundred",
         "and",
     ];
     terms.extend(numbers.iter().map(ToString::to_string));
@@ -288,11 +312,7 @@ pub fn verse_only_keyterms() -> Vec<String> {
         "translation",
         "bible",
     ];
-    terms.extend(
-        translation_command_words
-            .iter()
-            .map(ToString::to_string),
-    );
+    terms.extend(translation_command_words.iter().map(ToString::to_string));
 
     let translations = [
         "niv",

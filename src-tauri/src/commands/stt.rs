@@ -110,12 +110,42 @@ fn word_count(text: &str) -> usize {
     text.split_whitespace().count()
 }
 
+/// Take the latest pending semantic job from a shared slot, recovering from
+/// poisoned locks so the worker doesn't die permanently.
+fn take_semantic_job(
+    slot: &Arc<Mutex<Option<(u64, String)>>>,
+    label: &str,
+) -> Option<(u64, String)> {
+    match slot.lock() {
+        Ok(mut guard) => guard.take(),
+        Err(poisoned) => {
+            log::error!("[DET-SEMANTIC] {label} semantic slot lock poisoned; recovering");
+            let mut guard = poisoned.into_inner();
+            guard.take()
+        }
+    }
+}
+
+/// Replace the latest pending semantic job in a shared slot, recovering from
+/// poisoned locks. Returns true if a previous job was replaced.
+fn replace_semantic_job(
+    slot: &Arc<Mutex<Option<(u64, String)>>>,
+    job: (u64, String),
+    label: &str,
+) -> bool {
+    match slot.lock() {
+        Ok(mut guard) => guard.replace(job).is_some(),
+        Err(poisoned) => {
+            log::error!("[DET-SEMANTIC] {label} semantic slot lock poisoned; recovering");
+            let mut guard = poisoned.into_inner();
+            guard.replace(job).is_some()
+        }
+    }
+}
+
 fn semantic_result_key(result: &super::detection::DetectionResult) -> String {
     if result.book_number > 0 && result.chapter > 0 && result.verse > 0 {
-        format!(
-            "{}:{}:{}",
-            result.book_number, result.chapter, result.verse
-        )
+        format!("{}:{}:{}", result.book_number, result.chapter, result.verse)
     } else {
         result.verse_ref.clone()
     }
@@ -153,8 +183,7 @@ fn finalize_live_semantic_results(
         .into_values()
         .map(|(mut result, overlap_count)| {
             if overlap_count > 1 {
-                result.confidence =
-                    (result.confidence + LIVE_SEMANTIC_OVERLAP_BOOST).min(0.98);
+                result.confidence = (result.confidence + LIVE_SEMANTIC_OVERLAP_BOOST).min(0.98);
             }
             result
         })
@@ -448,11 +477,10 @@ pub async fn start_transcription(
     let evt_active = stt_active.clone();
     let event_app = app.clone();
 
-    // Final semantic detection channel — non-blocking, drops if busy.
-    let (semantic_final_tx, mut semantic_final_rx) = tokio::sync::mpsc::channel::<(u64, String)>(4);
-
-    // Partial semantic detection uses latest-wins storage so fresh speech can
-    // replace stale queued work instead of being dropped behind it.
+    // Final and partial semantic detection each use latest-wins storage so
+    // fresh speech can replace stale queued work instead of being dropped.
+    let final_semantic_job = Arc::new(Mutex::new(None::<(u64, String)>));
+    let final_semantic_notify = Arc::new(Notify::new());
     let partial_semantic_job = Arc::new(Mutex::new(None::<(u64, String)>));
     let partial_semantic_notify = Arc::new(Notify::new());
 
@@ -497,26 +525,38 @@ pub async fn start_transcription(
         }
     });
 
-    // Spawn final semantic detection worker (runs ONNX inference without blocking
-    // transcript delivery). Uses spawn_blocking so ONNX doesn't starve the tokio
-    // async runtime.
+    // Spawn latest-wins final semantic detection worker. When multiple finals
+    // arrive during one inference run, only the newest pending final is kept.
     let sem_final_app = app.clone();
     let sem_final_latest_seq = latest_accepted_seq.clone();
+    let sem_final_job = final_semantic_job.clone();
+    let sem_final_notify = final_semantic_notify.clone();
+
     tauri::async_runtime::spawn(async move {
-        while let Some((seq, text)) = semantic_final_rx.recv().await {
-            let app_clone = sem_final_app.clone();
-            let check_seq = sem_final_latest_seq.load(Ordering::Relaxed);
-            if seq < check_seq {
-                log::debug!(
-                    "[DET-SEMANTIC] Skipping stale final job seq={seq} latest={check_seq}",
-                );
-                continue;
+        loop {
+            sem_final_notify.notified().await;
+
+            loop {
+                let Some((seq, text)) = take_semantic_job(&sem_final_job, "final") else {
+                    break;
+                };
+
+                let check_seq = sem_final_latest_seq.load(Ordering::Relaxed);
+
+                if seq < check_seq {
+                    log::debug!(
+                        "[DET-SEMANTIC] Skipping stale final job seq={seq} latest={check_seq}",
+                    );
+                    continue;
+                }
+
+                let app_clone = sem_final_app.clone();
+                let latest_seq = sem_final_latest_seq.clone();
+                let _ = tokio::task::spawn_blocking(move || {
+                    run_semantic_detection(&app_clone, seq, latest_seq, &text);
+                })
+                .await;
             }
-            let latest_seq = sem_final_latest_seq.clone();
-            let _ = tokio::task::spawn_blocking(move || {
-                run_semantic_detection(&app_clone, seq, latest_seq, &text);
-            })
-            .await;
         }
     });
 
@@ -531,13 +571,7 @@ pub async fn start_transcription(
             sem_partial_notify.notified().await;
 
             loop {
-                let next_job = {
-                    let Ok(mut slot) = sem_partial_job.lock() else {
-                        log::error!("[DET-SEMANTIC] Partial semantic slot lock poisoned");
-                        return;
-                    };
-                    slot.take()
-                };
+                let next_job = take_semantic_job(&sem_partial_job, "partial");
 
                 let Some((seq, text)) = next_job else {
                     break;
@@ -582,6 +616,8 @@ pub async fn start_transcription(
     let detect_dropped_evt = detect_dropped.clone();
     let semantic_sent_evt = semantic_sent.clone();
     let semantic_dropped_evt = semantic_dropped.clone();
+    let final_semantic_job_evt = final_semantic_job.clone();
+    let final_semantic_notify_evt = final_semantic_notify.clone();
     let partial_semantic_job_evt = partial_semantic_job.clone();
     let partial_semantic_notify_evt = partial_semantic_notify.clone();
 
@@ -659,15 +695,11 @@ pub async fn start_transcription(
                                 let mut parts = semantic_window.iter().cloned().collect::<Vec<_>>();
                                 parts.push(transcript.clone());
                                 let semantic_text = parts.join(" ");
-                                let replaced = {
-                                    let Ok(mut slot) = partial_semantic_job_evt.lock() else {
-                                        log::error!(
-                                            "[DET-SEMANTIC] Partial semantic slot lock poisoned"
-                                        );
-                                        continue;
-                                    };
-                                    slot.replace((seq, semantic_text)).is_some()
-                                };
+                                let replaced = replace_semantic_job(
+                                    &partial_semantic_job_evt,
+                                    (seq, semantic_text),
+                                    "partial",
+                                );
                                 let n = semantic_sent_evt.fetch_add(1, Ordering::Relaxed) + 1;
                                 if replaced {
                                     let d =
@@ -788,26 +820,30 @@ pub async fn start_transcription(
                                     .collect::<Vec<_>>()
                                     .join(" ");
 
-                                if let Ok(()) = semantic_final_tx.try_send((seq, semantic_text)) {
-                                    let n = semantic_sent_evt.fetch_add(1, Ordering::Relaxed) + 1;
-                                    if n % 25 == 0 {
-                                        let depth =
-                                            semantic_final_tx.max_capacity()
-                                                - semantic_final_tx.capacity();
-                                        let dropped = semantic_dropped_evt.load(Ordering::Relaxed);
-                                        log::info!(
-                                            "[QUEUE] semantic_tx sent={n} dropped={dropped} depth={depth}/{}",
-                                            semantic_final_tx.max_capacity()
-                                        );
-                                    }
-                                } else {
-                                    let d =
+                                let replaced = replace_semantic_job(
+                                    &final_semantic_job_evt,
+                                    (seq, semantic_text),
+                                    "final",
+                                );
+
+                                let n = semantic_sent_evt.fetch_add(1, Ordering::Relaxed) + 1;
+
+                                if replaced {
+                                    let replaced_count =
                                         semantic_dropped_evt.fetch_add(1, Ordering::Relaxed) + 1;
                                     let sent = semantic_sent_evt.load(Ordering::Relaxed);
-                                    log::warn!(
-                                    "[QUEUE] semantic_tx DROPPED (consumer behind) sent={sent} dropped={d}"
-                                );
+                                    log::debug!(
+                                        "[QUEUE] final_semantic latest-wins replaced stale work sent={sent} replaced={replaced_count}"
+                                    );
+                                } else if n % 25 == 0 {
+                                    let replaced_count =
+                                        semantic_dropped_evt.load(Ordering::Relaxed);
+                                    log::info!(
+                                        "[QUEUE] final_semantic latest-wins sent={n} replaced={replaced_count}"
+                                    );
                                 }
+
+                                final_semantic_notify_evt.notify_one();
                             }
                         }
 
@@ -904,9 +940,9 @@ fn run_partial_direct_preview_detection(
     };
     let results = finalize_live_semantic_results(
         merged
-        .iter()
-        .map(|m| super::detection::to_result(&app_state, m))
-        .collect(),
+            .iter()
+            .map(|m| super::detection::to_result(&app_state, m))
+            .collect(),
     );
     drop(app_state);
 
@@ -1480,9 +1516,11 @@ pub fn stop_transcription(state: State<'_, Mutex<AppState>>) -> Result<(), Strin
 
 #[cfg(test)]
 mod tests {
-    use super::{finalize_live_semantic_results, LIVE_SEMANTIC_CAP};
+    use super::{
+        finalize_live_semantic_results, replace_semantic_job, take_semantic_job, LIVE_SEMANTIC_CAP,
+    };
     use std::sync::atomic::{AtomicU64, Ordering};
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex};
 
     fn make_detection_result(
         verse_ref: &str,
@@ -1621,5 +1659,41 @@ mod tests {
         assert_eq!(finalized.len(), LIVE_SEMANTIC_CAP);
         assert!(finalized.iter().any(|r| r.verse_ref == "Romans 8:28"));
         assert!(finalized.iter().any(|r| r.verse_ref == "Genesis 1:1"));
+    }
+
+    #[test]
+    fn semantic_job_slot_replace_reports_whether_existing_job_was_replaced() {
+        let slot = Arc::new(Mutex::new(None));
+
+        assert!(!replace_semantic_job(&slot, (1, "old".to_string()), "test"));
+        assert!(replace_semantic_job(&slot, (2, "new".to_string()), "test"));
+
+        assert_eq!(
+            take_semantic_job(&slot, "test"),
+            Some((2, "new".to_string()))
+        );
+        assert_eq!(take_semantic_job(&slot, "test"), None);
+    }
+
+    #[test]
+    fn semantic_job_slot_recovers_from_poisoned_lock() {
+        let slot = Arc::new(Mutex::new(None));
+
+        let poisoned_slot = slot.clone();
+        let _ = std::panic::catch_unwind(move || {
+            let mut guard = poisoned_slot.lock().unwrap();
+            guard.replace((1, "poisoned".to_string()));
+            panic!("poison semantic slot");
+        });
+
+        assert!(replace_semantic_job(
+            &slot,
+            (2, "recovered".to_string()),
+            "test"
+        ));
+        assert_eq!(
+            take_semantic_job(&slot, "test"),
+            Some((2, "recovered".to_string()))
+        );
     }
 }
