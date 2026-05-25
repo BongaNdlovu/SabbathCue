@@ -14,8 +14,8 @@ streaming.
 
 <Cards>
   <Card
-    title="Vosk (local, free)"
-    description="Runs the Vosk speech recognition toolkit on your machine — no API key, no internet, no per-minute billing. Uses open dictation for broad word coverage."
+    title="Vosk (local, free, verse-focused)"
+    description="Runs the Vosk speech recognition toolkit on your machine — no API key, no internet, no per-minute billing. Uses a constrained verse-reference grammar for fast Bible reference detection."
   />
   <Card
     title="Deepgram (cloud, paid)"
@@ -26,9 +26,9 @@ streaming.
 ## Option 1: Vosk (local, default)
 
 Vosk is an offline speech recognition toolkit that transcribes audio in
-real time using open dictation — no constrained phrase grammar. The default
-small English model covers everyday vocabulary well, and larger Vosk models
-improve accuracy for specialized or uncommon terms.
+real time using a verse-focused constrained grammar. It recognizes Bible
+book names, chapter and verse numbers, and navigation keywords. For
+full-sermon transcript coverage with general vocabulary, use Deepgram.
 
 To install the Vosk model:
 
@@ -81,14 +81,14 @@ and queue state are preserved across the swap.
 | --- | --- | --- |
 | API cost | Free | Per-minute billing |
 | Internet required | No, after the model is installed | Yes (WebSocket) |
-| Recognition mode | Open dictation | Keyword-boosted streaming |
-| Long-form accuracy | Good with larger models | Excellent |
+| Recognition mode | Verse-focused grammar | Keyword-boosted streaming |
+| Transcript coverage | Bible references + navigation | Full general speech |
 | Punctuation | None (plain text) | Excellent |
 | Works offline | Yes | No |
 
-Accuracy depends heavily on the Vosk model size and audio quality —
-larger models produce better transcriptions but use more memory and CPU.
-Deepgram accuracy is bounded by the round-trip to its nearest region.
-Pick whichever fits your install: Vosk for the no-cost offline path,
-Deepgram for the lowest latency and best transcription quality on a
-reliable network.
+Vosk uses a constrained grammar tuned for Bible verse references, so it
+excels at picking out book names and numbers during a sermon. For full
+transcript fidelity of the entire message, Deepgram is the recommended
+option. Pick Vosk for the no-cost offline verse-detection path,
+Deepgram for the best full-sermon transcription quality on a reliable
+network.

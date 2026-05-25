@@ -102,8 +102,9 @@ impl DetectionPipeline {
     /// Run hybrid semantic detection combining vector search with pre-fetched
     /// FTS5 BM25 results. Used by the real-time STT pipeline.
     ///
-    /// Vector results found by both methods get a confidence boost;
-    /// FTS5-only results are added with rank-derived confidence.
+    /// FTS5-only results are added with rank-derived confidence. Any
+    /// overlap dedupe/boosting that requires resolved verse identity is
+    /// applied later in the Tauri STT layer after DB lookup.
     #[expect(clippy::cast_precision_loss, reason = "rank index is small")]
     pub fn process_hybrid_with_fts(
         &mut self,
@@ -112,19 +113,16 @@ impl DetectionPipeline {
     ) -> Vec<MergedDetection> {
         // Vector search needs enough words for meaningful embeddings;
         // FTS5 keyword matching works with fewer words.
-        let mut vector_detections = if text.split_whitespace().count() >= MIN_WORDS_FOR_VECTOR {
+        let mut semantic_detections = if text.split_whitespace().count() >= MIN_WORDS_FOR_VECTOR {
             self.semantic.detect(text)
         } else {
             vec![]
         };
 
         if fts_results.is_empty() {
-            return self.merger.merge(vec![], vector_detections);
+            return self.merger.merge(vec![], semantic_detections);
         }
 
-        // Add FTS5 results as detections with populated VerseRef (no verse_id).
-        // The merger will dedup if both vector and FTS5 find the same verse.
-        // to_result() resolves VerseRef via the active translation's db.get_verse().
         #[expect(
             clippy::cast_possible_truncation,
             reason = "timestamp millis won't exceed u64"
@@ -135,6 +133,7 @@ impl DetectionPipeline {
             .as_millis() as u64;
 
         let snippet = text.to_string();
+
         for (rank, fts) in fts_results.iter().enumerate() {
             let confidence = FTS5_RANK0_CONFIDENCE - (rank as f64 * FTS5_CONFIDENCE_DECAY);
             if confidence < FTS5_MIN_CONFIDENCE {
@@ -148,7 +147,7 @@ impl DetectionPipeline {
                 rank,
                 confidence * 100.0
             );
-            vector_detections.push(Detection {
+            semantic_detections.push(Detection {
                 verse_ref: VerseRef {
                     book_number: fts.book_number,
                     book_name: fts.book_name.clone(),
@@ -167,7 +166,7 @@ impl DetectionPipeline {
             });
         }
 
-        self.merger.merge(vec![], vector_detections)
+        self.merger.merge(vec![], semantic_detections)
     }
 
     /// Run a standalone semantic search query (for the search UI).
@@ -311,5 +310,59 @@ mod tests {
         assert!(rank0.is_some());
         assert!(rank5.is_some());
         assert!(rank0.unwrap().detection.confidence > rank5.unwrap().detection.confidence);
+    }
+
+    #[test]
+    fn test_pipeline_hybrid_with_fts_keeps_all_candidates_for_later_resolution() {
+        let mut pipeline = DetectionPipeline::new();
+        let fts_results = vec![
+            Bm25Result {
+                book_number: 43, book_name: "John".to_string(), chapter: 3, verse: 16, rank: 0.0,
+            },
+            Bm25Result {
+                book_number: 45, book_name: "Romans".to_string(), chapter: 8, verse: 28, rank: 1.0,
+            },
+            Bm25Result {
+                book_number: 1, book_name: "Genesis".to_string(), chapter: 1, verse: 1, rank: 2.0,
+            },
+            Bm25Result {
+                book_number: 19, book_name: "Psalms".to_string(), chapter: 23, verse: 1, rank: 3.0,
+            },
+        ];
+
+        let results = pipeline.process_hybrid_with_fts("test text with many references", &fts_results);
+
+        // The Tauri STT layer caps after verse resolution/dedupe.
+        assert_eq!(results.len(), 4);
+    }
+
+    #[test]
+    fn test_pipeline_hybrid_dedup_fts_vector_overlap() {
+        // When FTS5 and vector search find the same verse, only one
+        // candidate is emitted (not duplicates).
+        let mut pipeline = DetectionPipeline::new();
+        let fts_results = vec![
+            Bm25Result {
+                book_number: 43, book_name: "John".to_string(), chapter: 3, verse: 16, rank: 0.0,
+            },
+        ];
+
+        let results = pipeline.process_hybrid_with_fts("John three sixteen", &fts_results);
+
+        // Since the semantic detector is a stub (no vector hits), we just
+        // get FTS5-only results. But verify no duplicate verse_refs.
+        let mut seen = std::collections::HashSet::new();
+        for r in &results {
+            let key = format!(
+                "{}-{}-{}",
+                r.detection.verse_ref.book_number,
+                r.detection.verse_ref.chapter,
+                r.detection.verse_ref.verse_start
+            );
+            assert!(
+                seen.insert(key),
+                "hybrid pipeline must not emit duplicate verse refs"
+            );
+        }
     }
 }

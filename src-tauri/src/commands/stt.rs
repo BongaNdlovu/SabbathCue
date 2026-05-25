@@ -3,12 +3,13 @@
     reason = "Tauri command extractors require pass-by-value"
 )]
 
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use tauri::{AppHandle, Emitter, Manager, State};
+use tokio::sync::Notify;
 
 use crate::asset_paths;
 use crate::events::{
@@ -38,6 +39,8 @@ static DIRECT_LOCK_CONTENDED: AtomicU64 = AtomicU64::new(0);
 const SEMANTIC_WINDOW_SEGMENTS: usize = 8;
 const PARTIAL_SEMANTIC_DEBOUNCE: Duration = Duration::from_millis(250);
 const PARTIAL_SEMANTIC_MIN_WORDS: usize = 4;
+const LIVE_SEMANTIC_CAP: usize = 3;
+const LIVE_SEMANTIC_OVERLAP_BOOST: f64 = 0.10;
 
 fn transcript_logging_enabled() -> bool {
     matches!(
@@ -105,6 +108,66 @@ fn average_word_confidence(words: &[Word], fallback: f64) -> f64 {
 
 fn word_count(text: &str) -> usize {
     text.split_whitespace().count()
+}
+
+fn semantic_result_key(result: &super::detection::DetectionResult) -> String {
+    if result.book_number > 0 && result.chapter > 0 && result.verse > 0 {
+        format!(
+            "{}:{}:{}",
+            result.book_number, result.chapter, result.verse
+        )
+    } else {
+        result.verse_ref.clone()
+    }
+}
+
+fn finalize_live_semantic_results(
+    results: Vec<super::detection::DetectionResult>,
+) -> Vec<super::detection::DetectionResult> {
+    let mut grouped: HashMap<String, (super::detection::DetectionResult, usize)> = HashMap::new();
+
+    for result in results {
+        let key = semantic_result_key(&result);
+        match grouped.get_mut(&key) {
+            Some((existing, overlap_count)) => {
+                *overlap_count += 1;
+                existing.confidence = existing.confidence.max(result.confidence);
+                existing.auto_queued |= result.auto_queued;
+                if existing.verse_text.is_empty() && !result.verse_text.is_empty() {
+                    existing.verse_text = result.verse_text.clone();
+                }
+                if existing.transcript_snippet.is_empty() && !result.transcript_snippet.is_empty() {
+                    existing.transcript_snippet = result.transcript_snippet.clone();
+                }
+                if existing.book_number <= 0 && result.book_number > 0 {
+                    *existing = result;
+                }
+            }
+            None => {
+                grouped.insert(key, (result, 1));
+            }
+        }
+    }
+
+    let mut merged = grouped
+        .into_values()
+        .map(|(mut result, overlap_count)| {
+            if overlap_count > 1 {
+                result.confidence =
+                    (result.confidence + LIVE_SEMANTIC_OVERLAP_BOOST).min(0.98);
+            }
+            result
+        })
+        .collect::<Vec<_>>();
+
+    merged.sort_by(|a, b| {
+        b.confidence
+            .partial_cmp(&a.confidence)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.verse_ref.cmp(&b.verse_ref))
+    });
+    merged.truncate(LIVE_SEMANTIC_CAP);
+    merged
 }
 
 /// Start the full audio-capture-to-transcription pipeline.
@@ -385,8 +448,13 @@ pub async fn start_transcription(
     let evt_active = stt_active.clone();
     let event_app = app.clone();
 
-    // Background semantic detection channel — non-blocking, drops if busy
-    let (semantic_tx, mut semantic_rx) = tokio::sync::mpsc::channel::<(u64, String)>(4);
+    // Final semantic detection channel — non-blocking, drops if busy.
+    let (semantic_final_tx, mut semantic_final_rx) = tokio::sync::mpsc::channel::<(u64, String)>(4);
+
+    // Partial semantic detection uses latest-wins storage so fresh speech can
+    // replace stale queued work instead of being dropped behind it.
+    let partial_semantic_job = Arc::new(Mutex::new(None::<(u64, String)>));
+    let partial_semantic_notify = Arc::new(Notify::new());
 
     // Background detection channel — direct + reading mode, non-blocking
     let (detect_tx, mut detect_rx) = tokio::sync::mpsc::channel::<(u64, String)>(16);
@@ -429,19 +497,67 @@ pub async fn start_transcription(
         }
     });
 
-    // Spawn semantic detection worker (runs ONNX inference without blocking transcript).
-    // Uses spawn_blocking so ONNX doesn't starve the tokio async runtime
-    // (WebSocket readers, event emitters, etc.).
-    let sem_app = app.clone();
-    let sem_latest_seq = latest_accepted_seq.clone();
+    // Spawn final semantic detection worker (runs ONNX inference without blocking
+    // transcript delivery). Uses spawn_blocking so ONNX doesn't starve the tokio
+    // async runtime.
+    let sem_final_app = app.clone();
+    let sem_final_latest_seq = latest_accepted_seq.clone();
     tauri::async_runtime::spawn(async move {
-        while let Some((seq, text)) = semantic_rx.recv().await {
-            let app_clone = sem_app.clone();
-            let latest_seq = sem_latest_seq.clone();
+        while let Some((seq, text)) = semantic_final_rx.recv().await {
+            let app_clone = sem_final_app.clone();
+            let check_seq = sem_final_latest_seq.load(Ordering::Relaxed);
+            if seq < check_seq {
+                log::debug!(
+                    "[DET-SEMANTIC] Skipping stale final job seq={seq} latest={check_seq}",
+                );
+                continue;
+            }
+            let latest_seq = sem_final_latest_seq.clone();
             let _ = tokio::task::spawn_blocking(move || {
                 run_semantic_detection(&app_clone, seq, latest_seq, &text);
             })
             .await;
+        }
+    });
+
+    // Spawn latest-wins partial semantic worker. When multiple partials arrive
+    // during one inference run, only the newest pending partial is kept.
+    let sem_partial_app = app.clone();
+    let sem_partial_latest_seq = transcript_seq.clone();
+    let sem_partial_job = partial_semantic_job.clone();
+    let sem_partial_notify = partial_semantic_notify.clone();
+    tauri::async_runtime::spawn(async move {
+        loop {
+            sem_partial_notify.notified().await;
+
+            loop {
+                let next_job = {
+                    let Ok(mut slot) = sem_partial_job.lock() else {
+                        log::error!("[DET-SEMANTIC] Partial semantic slot lock poisoned");
+                        return;
+                    };
+                    slot.take()
+                };
+
+                let Some((seq, text)) = next_job else {
+                    break;
+                };
+
+                let check_seq = sem_partial_latest_seq.load(Ordering::Relaxed);
+                if seq < check_seq {
+                    log::debug!(
+                        "[DET-SEMANTIC] Skipping stale partial job seq={seq} latest={check_seq}",
+                    );
+                    continue;
+                }
+
+                let app_clone = sem_partial_app.clone();
+                let latest_seq = sem_partial_latest_seq.clone();
+                let _ = tokio::task::spawn_blocking(move || {
+                    run_semantic_detection(&app_clone, seq, latest_seq, &text);
+                })
+                .await;
+            }
         }
     });
 
@@ -466,6 +582,8 @@ pub async fn start_transcription(
     let detect_dropped_evt = detect_dropped.clone();
     let semantic_sent_evt = semantic_sent.clone();
     let semantic_dropped_evt = semantic_dropped.clone();
+    let partial_semantic_job_evt = partial_semantic_job.clone();
+    let partial_semantic_notify_evt = partial_semantic_notify.clone();
 
     tauri::async_runtime::spawn(async move {
         let mut transcript_router = TranscriptRouter::default();
@@ -541,25 +659,31 @@ pub async fn start_transcription(
                                 let mut parts = semantic_window.iter().cloned().collect::<Vec<_>>();
                                 parts.push(transcript.clone());
                                 let semantic_text = parts.join(" ");
-                                if let Ok(()) = semantic_tx.try_send((seq, semantic_text)) {
-                                    let n = semantic_sent_evt.fetch_add(1, Ordering::Relaxed) + 1;
-                                    if n % 25 == 0 {
-                                        let depth =
-                                            semantic_tx.max_capacity() - semantic_tx.capacity();
-                                        let dropped = semantic_dropped_evt.load(Ordering::Relaxed);
-                                        log::info!(
-                                            "[QUEUE] partial_semantic_tx sent={n} dropped={dropped} depth={depth}/{}",
-                                            semantic_tx.max_capacity()
+                                let replaced = {
+                                    let Ok(mut slot) = partial_semantic_job_evt.lock() else {
+                                        log::error!(
+                                            "[DET-SEMANTIC] Partial semantic slot lock poisoned"
                                         );
-                                    }
-                                } else {
+                                        continue;
+                                    };
+                                    slot.replace((seq, semantic_text)).is_some()
+                                };
+                                let n = semantic_sent_evt.fetch_add(1, Ordering::Relaxed) + 1;
+                                if replaced {
                                     let d =
                                         semantic_dropped_evt.fetch_add(1, Ordering::Relaxed) + 1;
                                     let sent = semantic_sent_evt.load(Ordering::Relaxed);
                                     log::debug!(
-                                        "[QUEUE] partial_semantic_tx DROPPED (consumer behind) sent={sent} dropped={d}"
+                                        "[QUEUE] partial_semantic latest-wins replaced stale work sent={sent} replaced={d}"
+                                    );
+                                } else if n % 25 == 0 {
+                                    let replaced_count =
+                                        semantic_dropped_evt.load(Ordering::Relaxed);
+                                    log::info!(
+                                        "[QUEUE] partial_semantic latest-wins sent={n} replaced={replaced_count}"
                                     );
                                 }
+                                partial_semantic_notify_evt.notify_one();
                             }
                         }
                         log::debug!("[EVT] Partial processed in {:?}", t0.elapsed());
@@ -664,16 +788,17 @@ pub async fn start_transcription(
                                     .collect::<Vec<_>>()
                                     .join(" ");
 
-                                if let Ok(()) = semantic_tx.try_send((seq, semantic_text)) {
+                                if let Ok(()) = semantic_final_tx.try_send((seq, semantic_text)) {
                                     let n = semantic_sent_evt.fetch_add(1, Ordering::Relaxed) + 1;
                                     if n % 25 == 0 {
                                         let depth =
-                                            semantic_tx.max_capacity() - semantic_tx.capacity();
+                                            semantic_final_tx.max_capacity()
+                                                - semantic_final_tx.capacity();
                                         let dropped = semantic_dropped_evt.load(Ordering::Relaxed);
                                         log::info!(
-                                        "[QUEUE] semantic_tx sent={n} dropped={dropped} depth={depth}/{}",
-                                        semantic_tx.max_capacity()
-                                    );
+                                            "[QUEUE] semantic_tx sent={n} dropped={dropped} depth={depth}/{}",
+                                            semantic_final_tx.max_capacity()
+                                        );
                                     }
                                 } else {
                                     let d =
@@ -777,10 +902,12 @@ fn run_partial_direct_preview_detection(
         }
         return;
     };
-    let results: Vec<super::detection::DetectionResult> = merged
+    let results = finalize_live_semantic_results(
+        merged
         .iter()
         .map(|m| super::detection::to_result(&app_state, m))
-        .collect();
+        .collect(),
+    );
     drop(app_state);
 
     if results.is_empty() || seq != latest_seq.load(Ordering::Relaxed) {
@@ -1353,8 +1480,31 @@ pub fn stop_transcription(state: State<'_, Mutex<AppState>>) -> Result<(), Strin
 
 #[cfg(test)]
 mod tests {
+    use super::{finalize_live_semantic_results, LIVE_SEMANTIC_CAP};
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::sync::Arc;
+
+    fn make_detection_result(
+        verse_ref: &str,
+        book_number: i32,
+        chapter: i32,
+        verse: i32,
+        confidence: f64,
+    ) -> super::super::detection::DetectionResult {
+        super::super::detection::DetectionResult {
+            verse_ref: verse_ref.to_string(),
+            verse_text: "verse text".to_string(),
+            book_name: "Book".to_string(),
+            book_number,
+            chapter,
+            verse,
+            confidence,
+            source: "semantic".to_string(),
+            auto_queued: false,
+            transcript_snippet: "snippet".to_string(),
+            is_chapter_only: false,
+        }
+    }
 
     /// Test helper to verify stale sequence suppression logic.
     /// This simulates the sequence checking used in `run_direct_detection`
@@ -1436,5 +1586,40 @@ mod tests {
         assert!(!app_state
             .detection_paused
             .load(std::sync::atomic::Ordering::Relaxed));
+    }
+
+    #[test]
+    fn test_finalize_live_semantic_results_dedupes_and_boosts_overlap() {
+        let results = vec![
+            make_detection_result("John 3:16", 43, 3, 16, 0.86),
+            make_detection_result("John 3:16", 43, 3, 16, 0.74),
+            make_detection_result("Romans 8:28", 45, 8, 28, 0.72),
+        ];
+
+        let finalized = finalize_live_semantic_results(results);
+
+        assert_eq!(finalized.len(), 2);
+        assert_eq!(finalized[0].verse_ref, "John 3:16");
+        assert!(
+            finalized[0].confidence > 0.86,
+            "overlap should boost the deduped result"
+        );
+    }
+
+    #[test]
+    fn test_finalize_live_semantic_results_caps_after_dedupe() {
+        let results = vec![
+            make_detection_result("John 3:16", 43, 3, 16, 0.90),
+            make_detection_result("John 3:16", 43, 3, 16, 0.75),
+            make_detection_result("Romans 8:28", 45, 8, 28, 0.82),
+            make_detection_result("Genesis 1:1", 1, 1, 1, 0.81),
+            make_detection_result("Psalm 23:1", 19, 23, 1, 0.80),
+        ];
+
+        let finalized = finalize_live_semantic_results(results);
+
+        assert_eq!(finalized.len(), LIVE_SEMANTIC_CAP);
+        assert!(finalized.iter().any(|r| r.verse_ref == "Romans 8:28"));
+        assert!(finalized.iter().any(|r| r.verse_ref == "Genesis 1:1"));
     }
 }

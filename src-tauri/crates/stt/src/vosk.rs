@@ -17,7 +17,7 @@ use serde::Deserialize;
 use tokio::sync::mpsc;
 
 use crate::error::SttError;
-use crate::keyterms::bible_keyterms;
+use crate::keyterms::verse_only_keyterms;
 use crate::provider::SttProvider;
 use crate::types::{TranscriptEvent, Word};
 
@@ -82,12 +82,16 @@ impl VoskProvider {
             )));
         }
 
+        let grammar_json = vosk_grammar_json()?;
+
         Command::new(python_executable())
             .arg(&self.worker_path)
             .arg("--model")
             .arg(&self.model_path)
             .arg("--sample-rate")
             .arg("16000")
+            .arg("--grammar-json")
+            .arg(&grammar_json)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -138,62 +142,8 @@ fn average_confidence(words: &[Word]) -> f64 {
     scored.iter().map(|word| word.confidence).sum::<f64>() / f64::from(scored_len)
 }
 
-#[allow(dead_code)]
 fn vosk_grammar_json() -> Result<String, SttError> {
-    let mut phrases = vec![
-        "[unk]".to_string(),
-        "chapter".to_string(),
-        "verse".to_string(),
-        "verses".to_string(),
-        "psalm".to_string(),
-        "psalms".to_string(),
-        "sabbath".to_string(),
-        "scripture reading".to_string(),
-        "responsive reading".to_string(),
-        "opening hymn".to_string(),
-        "closing hymn".to_string(),
-        "hymn number".to_string(),
-        "holy spirit".to_string(),
-        "jesus christ".to_string(),
-        "king james".to_string(),
-    ];
-    phrases.extend(bible_keyterms().into_iter().map(|term| term.to_lowercase()));
-    phrases.extend(
-        [
-            "one",
-            "two",
-            "three",
-            "four",
-            "five",
-            "six",
-            "seven",
-            "eight",
-            "nine",
-            "ten",
-            "eleven",
-            "twelve",
-            "thirteen",
-            "fourteen",
-            "fifteen",
-            "sixteen",
-            "seventeen",
-            "eighteen",
-            "nineteen",
-            "twenty",
-            "thirty",
-            "forty",
-            "fifty",
-            "sixty",
-            "seventy",
-            "eighty",
-            "ninety",
-        ]
-        .iter()
-        .map(|term| (*term).to_string()),
-    );
-
-    phrases.sort();
-    phrases.dedup();
+    let phrases = verse_only_keyterms();
     serde_json::to_string(&phrases)
         .map_err(|e| SttError::ConnectionFailed(format!("failed to build Vosk grammar: {e}")))
 }
@@ -327,20 +277,86 @@ mod tests {
             parsed.iter().any(|p| p == "verse"),
             "grammar must include 'verse'"
         );
+        assert!(
+            parsed.iter().any(|p| p == "verses"),
+            "grammar must include 'verses'"
+        );
+        assert!(
+            parsed.iter().any(|p| p == "to"),
+            "grammar must include 'to'"
+        );
+        assert!(
+            parsed.iter().any(|p| p == "through"),
+            "grammar must include 'through'"
+        );
+        assert!(
+            parsed.iter().any(|p| p == "next"),
+            "grammar must include 'next'"
+        );
+        assert!(
+            parsed.iter().any(|p| p == "previous"),
+            "grammar must include 'previous'"
+        );
     }
 
     #[test]
-    fn grammar_json_includes_worship_terms() {
+    fn grammar_json_excludes_worship_and_unk_terms() {
         let json = vosk_grammar_json().expect("grammar JSON should be valid");
         let parsed: Vec<String> =
             serde_json::from_str(&json).expect("grammar JSON must parse as string array");
         assert!(
-            parsed.iter().any(|p| p == "sabbath"),
-            "grammar must include 'sabbath'"
+            !parsed.iter().any(|p| p == "[unk]"),
+            "grammar must NOT include '[unk]'"
         );
         assert!(
-            parsed.iter().any(|p| p == "holy spirit"),
-            "grammar must include 'holy spirit'"
+            !parsed.iter().any(|p| p == "sabbath"),
+            "grammar must NOT include 'sabbath'"
+        );
+        assert!(
+            !parsed.iter().any(|p| p == "holy spirit"),
+            "grammar must NOT include 'holy spirit'"
+        );
+        assert!(
+            !parsed.iter().any(|p| p == "scripture reading"),
+            "grammar must NOT include 'scripture reading'"
+        );
+        assert!(
+            !parsed.iter().any(|p| p == "hymn number"),
+            "grammar must NOT include 'hymn number'"
+        );
+    }
+
+    #[test]
+    fn grammar_json_includes_high_number_support() {
+        let json = vosk_grammar_json().expect("grammar JSON should be valid");
+        let parsed: Vec<String> =
+            serde_json::from_str(&json).expect("grammar JSON must parse as string array");
+        assert!(
+            parsed.iter().any(|p| p == "hundred"),
+            "grammar must include 'hundred' for high chapter/verse numbers"
+        );
+        assert!(
+            parsed.iter().any(|p| p == "and"),
+            "grammar must include 'and' for number-word grouping"
+        );
+    }
+
+    #[test]
+    fn grammar_json_preserves_voice_control_and_translation_terms() {
+        let json = vosk_grammar_json().expect("grammar JSON should be valid");
+        let parsed: Vec<String> =
+            serde_json::from_str(&json).expect("grammar JSON must parse as string array");
+        assert!(
+            parsed.iter().any(|p| p == "stop transcribing"),
+            "grammar must keep the supported stop command"
+        );
+        assert!(
+            parsed.iter().any(|p| p == "niv"),
+            "grammar must keep supported translation abbreviations"
+        );
+        assert!(
+            parsed.iter().any(|p| p == "king james version"),
+            "grammar must keep supported translation names"
         );
     }
 
@@ -360,8 +376,7 @@ mod tests {
     }
 
     #[test]
-    fn default_spawn_does_not_pass_grammar_json() {
-        // Structural check: spawn_worker must not reference --grammar-json.
+    fn spawn_passes_grammar_json() {
         let source = include_str!("vosk.rs");
         let mut in_spawn = false;
         let mut spawn_lines: Vec<&str> = Vec::new();
@@ -378,8 +393,8 @@ mod tests {
         }
         let body = spawn_lines.join("\n");
         assert!(
-            !body.contains("--grammar-json"),
-            "default spawn_worker must not pass --grammar-json to the Vosk worker"
+            body.contains("--grammar-json"),
+            "spawn_worker must pass --grammar-json to the Vosk worker"
         );
     }
 }

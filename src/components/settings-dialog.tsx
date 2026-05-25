@@ -334,9 +334,10 @@ function SpeechSection() {
                 Local (Vosk)
               </span>
               <p className="text-[0.625rem] leading-relaxed text-muted-foreground">
-                Streams speech locally for low-latency offline captions. Free
-                after the model is installed, and audio never leaves your
-                machine.
+                Uses a verse-focused constrained grammar for fast Bible
+                reference detection. Free after the model is installed, and
+                audio never leaves your machine. For full-sermon transcript
+                quality, use Deepgram.
               </p>
             </div>
           </label>
@@ -362,11 +363,12 @@ function SpeechSection() {
           </div>
 
           <p className="text-[0.625rem] leading-relaxed text-muted-foreground">
-            Vosk runs in open dictation mode instead of a constrained phrase
-            grammar. Larger English Vosk models improve accuracy, especially
-            for uncommon vocabulary. Place the model folder here or set{" "}
-            <code className="text-[0.5625rem]">SABBATHCUE_VOSK_MODEL_DIR</code>.
-          </p>
+              Vosk runs with a verse-focused constrained grammar. It recognizes
+              Bible book names, numbers, and navigation keywords for fast verse
+              reference detection. For full-sermon transcript quality, switch to
+              Deepgram. Place the model folder here or set{" "}
+              <code className="text-[0.5625rem]">SABBATHCUE_VOSK_MODEL_DIR</code>.
+            </p>
           {!assetsLoading &&
             (!assetStatus?.vosk_model || !assetStatus?.vosk_worker) && (
               <p className="rounded-md bg-background px-2 py-1.5 font-mono text-[0.625rem] text-muted-foreground">

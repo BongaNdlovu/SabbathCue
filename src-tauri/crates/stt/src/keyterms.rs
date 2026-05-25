@@ -146,3 +146,200 @@ pub fn bible_keyterms() -> Vec<String> {
 
     terms
 }
+
+/// Returns a verse-only term list for the Vosk constrained grammar.
+///
+/// Includes canonical and spoken book names, parseable number words
+/// (including `hundred` and `and`), and verse-navigation keywords.
+/// Keeps a narrow set of explicit voice-control and translation terms
+/// that the app already supports so local Vosk does not silently lose
+/// those workflows.
+/// Excludes `[unk]`, theological/worship terms, and general dictation
+/// vocabulary so that Vosk narrows transcript coverage to Bible-
+/// reference language.
+#[allow(clippy::too_many_lines)]
+pub fn verse_only_keyterms() -> Vec<String> {
+    let mut terms: Vec<String> = Vec::new();
+
+    // 66 Bible book names (lowercased for grammar matching)
+    let books = [
+        "genesis",
+        "exodus",
+        "leviticus",
+        "numbers",
+        "deuteronomy",
+        "joshua",
+        "judges",
+        "ruth",
+        "1 samuel",
+        "2 samuel",
+        "1 kings",
+        "2 kings",
+        "1 chronicles",
+        "2 chronicles",
+        "ezra",
+        "nehemiah",
+        "esther",
+        "job",
+        "psalms",
+        "psalm",
+        "proverbs",
+        "ecclesiastes",
+        "song of solomon",
+        "isaiah",
+        "jeremiah",
+        "lamentations",
+        "ezekiel",
+        "daniel",
+        "hosea",
+        "joel",
+        "amos",
+        "obadiah",
+        "jonah",
+        "micah",
+        "nahum",
+        "habakkuk",
+        "zephaniah",
+        "haggai",
+        "zechariah",
+        "malachi",
+        "matthew",
+        "mark",
+        "luke",
+        "john",
+        "acts",
+        "romans",
+        "1 corinthians",
+        "2 corinthians",
+        "galatians",
+        "ephesians",
+        "philippians",
+        "colossians",
+        "1 thessalonians",
+        "2 thessalonians",
+        "1 timothy",
+        "2 timothy",
+        "titus",
+        "philemon",
+        "hebrews",
+        "james",
+        "1 peter",
+        "2 peter",
+        "1 john",
+        "2 john",
+        "3 john",
+        "jude",
+        "revelation",
+    ];
+    terms.extend(books.iter().map(ToString::to_string));
+
+    // Spoken book forms
+    let spoken = [
+        "first samuel",
+        "second samuel",
+        "first kings",
+        "second kings",
+        "first chronicles",
+        "second chronicles",
+        "first corinthians",
+        "second corinthians",
+        "first thessalonians",
+        "second thessalonians",
+        "first timothy",
+        "second timothy",
+        "first peter",
+        "second peter",
+        "first john",
+        "second john",
+        "third john",
+        "song of songs",
+    ];
+    terms.extend(spoken.iter().map(ToString::to_string));
+
+    // Number words for chapter/verse parsing, including high-chapter support
+    let numbers = [
+        "one", "two", "three", "four", "five", "six", "seven", "eight",
+        "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen",
+        "sixteen", "seventeen", "eighteen", "nineteen", "twenty", "thirty",
+        "forty", "fifty", "sixty", "seventy", "eighty", "ninety", "hundred",
+        "and",
+    ];
+    terms.extend(numbers.iter().map(ToString::to_string));
+
+    // Verse-navigation and range keywords
+    let navigation = [
+        "chapter", "verse", "verses", "to", "through", "next", "previous",
+    ];
+    terms.extend(navigation.iter().map(ToString::to_string));
+
+    // Keep the exact local voice-control commands that the app already supports.
+    let voice_control = ["stop", "start", "transcribing", "stop transcribing"];
+    terms.extend(voice_control.iter().map(ToString::to_string));
+
+    // Minimal translation-command support so local Vosk still recognizes
+    // the narrow command phrases that the app handles today.
+    let translation_command_words = [
+        "read",
+        "switch",
+        "show",
+        "give",
+        "in",
+        "version",
+        "translation",
+        "bible",
+    ];
+    terms.extend(
+        translation_command_words
+            .iter()
+            .map(ToString::to_string),
+    );
+
+    let translations = [
+        "niv",
+        "new international version",
+        "esv",
+        "english standard version",
+        "nasb",
+        "new american standard",
+        "nkjv",
+        "new king james",
+        "kjv",
+        "king james version",
+        "king james",
+        "nlt",
+        "new living translation",
+        "amp",
+        "amplified",
+        "amplified bible",
+        "msg",
+        "message",
+        "the message",
+        "csb",
+        "christian standard bible",
+        "hcsb",
+        "holman christian standard",
+        "rsv",
+        "revised standard version",
+        "nrsv",
+        "new revised standard version",
+        "net",
+        "new english translation",
+        "gnt",
+        "good news translation",
+        "gnb",
+        "good news bible",
+        "cev",
+        "contemporary english version",
+        "spanish",
+        "reina valera",
+        "french",
+        "darby french",
+        "portuguese",
+        "biblia livre",
+    ];
+    terms.extend(translations.iter().map(ToString::to_string));
+
+    terms.sort();
+    terms.dedup();
+    terms
+}

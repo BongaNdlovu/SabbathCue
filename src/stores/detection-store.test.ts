@@ -55,25 +55,47 @@ describe("detection store", () => {
     expect(detections[1].verse_ref).toBe("John 3:16")
   })
 
-  it("ranks direct detections above similar-confidence semantic detections", () => {
+  it("stronger semantic hit outranks weaker direct hit", () => {
     const store = useDetectionStore.getState()
 
     store.addDetection(makeDetection({
-      verse_ref: "Semantic Hit",
+      verse_ref: "Strong Semantic",
       confidence: 0.91,
       source: "semantic",
     }))
 
     now = new Date("2026-05-19T00:00:01Z").getTime()
     store.addDetection(makeDetection({
-      verse_ref: "Direct Hit",
+      verse_ref: "Weak Direct",
       confidence: 0.84,
       source: "direct",
     }))
 
     const detections = useDetectionStore.getState().detections
-    expect(detections[0].verse_ref).toBe("Direct Hit")
-    expect(detections[1].verse_ref).toBe("Semantic Hit")
+    expect(detections[0].verse_ref).toBe("Strong Semantic")
+    expect(detections[1].verse_ref).toBe("Weak Direct")
+  })
+
+  it("near-tied direct hit wins over semantic", () => {
+    const store = useDetectionStore.getState()
+
+    store.addDetection(makeDetection({
+      verse_ref: "Near Semantic",
+      confidence: 0.90,
+      source: "semantic",
+    }))
+
+    now = new Date("2026-05-19T00:00:01Z").getTime()
+    store.addDetection(makeDetection({
+      verse_ref: "Near Direct",
+      confidence: 0.87,
+      source: "direct",
+    }))
+
+    // 0.87 + 0.04 = 0.91 vs 0.90 → direct wins by narrow margin
+    const detections = useDetectionStore.getState().detections
+    expect(detections[0].verse_ref).toBe("Near Direct")
+    expect(detections[1].verse_ref).toBe("Near Semantic")
   })
 
   it("duplicate verse refreshes recency and keeps best confidence", () => {
@@ -146,17 +168,17 @@ describe("detection store", () => {
     expect(detections[0].confidence).toBe(0.95)
   })
 
-  it("keeps only the most recent detections", () => {
+  it("keeps at most 8 detections", () => {
     const store = useDetectionStore.getState()
 
-    for (let i = 0; i < 13; i += 1) {
+    for (let i = 0; i < 9; i += 1) {
       now = new Date("2026-05-19T00:00:00Z").getTime() + i
       store.addDetection(makeDetection({ verse_ref: `Ref ${i}`, confidence: 0.8 }))
     }
 
     const detections = useDetectionStore.getState().detections
-    expect(detections).toHaveLength(12)
-    expect(detections[0].verse_ref).toBe("Ref 12")
+    expect(detections).toHaveLength(8)
+    expect(detections[0].verse_ref).toBe("Ref 8")
     expect(detections.some((d) => d.verse_ref === "Ref 0")).toBe(false)
   })
 })

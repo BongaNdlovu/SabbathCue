@@ -10,9 +10,9 @@ interface DetectionResultWithMeta extends DetectionResult {
   received_at?: number
 }
 
-const MAX_RECENT_DETECTIONS = 12
-const DIRECT_SOURCE_BONUS = 0.12
-const MAX_RECENCY_BONUS = 0.03
+const MAX_RECENT_DETECTIONS = 8
+const DIRECT_SOURCE_BONUS = 0.04
+const MAX_RECENCY_BONUS = 0.01
 const RECENCY_BONUS_WINDOW_MS = 30_000
 
 interface DetectionState {

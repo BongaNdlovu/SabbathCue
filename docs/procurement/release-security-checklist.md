@@ -35,7 +35,7 @@ verification remains required for claims that cannot be proven by a test runner.
 - [ ] No new outbound network calls from Rust except documented setup/STT flows
 - [ ] Remote control defaults remain loopback-only with token auth for HTTP control endpoints
 - [ ] No new GPL or AGPL dependencies without explicit legal review
-- [ ] Vosk default mode remains open dictation (no constrained grammar in default spawn)
+- [ ] Vosk default mode is verse-focused constrained grammar (verified via `--grammar-json` in spawn)
 - [ ] Deepgram API key handling remains OS-keychain backed and not logged
 
 ## Procurement artifact bundle

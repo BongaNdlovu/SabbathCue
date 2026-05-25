@@ -53,7 +53,8 @@ impl DetectionMerger {
     /// 2. Dedup: if direct and semantic found the same verse, keep direct.
     /// 3. Sort by confidence descending.
     /// 4. Drop anything below `confidence_threshold`.
-    /// 5. Mark `auto_queued = true` for items above `auto_queue_threshold`.
+    /// 5. Mark `auto_queued = true` for the highest-ranked eligible item
+    ///    (only one auto-queue per merge pass).
     /// 6. Apply cooldown: if last auto-display was < `cooldown_ms` ago,
     ///    don't auto-queue.
     pub fn merge(
@@ -89,7 +90,8 @@ impl DetectionMerger {
         // 4. Drop below threshold
         all.retain(|d| d.confidence >= self.confidence_threshold);
 
-        // 5 & 6. Build merged list with auto-queue decisions
+        // 5 & 6. Build merged list with auto-queue decisions.
+        // Only the highest-ranked eligible detection per merge pass can auto-queue.
         let now = Instant::now();
         let cooldown_ok = match self.last_auto_display {
             #[expect(
@@ -100,10 +102,13 @@ impl DetectionMerger {
             None => true,
         };
 
+        let mut auto_queue_used = false;
         let mut results = Vec::with_capacity(all.len());
         for detection in all {
-            let auto_queued = detection.confidence >= self.auto_queue_threshold && cooldown_ok;
+            let eligible = detection.confidence >= self.auto_queue_threshold && cooldown_ok;
+            let auto_queued = eligible && !auto_queue_used;
             if auto_queued {
+                auto_queue_used = true;
                 self.last_auto_display = Some(now);
             }
             results.push(MergedDetection {
@@ -344,5 +349,46 @@ mod tests {
         let mut merger = DetectionMerger::new();
         let results = merger.merge(vec![], vec![]);
         assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_merger_only_one_auto_queue_per_batch() {
+        let mut merger = DetectionMerger::new();
+
+        let direct = vec![
+            make_detection(
+                43,
+                "John",
+                3,
+                16,
+                0.96,
+                DetectionSource::DirectReference,
+            ),
+            make_detection(
+                45,
+                "Romans",
+                8,
+                28,
+                0.92,
+                DetectionSource::DirectReference,
+            ),
+        ];
+        let semantic = vec![make_detection(
+            1,
+            "Genesis",
+            1,
+            1,
+            0.85,
+            DetectionSource::Semantic { similarity: 0.85 },
+        )];
+
+        let results = merger.merge(direct, semantic);
+        assert_eq!(results.len(), 3);
+        // Only the highest-ranked (John 3:16) should be auto-queued.
+        let auto_queued_count = results.iter().filter(|r| r.auto_queued).count();
+        assert_eq!(auto_queued_count, 1);
+        assert!(results[0].auto_queued);
+        assert!(!results[1].auto_queued);
+        assert!(!results[2].auto_queued);
     }
 }
