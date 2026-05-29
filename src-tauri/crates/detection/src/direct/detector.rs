@@ -352,6 +352,41 @@ const FILLER_PHRASES: &[&str] = &[
     "turn in your bible to",
 ];
 
+/// Common local-STT Bible-reference substitutions. Kept narrow so ordinary
+/// sermon language does not turn into false positive Bible references.
+const REFERENCE_CORRECTIONS: &[(&str, &str)] = &[
+    ("one samuel", "1 Samuel"),
+    ("two samuel", "2 Samuel"),
+    ("one kings", "1 Kings"),
+    ("two kings", "2 Kings"),
+    ("one chronicles", "1 Chronicles"),
+    ("two chronicles", "2 Chronicles"),
+    ("first corinthian", "1 Corinthians"),
+    ("one corinthian", "1 Corinthians"),
+    ("one corinthians", "1 Corinthians"),
+    ("second corinthian", "2 Corinthians"),
+    ("two corinthian", "2 Corinthians"),
+    ("two corinthians", "2 Corinthians"),
+    ("first thessalonian", "1 Thessalonians"),
+    ("one thessalonian", "1 Thessalonians"),
+    ("one thessalonians", "1 Thessalonians"),
+    ("second thessalonian", "2 Thessalonians"),
+    ("two thessalonian", "2 Thessalonians"),
+    ("two thessalonians", "2 Thessalonians"),
+    ("one timothy", "1 Timothy"),
+    ("two timothy", "2 Timothy"),
+    ("one peter", "1 Peter"),
+    ("two peter", "2 Peter"),
+    ("one john", "1 John"),
+    ("two john", "2 John"),
+    ("three john", "3 John"),
+    ("revelations", "Revelation"),
+    ("song chapter", "Psalms chapter"),
+    ("songs chapter", "Psalms chapter"),
+    ("song verse", "Psalms verse"),
+    ("songs verse", "Psalms verse"),
+];
+
 /// Strip common sermon filler phrases from transcript text so they do not
 /// confuse the Aho-Corasick automaton or the parser.
 ///
@@ -361,16 +396,13 @@ const FILLER_PHRASES: &[&str] = &[
 fn clean_transcript(text: &str) -> String {
     let mut result = text.to_string();
 
+    for (from, to) in REFERENCE_CORRECTIONS {
+        result = replace_case_insensitive_phrase(&result, from, to);
+    }
+
     // Remove fixed filler phrases (case-insensitive)
     for phrase in FILLER_PHRASES {
-        loop {
-            let lower = result.to_lowercase();
-            if let Some(pos) = lower.find(phrase) {
-                result = format!("{}{}", &result[..pos], &result[pos + phrase.len()..]);
-            } else {
-                break;
-            }
-        }
+        result = replace_case_insensitive_phrase(&result, phrase, "");
     }
 
     // Handle "look at" only when followed by a word starting with an uppercase letter
@@ -411,6 +443,52 @@ fn clean_transcript(text: &str) -> String {
         .collect();
 
     collapsed.trim().to_string()
+}
+
+fn replace_case_insensitive_phrase(text: &str, from: &str, to: &str) -> String {
+    let lower = text.to_ascii_lowercase();
+    let mut result = String::with_capacity(text.len());
+    let mut cursor = 0;
+
+    loop {
+        let Some(relative_pos) = lower[cursor..].find(from) else {
+            break;
+        };
+        let pos = cursor + relative_pos;
+        let end = pos + from.len();
+
+        if is_word_boundary(text, pos) && is_word_boundary(text, end) {
+            result.push_str(&text[cursor..pos]);
+            result.push_str(to);
+            cursor = end;
+        } else if end >= text.len() {
+            result.push_str(&text[cursor..]);
+            cursor = text.len();
+            break;
+        } else {
+            let next = text[pos..]
+                .char_indices()
+                .nth(1)
+                .map_or(text.len(), |(offset, _)| pos + offset);
+            result.push_str(&text[cursor..next]);
+            cursor = next;
+        }
+    }
+
+    if cursor < text.len() {
+        result.push_str(&text[cursor..]);
+    }
+
+    result
+}
+
+fn is_word_boundary(text: &str, idx: usize) -> bool {
+    if idx == 0 || idx >= text.len() {
+        return true;
+    }
+    let before = text[..idx].chars().next_back();
+    let after = text[idx..].chars().next();
+    !matches!((before, after), (Some(a), Some(b)) if a.is_alphanumeric() && b.is_alphanumeric())
 }
 
 /// How long to wait for an incomplete reference to be completed (15 seconds).
@@ -1152,6 +1230,41 @@ mod tests {
         let results = detector.detect("Now look at Genesis 1:1 for the beginning");
         assert!(!results.is_empty());
         assert_eq!(results[0].verse_ref.book_name, "Genesis");
+    }
+
+    #[test]
+    fn test_reference_corrections_numbered_books() {
+        let mut detector = DirectDetector::new();
+        let results = detector.detect("one john chapter two verse three");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].verse_ref.book_name, "1 John");
+        assert_eq!(results[0].verse_ref.chapter, 2);
+        assert_eq!(results[0].verse_ref.verse_start, 3);
+
+        let mut detector = DirectDetector::new();
+        let results = detector.detect("second corinthian chapter five verse seventeen");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].verse_ref.book_name, "2 Corinthians");
+        assert_eq!(results[0].verse_ref.chapter, 5);
+        assert_eq!(results[0].verse_ref.verse_start, 17);
+    }
+
+    #[test]
+    fn test_reference_corrections_psalm_chapter_mishears() {
+        let mut detector = DirectDetector::new();
+        let results = detector.detect("songs chapter twenty three verse one");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].verse_ref.book_name, "Psalms");
+        assert_eq!(results[0].verse_ref.chapter, 23);
+        assert_eq!(results[0].verse_ref.verse_start, 1);
+    }
+
+    #[test]
+    fn test_reference_corrections_do_not_replace_inside_words() {
+        assert_eq!(
+            replace_case_insensitive_phrase("someone johnny said one john", "one john", "1 John"),
+            "someone johnny said 1 John"
+        );
     }
 
     #[test]

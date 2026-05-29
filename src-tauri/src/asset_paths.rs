@@ -2,13 +2,14 @@ use std::path::PathBuf;
 
 use tauri::{AppHandle, Manager};
 
-pub const VOSK_MODEL_DIRNAME: &str = "vosk-model-small-en-us";
+pub const VOSK_MODEL_DIRNAME: &str = "vosk-model-en-us-0.22-lgraph";
 const VOSK_MODEL_DIRNAMES: &[&str] = &[
-    "vosk-model-small-en-us",
     "vosk-model-en-us-0.22-lgraph",
     "vosk-model-en-us-0.22",
     "vosk-model-en-us-0.42-gigaspeech",
     "vosk-model-en-us-daanzu-20200905",
+    "vosk-model-small-en-us",
+    "vosk-model-small-en-us-0.15",
 ];
 
 fn dev_root() -> PathBuf {

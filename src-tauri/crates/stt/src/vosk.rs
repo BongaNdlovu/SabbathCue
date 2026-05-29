@@ -21,8 +21,9 @@ use crate::keyterms::verse_only_keyterms;
 use crate::provider::SttProvider;
 use crate::types::{TranscriptEvent, Word};
 
-/// 35ms at 16 kHz. Still responsive, with a little more context per Vosk pass.
-const DEFAULT_CHUNK_SAMPLES: usize = 560;
+/// 50ms at 16 kHz. A small latency tradeoff gives Vosk more acoustic context
+/// per pass, which helps short Bible references land more consistently.
+const DEFAULT_CHUNK_SAMPLES: usize = 800;
 
 #[derive(Debug)]
 pub struct VoskProvider {
