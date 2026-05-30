@@ -143,7 +143,6 @@ export const useDetectionStore = create<DetectionState>((set) => ({
   addDetection: (detection) =>
     set((state) => {
       const now = Date.now()
-      const key = detectionKey(detection)
       const existingIndex = state.detections.findIndex((d) =>
         detectionsAreEquivalent(d, detection)
       )
