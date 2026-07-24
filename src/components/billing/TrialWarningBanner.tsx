@@ -66,6 +66,7 @@ export function TrialWarningBanner() {
   const userId = useVerificationStore((s) => s.verifiedUserId)
   const email = useVerificationStore((s) => s.verifiedEmail)
   const [summary, setSummary] = useState<BillingSummary | null>(null)
+  const [now, setNow] = useState(() => Date.now())
   const [dismissedDay, setDismissedDay] = useState<string | null>(() =>
     readDismissedDay()
   )
@@ -79,13 +80,17 @@ export function TrialWarningBanner() {
 
   useEffect(() => {
     if (status !== "verified" || !userId) return
-    void load()
-    const onFocus = () => void load()
+    const onFocus = () => {
+      setNow(Date.now())
+      void load()
+    }
     window.addEventListener("focus", onFocus)
-    return () => window.removeEventListener("focus", onFocus)
+    queueMicrotask(onFocus)
+    return () => {
+      window.removeEventListener("focus", onFocus)
+    }
   }, [status, userId, load])
 
-  const now = Date.now()
   const warning = deriveTrialWarning(summary, now)
   if (!warning || !userId) return null
   if (dismissedDay === dismissalDayKey(now)) return null
