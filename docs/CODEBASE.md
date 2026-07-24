@@ -1,5 +1,5 @@
 # Codebase Map - SabbathCue
-Created: 2026-07-12 - Last verified: 2026-07-22 - Confidence: Medium
+Created: 2026-07-12 - Last verified: 2026-07-24 - Confidence: Medium
 
 ## 0 - Snapshot
 | Field | Value |
@@ -74,6 +74,7 @@ Core modules:
 | STT provider routing | src-tauri/src/commands/stt/provider.rs:95 | Selects Vosk, Deepgram, or Soniox and handles removed providers | Tauri STT commands |
 | Collected detections store | src/stores/collected-detections-store.ts:48 | Session-scoped reuse list of presented/queued detections | Detections panel |
 | Detection actions | src/components/panels/detections-panel.tsx:144 | Shared preview/present/queue closures for detection types | Detection cards, latest bar, collection UI |
+| Direct scripture scope | src-tauri/crates/detection/src/direct/context.rs:3, src-tauri/crates/detection/src/direct/detector.rs:674 | Keeps the active book/chapter until another resolved citation replaces it and promotes explicit in-scope verse phrases as direct citations | Live STT scripture detection |
 | Verse ranking and calibration | src-tauri/crates/detection/src/semantic/detector.rs:128, src-tauri/crates/detection/src/bin/detection_accuracy.rs:577 | Keeps internal rank evidence separate from displayed match strength and evaluates production Auto selection | Live STT detection, frontend detection workflow, desktop CI |
 | Theme catalog page | src/components/broadcast/KineticThemesPage.tsx:132 | User-facing Themes workspace with static and kinetic columns | Workspace nav |
 | Quick search helper | src/lib/quick-search.ts:167 | Prefix-safe ghost suggestion suffix | Preview and Search quick inputs |
@@ -230,6 +231,20 @@ switches inside the confirmation window, and first-seen-to-selection latency
 CI gates the full-model corpus at the production 90% policy and reports a
 non-gating 85% calibration probe to expose the lower threshold's tradeoffs
   -> .github/workflows/desktop-ci.yml:184
+```
+
+### Flow: direct sermon-passage continuation
+```text
+A fully resolved spoken reference establishes the active book/chapter
+  -> src-tauri/crates/detection/src/direct/detector.rs:1092
+The active passage has no wall-clock expiry; another resolved citation displaces it
+  -> src-tauri/crates/detection/src/direct/context.rs:26
+An explicit later "verse N" or "chapter N verse M" fills missing fields from that scope
+  -> src-tauri/crates/detection/src/direct/detector.rs:1223
+The resolved phrase remains a DirectReference and clears the 90% Live threshold
+  -> src-tauri/crates/detection/src/direct/detector.rs:674
+Common prose words that collide with fuzzy book names are rejected before parsing
+  -> src-tauri/crates/detection/src/direct/fuzzy.rs:50
 ```
 
 ### Flow: theme catalog
@@ -530,3 +545,4 @@ Top risks (ranked): 1. STT provider removal can leave stale docs or tests if his
 | 2026-07-23 | Isolated the desktop installation as SabbathCue Personal and ported the five KNFC stage kinetic themes with their canvas renderer and regression coverage. | 3, 6, 9, 10, 15 |
 | 2026-07-23 | Restored the obsidian accent so it stays amber when selected, made both dark surfaces derive their atmosphere from the active accent, applied the surface class to the verification screen, and removed the duplicate Live Desk projector button (the header entry point at app-controller-header.tsx:138 is the only one). | 3, 6, 15 |
 | 2026-07-23 | Added the Paddle billing mirror flow with atomic retryable webhook processing, event-time ordering, verified user linkage, multi-subscription access recalculation, and nullable authenticated billing summaries. | 6-10, 15 |
+| 2026-07-24 | Made direct sermon passage scope dwell-based, promoted explicit in-scope bare verses as citations, and blocked the prose collision `same` → `James`. | 5, 6, 15 |

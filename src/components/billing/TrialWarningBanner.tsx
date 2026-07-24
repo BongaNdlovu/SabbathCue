@@ -33,6 +33,12 @@ function readDismissedDay(): string | null {
   }
 }
 
+function millisecondsUntilNextDay(now: number): number {
+  const nextDay = new Date(now)
+  nextDay.setHours(24, 0, 0, 0)
+  return Math.max(1, nextDay.getTime() - now)
+}
+
 function whenText(daysRemaining: number): string {
   if (daysRemaining === 0) return "today"
   if (daysRemaining === 1) return "tomorrow"
@@ -91,17 +97,34 @@ export function TrialWarningBanner() {
     }
   }, [status, userId, load])
 
+  useEffect(() => {
+    let timeoutId: number
+
+    function scheduleNextDay() {
+      const current = Date.now()
+      timeoutId = window.setTimeout(() => {
+        setNow(Date.now())
+        scheduleNextDay()
+      }, millisecondsUntilNextDay(current))
+    }
+
+    scheduleNextDay()
+    return () => window.clearTimeout(timeoutId)
+  }, [])
+
   const warning = deriveTrialWarning(summary, now)
   if (!warning || !userId) return null
   if (dismissedDay === dismissalDayKey(now)) return null
 
   function dismiss() {
-    const key = dismissalDayKey(Date.now())
+    const dismissedAt = Date.now()
+    const key = dismissalDayKey(dismissedAt)
     try {
       localStorage.setItem(DISMISS_KEY, key)
     } catch {
       // Private mode / storage disabled: dismiss for this session only.
     }
+    setNow(dismissedAt)
     setDismissedDay(key)
   }
 

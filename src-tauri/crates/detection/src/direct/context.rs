@@ -1,7 +1,6 @@
 use crate::types::VerseRef;
-use std::time::Instant;
 
-/// Tracks recent Bible reference context so partial references
+/// Tracks the active Bible passage so partial references
 /// (e.g., "verse 17" without a book/chapter) can be resolved.
 #[expect(
     clippy::struct_field_names,
@@ -11,11 +10,7 @@ pub struct ReferenceContext {
     last_book: Option<i32>,
     last_book_name: Option<String>,
     last_chapter: Option<i32>,
-    last_timestamp: Option<Instant>,
 }
-
-/// How long context remains valid (60 seconds).
-const CONTEXT_TIMEOUT_SECS: u64 = 60;
 
 impl ReferenceContext {
     pub fn new() -> Self {
@@ -23,15 +18,6 @@ impl ReferenceContext {
             last_book: None,
             last_book_name: None,
             last_chapter: None,
-            last_timestamp: None,
-        }
-    }
-
-    /// Check if context is still valid (within timeout).
-    fn is_valid(&self) -> bool {
-        match self.last_timestamp {
-            Some(ts) => ts.elapsed().as_secs() < CONTEXT_TIMEOUT_SECS,
-            None => false,
         }
     }
 
@@ -41,10 +27,6 @@ impl ReferenceContext {
     /// If the `verse_ref` has chapter == 0, attempt to fill from context.
     pub fn resolve(&self, partial: &VerseRef) -> VerseRef {
         let mut resolved = partial.clone();
-
-        if !self.is_valid() {
-            return resolved;
-        }
 
         // Fill in missing book
         if resolved.book_number == 0 {
@@ -80,7 +62,6 @@ impl ReferenceContext {
         if verse_ref.chapter != 0 {
             self.last_chapter = Some(verse_ref.chapter);
         }
-        self.last_timestamp = Some(Instant::now());
     }
 }
 

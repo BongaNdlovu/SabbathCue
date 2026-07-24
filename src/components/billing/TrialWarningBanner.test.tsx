@@ -72,6 +72,7 @@ beforeEach(() => {
 
 afterEach(() => {
   act(() => root.unmount())
+  vi.useRealTimers()
   container.remove()
 })
 
@@ -128,6 +129,60 @@ describe("TrialWarningBanner", () => {
     expect(localStorage.getItem("sabbathcue.trial-warning-dismissed")).toBe(
       dismissalDayKey(Date.now())
     )
+  })
+
+  it("stays hidden when midnight passes before dismissal", async () => {
+    const beforeMidnight = new Date(2026, 6, 24, 23, 59, 59).getTime()
+    const afterMidnight = new Date(2026, 6, 25, 0, 0, 1).getTime()
+    vi.mocked(Date.now).mockReturnValue(beforeMidnight)
+    fetchMyBillingSummary.mockResolvedValue({
+      ok: true,
+      summary: summary({
+        accessExpiresAt: new Date(beforeMidnight + 2 * DAY).toISOString(),
+      }),
+    })
+    await render()
+
+    vi.mocked(Date.now).mockReturnValue(afterMidnight)
+    const dismiss = container.querySelector<HTMLButtonElement>(
+      "[aria-label='Dismiss access warning']"
+    )
+    expect(dismiss).not.toBeNull()
+    await act(async () => {
+      dismiss?.click()
+    })
+
+    expect(localStorage.getItem("sabbathcue.trial-warning-dismissed")).toBe(
+      dismissalDayKey(afterMidnight)
+    )
+    expect(container.textContent).toBe("")
+  })
+
+  it("returns at midnight without requiring a focus event", async () => {
+    const beforeMidnight = new Date(2026, 6, 24, 23, 59, 59).getTime()
+    vi.mocked(Date.now).mockRestore()
+    vi.useFakeTimers({ now: beforeMidnight })
+    fetchMyBillingSummary.mockResolvedValue({
+      ok: true,
+      summary: summary({
+        accessExpiresAt: new Date(beforeMidnight + 2 * DAY).toISOString(),
+      }),
+    })
+    await render()
+
+    const dismiss = container.querySelector<HTMLButtonElement>(
+      "[aria-label='Dismiss access warning']"
+    )
+    await act(async () => {
+      dismiss?.click()
+    })
+    expect(container.textContent).toBe("")
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_000)
+    })
+
+    expect(container.textContent).toContain("Your trial ends")
   })
 
   // Dismissal must not be permanent: a user who clears it on day 3 still needs

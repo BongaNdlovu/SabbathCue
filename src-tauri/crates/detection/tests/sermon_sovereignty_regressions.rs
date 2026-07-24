@@ -59,9 +59,8 @@ fn daniel_reading_flow_verse_continuation_still_completes() {
 #[test]
 fn bare_verse_reference_resolves_from_context_after_full_citation() {
     // A full citation ("Daniel 3:15") clears the incomplete-reference state.
-    // A later bare "Verse 27" (no book anywhere in the fragment) must still
-    // resolve from the reference context as a *conservative* candidate:
-    // visible to the operator, below the auto-fire threshold.
+    // A later bare "Verse 27" (no book anywhere in the fragment) is an
+    // explicit citation within the active sermon passage and must auto-fire.
     let mut detector = DirectDetector::new();
 
     detector.detect("Now, Daniel 3:15, can you read that one?");
@@ -77,13 +76,8 @@ fn bare_verse_reference_resolves_from_context_after_full_citation() {
     assert_eq!(daniel.verse_ref.chapter, 3);
     assert_eq!(daniel.verse_ref.verse_start, 27);
     assert!(
-        daniel.confidence < LIVE_THRESHOLD,
-        "book/chapter were inferred, not spoken — must not auto-fire (got {:.2})",
-        daniel.confidence
-    );
-    assert!(
-        daniel.confidence >= 0.70,
-        "context-resolved citation should still be a visible candidate (got {:.2})",
+        daniel.confidence >= LIVE_THRESHOLD,
+        "an in-scope bare verse is a direct citation and must go live (got {:.2})",
         daniel.confidence
     );
 }
@@ -105,9 +99,74 @@ fn bare_chapter_verse_reference_resolves_book_from_context() {
     assert_eq!(daniel.verse_ref.chapter, 2);
     assert_eq!(daniel.verse_ref.verse_start, 37);
     assert!(
-        daniel.confidence < LIVE_THRESHOLD,
-        "book was inferred, not spoken — must not auto-fire (got {:.2})",
+        daniel.confidence >= LIVE_THRESHOLD,
+        "an in-scope chapter-and-verse citation must go live (got {:.2})",
         daniel.confidence
+    );
+}
+
+#[test]
+fn supplied_thessalonians_transcript_keeps_scope_and_promotes_bare_verses() {
+    let mut detector = DirectDetector::new();
+
+    let opening = detector.detect(
+        "Testing, testing 1, 2 testing. Alright, so when I talk about, um, the \
+         resurrection, I'm going to fa- start this, start first in, um, in 1 \
+         Thessalonians chapter 4, verse 7.",
+    );
+    assert!(
+        opening.iter().any(|d| {
+            d.verse_ref.book_name == "1 Thessalonians"
+                && d.verse_ref.chapter == 4
+                && d.verse_ref.verse_start == 7
+        }),
+        "the opening full citation must establish 1 Thessalonians 4: {opening:?}"
+    );
+
+    detector.detect(
+        "And, um, I mean, as you can see, this verse, it's God talking about a- \
+         about calling us unto- not unto uncleanness, but unto holiness. And it's \
+         very important to note, because in certain points in life it's very \
+         difficult, you know, to- to align yourself with God's will. And in that \
+         difficulty, you can see the standard to which we- we reach. And that is \
+         holiness, you know, and, um,",
+    );
+    let verse_eight = detector.detect("let's go to verse 8.");
+    let thessalonians_eight = verse_eight
+        .iter()
+        .find(|d| {
+            d.verse_ref.book_name == "1 Thessalonians"
+                && d.verse_ref.chapter == 4
+                && d.verse_ref.verse_start == 8
+        })
+        .expect("bare verse 8 must resolve inside the active passage");
+    assert!(
+        thessalonians_eight.confidence >= LIVE_THRESHOLD,
+        "in-scope verse 8 must auto-promote as a citation (got {:.2})",
+        thessalonians_eight.confidence
+    );
+
+    detector.detect("Um, and then you see");
+    detector.detect("and then you see in.");
+    let verse_seventeen = detector.detect(
+        "The- in the- in the same chapter, that he's given us his Holy Spirit, \
+         you know. And then let's go into verse 17 now",
+    );
+
+    assert!(
+        verse_seventeen.iter().any(|d| {
+            d.verse_ref.book_name == "1 Thessalonians"
+                && d.verse_ref.chapter == 4
+                && d.verse_ref.verse_start == 17
+        }),
+        "bare verse 17 must remain in the active 1 Thessalonians 4 passage: \
+         {verse_seventeen:?}"
+    );
+    assert!(
+        verse_seventeen
+            .iter()
+            .all(|d| d.verse_ref.book_name != "James"),
+        "ordinary phrase 'same chapter' must not fabricate James: {verse_seventeen:?}"
     );
 }
 

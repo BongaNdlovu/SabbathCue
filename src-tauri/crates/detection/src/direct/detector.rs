@@ -667,11 +667,9 @@ const INCOMPLETE_REF_TIMEOUT_MS: u128 = 15_000;
 /// auto-fire threshold but below full chapter:verse references.
 const CHAPTER_ONLY_CONFIDENCE: f64 = 0.92;
 
-/// Confidence for a "verse N" / "chapter N verse M" reference whose book was
-/// filled in from recent context rather than spoken. Held below the auto-fire
-/// threshold: the operator sees the candidate, but an inferred book never airs
-/// on its own.
-const CONTEXT_RESOLVED_CONFIDENCE: f64 = 0.85;
+/// Confidence for an explicit "verse N" / "chapter N verse M" whose book was
+/// filled in from the active passage rather than repeated by the speaker.
+const CONTEXT_RESOLVED_CONFIDENCE: f64 = 0.92;
 
 /// An incomplete reference waiting for verse completion.
 #[derive(Debug, Clone)]
@@ -1221,12 +1219,10 @@ impl DirectDetector {
     }
 
     /// Resolve an explicit spoken "verse N" / "chapter N verse M" that carries
-    /// no book name using the recent reference context (60s window). Preachers
-    /// routinely cite this way minutes after last naming the book — long past
-    /// the incomplete-reference window. The book (and chapter, for verse-only)
-    /// were inferred rather than spoken, so the candidate surfaces at a
-    /// conservative confidence below the auto-fire threshold: visible to the
-    /// operator, never live on its own.
+    /// no book name using the active passage. Preachers routinely cite this
+    /// way minutes after last naming the book. Because the verse phrase is an
+    /// explicit citation within that passage, it clears the direct-reference
+    /// auto-fire threshold.
     fn try_context_resolved_reference(&mut self, text: &str) -> Option<Detection> {
         let continuation = parser::try_extract_standalone_reference(text)?;
         let partial = match continuation {
