@@ -59,8 +59,8 @@ fn daniel_reading_flow_verse_continuation_still_completes() {
 #[test]
 fn bare_verse_reference_resolves_from_context_after_full_citation() {
     // A full citation ("Daniel 3:15") clears the incomplete-reference state.
-    // A later bare "Verse 27" (no book anywhere in the fragment) is an
-    // explicit citation within the active sermon passage and must auto-fire.
+    // A later bare "Verse 27" (no book anywhere in the fragment) remains
+    // visible, but its inferred book must not auto-fire.
     let mut detector = DirectDetector::new();
 
     detector.detect("Now, Daniel 3:15, can you read that one?");
@@ -76,8 +76,8 @@ fn bare_verse_reference_resolves_from_context_after_full_citation() {
     assert_eq!(daniel.verse_ref.chapter, 3);
     assert_eq!(daniel.verse_ref.verse_start, 27);
     assert!(
-        daniel.confidence >= LIVE_THRESHOLD,
-        "an in-scope bare verse is a direct citation and must go live (got {:.2})",
+        daniel.confidence < LIVE_THRESHOLD,
+        "an inferred book must not auto-fire (got {:.2})",
         daniel.confidence
     );
 }
@@ -99,14 +99,14 @@ fn bare_chapter_verse_reference_resolves_book_from_context() {
     assert_eq!(daniel.verse_ref.chapter, 2);
     assert_eq!(daniel.verse_ref.verse_start, 37);
     assert!(
-        daniel.confidence >= LIVE_THRESHOLD,
-        "an in-scope chapter-and-verse citation must go live (got {:.2})",
+        daniel.confidence < LIVE_THRESHOLD,
+        "an inferred book must not auto-fire (got {:.2})",
         daniel.confidence
     );
 }
 
 #[test]
-fn supplied_thessalonians_transcript_keeps_scope_and_promotes_bare_verses() {
+fn supplied_thessalonians_transcript_keeps_scope_and_surfaces_bare_verses() {
     let mut detector = DirectDetector::new();
 
     let opening = detector.detect(
@@ -141,8 +141,8 @@ fn supplied_thessalonians_transcript_keeps_scope_and_promotes_bare_verses() {
         })
         .expect("bare verse 8 must resolve inside the active passage");
     assert!(
-        thessalonians_eight.confidence >= LIVE_THRESHOLD,
-        "in-scope verse 8 must auto-promote as a citation (got {:.2})",
+        thessalonians_eight.confidence < LIVE_THRESHOLD,
+        "inferred verse 8 must remain operator-reviewed (got {:.2})",
         thessalonians_eight.confidence
     );
 
@@ -179,6 +179,25 @@ fn bare_verse_reference_without_any_context_stays_silent() {
     assert!(
         detections.is_empty(),
         "bare 'verse 27' with no prior context must not fabricate a reference"
+    );
+}
+
+#[test]
+fn inferred_book_reference_stays_below_live_threshold() {
+    let mut detector = DirectDetector::new();
+
+    detector.detect("Now, Daniel 3:15, can you read that one?");
+    let detections =
+        detector.detect("Chapter 2, verse 37, the Bible says, you O king are the king of kings.");
+    let inferred = detections
+        .iter()
+        .find(|d| d.verse_ref.book_name == "Daniel")
+        .expect("the inferred reference must remain visible to the operator");
+
+    assert!(
+        inferred.confidence < LIVE_THRESHOLD,
+        "a book inferred from mutable context must not auto-fire (got {:.2})",
+        inferred.confidence
     );
 }
 
