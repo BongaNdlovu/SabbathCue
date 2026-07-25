@@ -28,8 +28,10 @@ export default defineConfig([
       globals: globals.browser,
     },
     rules: {
-      // Preserve the v9 recommended baseline during the dependency migration.
+      // Keep rules newly added to eslint:recommended in v10 disabled during migration.
+      'no-unassigned-vars': 'off',
       'no-useless-assignment': 'off',
+      'preserve-caught-error': 'off',
       'react-refresh/only-export-components': 'off',
       // Surface high-cyclomatic-complexity functions as warnings (non-blocking).
       // 2026-06-18 baseline: max 58, 11 functions > 20. Ratchet the threshold
