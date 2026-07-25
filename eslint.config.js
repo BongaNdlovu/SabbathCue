@@ -28,6 +28,8 @@ export default defineConfig([
       globals: globals.browser,
     },
     rules: {
+      // Preserve the v9 recommended baseline during the dependency migration.
+      'no-useless-assignment': 'off',
       'react-refresh/only-export-components': 'off',
       // Surface high-cyclomatic-complexity functions as warnings (non-blocking).
       // 2026-06-18 baseline: max 58, 11 functions > 20. Ratchet the threshold
