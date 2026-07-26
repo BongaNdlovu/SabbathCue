@@ -64,3 +64,8 @@ path = "src/bin/quantize_embeddings.rs"
 name = "embedding_comparison"
 path = "src/bin/embedding_comparison.rs"
 required-features = ["vector-search"]
+
+[[bin]]
+name = "command_benchmark"
+path = "src/bin/command_benchmark.rs"
+required-features = ["onnx"]
