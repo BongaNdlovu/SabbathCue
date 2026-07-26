@@ -688,6 +688,22 @@ mod quote_run_tests {
     }
 
     #[test]
+    fn mid_window_interruption_breaks_the_run_instead_of_splicing() {
+        // Scaffolding spoken mid-quote must break the run. Callers must pass the
+        // raw transcript: on scaffolding-stripped text the two fragments splice
+        // into one 8-word run and reach the auto-queue band, on a quote that was
+        // never spoken contiguously.
+        let paragraph = "The shepherd does not remain in the fold waiting for the wandering sheep to return of itself, but he goes forth into the wilderness.";
+        let interrupted =
+            "the shepherd does not remain in the fold verse 12 waiting for the wandering sheep to return";
+        let spliced =
+            "the shepherd does not remain in the fold waiting for the wandering sheep to return";
+
+        assert_eq!(longest_shared_content_run(interrupted, paragraph), 4);
+        assert_eq!(longest_shared_content_run(spliced, paragraph), 8);
+    }
+
+    #[test]
     fn empty_inputs_have_no_run() {
         assert_eq!(longest_shared_content_run("", "history great conflict"), 0);
         assert_eq!(longest_shared_content_run("history great conflict", ""), 0);

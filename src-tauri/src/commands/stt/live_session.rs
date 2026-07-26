@@ -534,7 +534,13 @@ pub(crate) fn run_semantic_detection(
                 });
             let cue_active =
                 crate::commands::detection::note_and_check_egw_cue(&books, transcript, now_ms);
-            crate::commands::detection::detect_egw_quotes(&app_state, &query, cue_active)
+            // Raw transcript, not `query`. `query` exists to keep reference words
+            // and digits from poisoning BM25 *rank*, and EGW confidence ignores
+            // rank entirely. Worse, stripping deletes tokens mid-window, splicing
+            // two non-adjacent spans into one apparent run: "in the fold verse 12
+            // waiting for the wandering sheep" scores 4 raw but 8 stripped, which
+            // with a cue would auto-queue a quote nobody spoke contiguously.
+            crate::commands::detection::detect_egw_quotes(&app_state, transcript, cue_active)
         }
     } else {
         log::warn!("[DET-EGW-QUOTE] AppState busy; skipping EGW quote pass");
