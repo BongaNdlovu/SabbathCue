@@ -21,9 +21,9 @@ mod result;
 mod semantic_search;
 mod settings;
 
-#[cfg(test)]
-pub(crate) use egw::detect_egw_quotes;
-pub(crate) use egw::{apply_egw_auto_queue, detect_egw_references};
+pub(crate) use egw::{
+    apply_egw_auto_queue, detect_egw_quotes, detect_egw_references, note_and_check_egw_cue,
+};
 pub use result::{to_result, DetectionResult};
 use semantic_search::{run_semantic_search, SemanticSearchResult};
 use settings::{apply_detection_settings_to_merger, DEFAULT_SEMANTIC_VISIBILITY_THRESHOLD};

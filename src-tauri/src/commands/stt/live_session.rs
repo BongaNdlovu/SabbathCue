@@ -493,8 +493,9 @@ pub(crate) fn run_semantic_detection(
     );
 
     // Resolve verse text from DB for merged results. Explicit EGW references
-    // are handled above; live semantic output intentionally avoids EGW BM25
-    // quote matches because short sermon windows produced noisy DA/PP hits.
+    // are handled above. EGW quote matches are appended below: BM25 nominates,
+    // but a candidate only survives if a long run of its words was actually
+    // spoken. Flat-confidence BM25 hits are what made this noisy before.
     let app_managed: State<'_, Mutex<AppState>> = app.state();
     let Ok(app_state) = app_managed.lock() else {
         log::error!("Failed to lock AppState for verse resolution");
@@ -516,6 +517,30 @@ pub(crate) fn run_semantic_detection(
             result.confidence = result.confidence.min(0.89);
         }
     }
+
+    let egw_quotes = if let Ok(app_state) = app_managed.lock() {
+        let books = app_state
+            .bible_db
+            .as_ref()
+            .and_then(|db| db.list_egw_books().ok())
+            .unwrap_or_default();
+        if books.is_empty() {
+            Vec::new()
+        } else {
+            let now_ms = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |elapsed| {
+                    u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX)
+                });
+            let cue_active =
+                crate::commands::detection::note_and_check_egw_cue(&books, transcript, now_ms);
+            crate::commands::detection::detect_egw_quotes(&app_state, &query, cue_active)
+        }
+    } else {
+        log::warn!("[DET-EGW-QUOTE] AppState busy; skipping EGW quote pass");
+        Vec::new()
+    };
+    results.extend(egw_quotes);
 
     if results.is_empty() {
         log::info!(
