@@ -256,6 +256,33 @@ fn best_egw_alias_match<'a>(
     matches
 }
 
+/// Spoken phrases that attribute what follows to Ellen G. White.
+///
+/// "white" alone is excluded on purpose: white robes, white as snow and white
+/// horses are common sermon imagery, and a bare colour word is not attribution.
+const EGW_CUE_PHRASES: [&str; 4] = [
+    "ellen white",
+    "ellen g white",
+    "sister white",
+    "spirit of prophecy",
+];
+
+/// True when the window attributes its content to Ellen G. White, either by
+/// naming her or by naming one of the imported books.
+pub(crate) fn transcript_has_egw_cue(books: &[EgwBook], text: &str) -> bool {
+    let normalized = normalize_reference_text(text);
+    if normalized.is_empty() {
+        return false;
+    }
+    if EGW_CUE_PHRASES
+        .iter()
+        .any(|phrase| normalized.contains(phrase))
+    {
+        return true;
+    }
+    !best_egw_alias_match(&normalized, books).is_empty()
+}
+
 /// Confidence assigned to EGW paragraphs matched by keyword (below explicit references).
 #[cfg(test)]
 const EGW_FTS_CONFIDENCE: f64 = 0.55;
@@ -409,6 +436,74 @@ pub(crate) fn apply_egw_auto_queue(
             .get(&(result.book_number, result.chapter, result.verse))
             .copied()
             .unwrap_or(false);
+    }
+}
+
+#[cfg(test)]
+mod cue_tests {
+    use super::transcript_has_egw_cue;
+    use rhema_bible::EgwBook;
+
+    fn books() -> Vec<EgwBook> {
+        vec![
+            EgwBook {
+                id: 1,
+                book_number: 1,
+                title: "Patriarchs and Prophets".to_string(),
+                abbreviation: "PP".to_string(),
+                chapter_count: 2,
+            },
+            EgwBook {
+                id: 2,
+                book_number: 2,
+                title: "The Desire of Ages".to_string(),
+                abbreviation: "DA".to_string(),
+                chapter_count: 1,
+            },
+        ]
+    }
+
+    #[test]
+    fn author_name_is_a_cue() {
+        assert!(transcript_has_egw_cue(&books(), "sister white says it plainly"));
+        assert!(transcript_has_egw_cue(&books(), "Ellen White wrote about this"));
+    }
+
+    #[test]
+    fn spirit_of_prophecy_is_a_cue() {
+        assert!(transcript_has_egw_cue(
+            &books(),
+            "the spirit of prophecy speaks to this point"
+        ));
+    }
+
+    #[test]
+    fn book_title_is_a_cue() {
+        assert!(transcript_has_egw_cue(
+            &books(),
+            "in the desire of ages we are told"
+        ));
+        assert!(transcript_has_egw_cue(
+            &books(),
+            "patriarchs and prophets describes it"
+        ));
+    }
+
+    #[test]
+    fn ordinary_sermon_prose_is_not_a_cue() {
+        assert!(!transcript_has_egw_cue(
+            &books(),
+            "there is rejoicing in heaven over one sinner who repents"
+        ));
+    }
+
+    #[test]
+    fn white_alone_is_not_a_cue() {
+        // "white robes", "white as snow" are common sermon imagery.
+        assert!(!transcript_has_egw_cue(
+            &books(),
+            "their robes were white as snow"
+        ));
     }
 }
 
