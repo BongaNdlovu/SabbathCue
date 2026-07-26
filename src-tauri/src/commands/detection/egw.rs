@@ -347,10 +347,13 @@ const EGW_LOW_STT_CONFIDENCE_CAP: f64 = 0.89;
 /// Dampen EGW quote results when the STT confidence for the window was low.
 ///
 /// Mirrors the Bible semantic dampening, and additionally clears `auto_queued`.
-/// Bible results do not need that: their downstream gate is confidence itself.
-/// For EGW, `auto_queued` is the projector-facing decision, computed from run
-/// length rather than confidence, so capping confidence alone would leave a hit
-/// reading 0.89 that still presents itself with no operator click.
+///
+/// Bible semantic results need no such clause because they can never carry the
+/// flag: `DetectionMerger::merge` only marks `auto_queued` for
+/// `DetectionSource::DirectReference`. EGW quotes are the one semantic source
+/// that sets it directly, from run length, without passing through that
+/// eligibility rule — so capping confidence alone would leave a hit reading
+/// 0.89 that still presents itself with no operator click.
 pub(crate) fn dampen_egw_for_low_stt_confidence(
     results: &mut [DetectionResult],
     stt_confidence: f64,
