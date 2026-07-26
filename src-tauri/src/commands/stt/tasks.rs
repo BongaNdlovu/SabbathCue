@@ -42,6 +42,7 @@ pub(super) fn spawn_latest_wins_semantic_worker(
     job_label: &'static str,
     app: AppHandle,
     latest_seq: Arc<AtomicU64>,
+    egw_cue_at_ms: Arc<AtomicU64>,
     job_slot: Arc<Mutex<Option<SemanticJob>>>,
     notify: Arc<Notify>,
 ) -> tauri::async_runtime::JoinHandle<()> {
@@ -65,8 +66,16 @@ pub(super) fn spawn_latest_wins_semantic_worker(
 
                 let app_clone = app.clone();
                 let latest_seq = latest_seq.clone();
+                let egw_cue_at_ms = egw_cue_at_ms.clone();
                 let _ = tokio::task::spawn_blocking(move || {
-                    run_semantic_detection(&app_clone, seq, &latest_seq, &text, stt_confidence);
+                    run_semantic_detection(
+                        &app_clone,
+                        seq,
+                        &latest_seq,
+                        &egw_cue_at_ms,
+                        &text,
+                        stt_confidence,
+                    );
                 })
                 .await;
             }

@@ -158,6 +158,9 @@ fn mark_egw_auto_queue(
 ) {
     let merger_state: State<'_, Mutex<DetectionMerger>> = app.state();
     let Ok(mut merger) = merger_state.lock() else {
+        for result in results {
+            result.auto_queued = false;
+        }
         log::warn!("[DET-EGW] DetectionMerger busy; EGW auto-queue skipped");
         return;
     };
@@ -365,6 +368,7 @@ pub(crate) fn run_semantic_detection(
     app: &AppHandle,
     seq: u64,
     latest_seq: &Arc<AtomicU64>,
+    egw_cue_at_ms: &AtomicU64,
     transcript: &str,
     stt_confidence: f64,
 ) {
@@ -532,8 +536,12 @@ pub(crate) fn run_semantic_detection(
                 .map_or(0, |elapsed| {
                     u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX)
                 });
-            let cue_active =
-                crate::commands::detection::note_and_check_egw_cue(&books, transcript, now_ms);
+            let cue_active = crate::commands::detection::note_and_check_egw_cue(
+                &books,
+                transcript,
+                now_ms,
+                egw_cue_at_ms,
+            );
             // Raw transcript, not `query`. `query` exists to keep reference words
             // and digits from poisoning BM25 *rank*, and EGW confidence ignores
             // rank entirely. Worse, stripping deletes tokens mid-window, splicing
@@ -549,10 +557,8 @@ pub(crate) fn run_semantic_detection(
     // Same low-STT-confidence dampening the Bible results got above. It runs
     // here rather than in that loop because these results do not exist yet at
     // that point, and because EGW additionally loses `auto_queued`.
-    crate::commands::detection::dampen_egw_for_low_stt_confidence(
-        &mut egw_quotes,
-        stt_confidence,
-    );
+    crate::commands::detection::dampen_egw_for_low_stt_confidence(&mut egw_quotes, stt_confidence);
+    mark_egw_auto_queue(app, &mut egw_quotes);
     results.extend(egw_quotes);
 
     if results.is_empty() {

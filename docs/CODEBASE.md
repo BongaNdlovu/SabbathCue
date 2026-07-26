@@ -1,5 +1,5 @@
 # Codebase Map - SabbathCue
-Created: 2026-07-12 - Last verified: 2026-07-24 - Confidence: Medium
+Created: 2026-07-12 - Last verified: 2026-07-26 - Confidence: Medium
 
 ## 0 - Snapshot
 | Field | Value |
@@ -196,6 +196,21 @@ The store coalesces only adjacent Speechmatics finals arriving within 4 seconds
   -> src/stores/transcript-store.ts:45
 Deepgram, Soniox, Vosk, and Speechmatics spans after a longer pause remain separate rows
   -> src/hooks/use-transcription.test.ts:476
+```
+
+### Flow: live EGW quotation detection
+```text
+Each transcription session owns one cue timestamp shared by its partial and final workers
+  -> src-tauri/src/commands/stt/mod.rs:316
+The latest-wins workers carry that session state into semantic detection
+  -> src-tauri/src/commands/stt/tasks.rs:42
+Author or multiword-book cues activate a bounded attribution window; BM25 nominates
+paragraphs and a negation-aware consecutive-content run verifies quotation evidence
+  -> src-tauri/src/commands/detection/egw.rs:358
+  -> src-tauri/src/commands/detection/egw.rs:437
+Low-confidence STT dampening and the configured Manual/Auto threshold are applied
+before EGW results join the normal detection event
+  -> src-tauri/src/commands/stt/live_session.rs:367
 ```
 
 ### Flow: collected detections
@@ -547,3 +562,4 @@ Top risks (ranked): 1. STT provider removal can leave stale docs or tests if his
 | 2026-07-23 | Added the Paddle billing mirror flow with atomic retryable webhook processing, event-time ordering, verified user linkage, multi-subscription access recalculation, and nullable authenticated billing summaries. | 6-10, 15 |
 | 2026-07-24 | Made direct sermon passage scope dwell-based, promoted explicit in-scope bare verses as citations, and blocked the prose collision `same` → `James`. | 5, 6, 15 |
 | 2026-07-25 | Kept book-inferred bare chapter/verse references visible for operator review but below auto-live confidence, preventing mutable last-reference context from outranking correct semantic matches. | 6, 10, 11, 15 |
+| 2026-07-26 | Hardened live EGW quotation detection with polarity checks, unambiguous title cues, session-scoped attribution state, and settings-aware auto-queue policy. | 6, 10, 11, 15 |

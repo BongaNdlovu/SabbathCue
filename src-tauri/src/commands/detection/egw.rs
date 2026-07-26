@@ -29,15 +29,68 @@ fn normalize_reference_text(value: &str) -> String {
         .join(" ")
 }
 
+fn is_negation(word: &str) -> bool {
+    matches!(word, "no" | "not" | "nor" | "never" | "neither" | "without")
+}
+
+fn quote_polarity_tokens(text: &str) -> Vec<String> {
+    text.split(|ch: char| !ch.is_alphanumeric())
+        .map(str::to_lowercase)
+        .filter(|word| word.len() >= 4 || is_negation(word))
+        .collect()
+}
+
+fn negation_context_conflicts(source: &[String], other: &[String]) -> bool {
+    for (index, token) in source.iter().enumerate() {
+        if !is_negation(token) {
+            continue;
+        }
+        let anchor: Vec<&str> = source
+            .iter()
+            .skip(index + 1)
+            .filter(|word| !is_negation(word))
+            .take(2)
+            .map(String::as_str)
+            .collect();
+        if anchor.len() < 2 {
+            continue;
+        }
+
+        let mut found_anchor = false;
+        let mut found_negated_anchor = false;
+        for start in 0..other.len().saturating_sub(1) {
+            if other[start] == anchor[0] && other[start + 1] == anchor[1] {
+                found_anchor = true;
+                found_negated_anchor |= start > 0 && is_negation(other[start - 1].as_str());
+            }
+        }
+        if found_anchor && !found_negated_anchor {
+            return true;
+        }
+    }
+    false
+}
+
+fn quote_has_negation_conflict(window: &str, paragraph: &str) -> bool {
+    let spoken = quote_polarity_tokens(window);
+    let candidate = quote_polarity_tokens(paragraph);
+    negation_context_conflicts(&spoken, &candidate)
+        || negation_context_conflicts(&candidate, &spoken)
+}
+
 /// Longest run of consecutive content words shared, in order, by both texts.
 ///
 /// Both sides are first reduced to lowercased tokens of >=4 letters, so short
 /// filler ("the", "of", "and") and STT hiccups cannot split an otherwise
-/// verbatim run, and the run counts substantive words only. This is the
-/// evidence that separates a paragraph being *read aloud* from a paragraph
+/// verbatim run, and the run counts substantive words only. Negation is checked
+/// separately so removing "not" cannot turn an opposite statement into quote
+/// evidence. This separates a paragraph being *read aloud* from a paragraph
 /// that merely shares a topic — the failure mode that made the previous
 /// BM25-only attempt unusable.
 fn longest_shared_content_run(window: &str, paragraph: &str) -> usize {
+    if quote_has_negation_conflict(window, paragraph) {
+        return 0;
+    }
     let spoken: Vec<String> = rhema_detection::pipeline::content_words(window).collect();
     let candidate: Vec<String> = rhema_detection::pipeline::content_words(paragraph).collect();
     if spoken.is_empty() || candidate.is_empty() {
@@ -313,14 +366,15 @@ pub(crate) fn transcript_has_egw_cue(books: &[EgwBook], text: &str) -> bool {
     {
         return true;
     }
-    !best_egw_alias_match(&normalized, books).is_empty()
+    books.iter().any(|book| {
+        egw_aliases(book).into_iter().any(|alias| {
+            alias.split_whitespace().count() >= 2 && alias_match_end(&normalized, &alias).is_some()
+        })
+    })
 }
 
 /// How long attribution keeps lowering the run-length bar.
 const EGW_CUE_TTL_MS: u64 = 90_000;
-
-/// Epoch-millis of the last heard cue. 0 means "never".
-static EGW_CUE_AT_MS: AtomicU64 = AtomicU64::new(0);
 
 fn cue_is_live(now_ms: u64, cue_at_ms: u64) -> bool {
     cue_at_ms > 0 && now_ms.saturating_sub(cue_at_ms) <= EGW_CUE_TTL_MS
@@ -329,12 +383,17 @@ fn cue_is_live(now_ms: u64, cue_at_ms: u64) -> bool {
 /// Record a cue if this window carries one, and report whether attribution is
 /// currently in force. A quotation typically gets attributed once and then runs
 /// for several windows, so the cue outlives the window that carried it.
-pub(crate) fn note_and_check_egw_cue(books: &[EgwBook], text: &str, now_ms: u64) -> bool {
+pub(crate) fn note_and_check_egw_cue(
+    books: &[EgwBook],
+    text: &str,
+    now_ms: u64,
+    cue_at_ms: &AtomicU64,
+) -> bool {
     if transcript_has_egw_cue(books, text) {
-        EGW_CUE_AT_MS.store(now_ms, Ordering::Relaxed);
+        cue_at_ms.store(now_ms, Ordering::Relaxed);
         return true;
     }
-    cue_is_live(now_ms, EGW_CUE_AT_MS.load(Ordering::Relaxed))
+    cue_is_live(now_ms, cue_at_ms.load(Ordering::Relaxed))
 }
 
 /// STT confidence below this leaves the transcript too unreliable to present
@@ -483,19 +542,25 @@ pub(crate) fn apply_egw_auto_queue(
     results: &mut [DetectionResult],
     merger: &mut rhema_detection::DetectionMerger,
 ) {
-    let direct_indices: Vec<usize> = results
+    // Direct references always enter the configured policy. Semantic quotes
+    // enter only after run length prequalifies them; the merger can still revoke
+    // unattended presentation for Manual mode, threshold, or cooldown.
+    let eligible_indices: Vec<usize> = results
         .iter()
         .enumerate()
         .filter_map(|(index, result)| {
-            (result.content_type == "egw" && result.source == "direct").then_some(index)
+            (result.content_type == "egw"
+                && (result.source == "direct"
+                    || (result.source == "semantic" && result.auto_queued)))
+                .then_some(index)
         })
         .collect();
 
-    if direct_indices.is_empty() {
+    if eligible_indices.is_empty() {
         return;
     }
 
-    let candidates: Vec<rhema_detection::Detection> = direct_indices
+    let candidates: Vec<rhema_detection::Detection> = eligible_indices
         .iter()
         .map(|index| {
             let result = &results[*index];
@@ -533,7 +598,7 @@ pub(crate) fn apply_egw_auto_queue(
         })
         .collect();
 
-    for index in direct_indices {
+    for index in eligible_indices {
         let result = &mut results[index];
         result.auto_queued = auto_by_ref
             .get(&(result.book_number, result.chapter, result.verse))
@@ -632,8 +697,59 @@ mod low_stt_dampening_tests {
 }
 
 #[cfg(test)]
+mod auto_queue_policy_tests {
+    use super::{apply_egw_auto_queue, egw_to_result};
+    use rhema_bible::EgwParagraph;
+    use rhema_detection::DetectionMerger;
+
+    fn prequalified_semantic_quote() -> super::DetectionResult {
+        let paragraph = EgwParagraph {
+            id: 3,
+            book_number: 2,
+            book_title: "The Desire of Ages".to_string(),
+            chapter: 15,
+            chapter_title: "The Shepherd And His Flock".to_string(),
+            paragraph: 4,
+            page: 480,
+            page_paragraph: 1,
+            text: "The shepherd does not remain in the fold.".to_string(),
+        };
+        let mut result = egw_to_result(paragraph, 0.92, "quoted text");
+        result.source = "semantic".to_string();
+        result.auto_queued = true;
+        result
+    }
+
+    #[test]
+    fn manual_mode_revokes_semantic_quote_auto_queue() {
+        let mut results = vec![prequalified_semantic_quote()];
+        let mut merger = DetectionMerger::new();
+        merger.set_auto_queue_threshold(f64::INFINITY);
+
+        apply_egw_auto_queue(&mut results, &mut merger);
+
+        assert!(
+            !results[0].auto_queued,
+            "manual mode must revoke quote prequalification"
+        );
+    }
+
+    #[test]
+    fn auto_mode_keeps_a_semantic_quote_above_threshold_eligible() {
+        let mut results = vec![prequalified_semantic_quote()];
+        let mut merger = DetectionMerger::new();
+        merger.set_auto_queue_threshold(0.90);
+
+        apply_egw_auto_queue(&mut results, &mut merger);
+
+        assert!(results[0].auto_queued);
+    }
+}
+
+#[cfg(test)]
 mod cue_ttl_tests {
     use super::{cue_is_live, EGW_CUE_TTL_MS};
+    use std::sync::atomic::{AtomicU64, Ordering};
 
     #[test]
     fn cue_is_live_within_the_window() {
@@ -656,6 +772,15 @@ mod cue_ttl_tests {
         // Saturating arithmetic: an earlier `now` reads as still inside the window
         // rather than underflowing.
         assert!(cue_is_live(500, 1_000));
+    }
+
+    #[test]
+    fn cue_state_is_isolated_between_sessions() {
+        let previous_session = AtomicU64::new(1_000);
+        let next_session = AtomicU64::new(0);
+
+        assert!(cue_is_live(1_001, previous_session.load(Ordering::Relaxed)));
+        assert!(!cue_is_live(1_001, next_session.load(Ordering::Relaxed)));
     }
 }
 
@@ -726,13 +851,26 @@ mod cue_tests {
                 abbreviation: "DA".to_string(),
                 chapter_count: 1,
             },
+            EgwBook {
+                id: 3,
+                book_number: 4,
+                title: "Education".to_string(),
+                abbreviation: "Ed".to_string(),
+                chapter_count: 1,
+            },
         ]
     }
 
     #[test]
     fn author_name_is_a_cue() {
-        assert!(transcript_has_egw_cue(&books(), "sister white says it plainly"));
-        assert!(transcript_has_egw_cue(&books(), "Ellen White wrote about this"));
+        assert!(transcript_has_egw_cue(
+            &books(),
+            "sister white says it plainly"
+        ));
+        assert!(transcript_has_egw_cue(
+            &books(),
+            "Ellen White wrote about this"
+        ));
     }
 
     #[test]
@@ -764,6 +902,14 @@ mod cue_tests {
     }
 
     #[test]
+    fn ambiguous_single_word_book_title_is_not_a_cue() {
+        assert!(!transcript_has_egw_cue(
+            &books(),
+            "Christian education matters to every family"
+        ));
+    }
+
+    #[test]
     fn white_alone_is_not_a_cue() {
         // "white robes", "white as snow" are common sermon imagery.
         assert!(!transcript_has_egw_cue(
@@ -781,7 +927,8 @@ mod quote_run_tests {
     fn verbatim_phrase_runs_the_full_content_length() {
         // Content words (>=4 letters): history great conflict between christ satan = 6
         let spoken = "the history of the great conflict between christ and satan";
-        let paragraph = "the history of the great conflict between christ and satan began in heaven";
+        let paragraph =
+            "the history of the great conflict between christ and satan began in heaven";
         assert_eq!(longest_shared_content_run(spoken, paragraph), 6);
     }
 
@@ -827,5 +974,13 @@ mod quote_run_tests {
     fn empty_inputs_have_no_run() {
         assert_eq!(longest_shared_content_run("", "history great conflict"), 0);
         assert_eq!(longest_shared_content_run("history great conflict", ""), 0);
+    }
+
+    #[test]
+    fn opposite_polarity_is_not_quote_evidence() {
+        let paragraph = "The shepherd does not remain in the fold waiting for the wandering sheep to return of itself, but he goes forth into the wilderness.";
+        let opposite = "The shepherd does remain in the fold waiting for the wandering sheep to return of itself, but he goes forth into the wilderness.";
+
+        assert_eq!(longest_shared_content_run(opposite, paragraph), 0);
     }
 }

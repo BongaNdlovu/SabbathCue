@@ -314,12 +314,14 @@ pub async fn start_transcription(
     let semantic_dropped = Arc::new(AtomicU64::new(0));
     let transcript_seq = Arc::new(AtomicU64::new(0));
     let latest_accepted_seq = Arc::new(AtomicU64::new(0));
+    let egw_cue_at_ms = Arc::new(AtomicU64::new(0));
 
     task_handles.push(spawn_latest_wins_semantic_worker(
         "final-semantic",
         "final",
         app.clone(),
         latest_accepted_seq.clone(),
+        egw_cue_at_ms.clone(),
         final_semantic_job.clone(),
         final_semantic_notify.clone(),
     ));
@@ -328,6 +330,7 @@ pub async fn start_transcription(
         "partial",
         app.clone(),
         transcript_seq.clone(),
+        egw_cue_at_ms,
         partial_semantic_job.clone(),
         partial_semantic_notify.clone(),
     ));
