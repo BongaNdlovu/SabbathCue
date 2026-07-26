@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use rhema_bible::EgwBook;
 
@@ -315,6 +316,27 @@ pub(crate) fn transcript_has_egw_cue(books: &[EgwBook], text: &str) -> bool {
     !best_egw_alias_match(&normalized, books).is_empty()
 }
 
+/// How long attribution keeps lowering the run-length bar.
+const EGW_CUE_TTL_MS: u64 = 90_000;
+
+/// Epoch-millis of the last heard cue. 0 means "never".
+static EGW_CUE_AT_MS: AtomicU64 = AtomicU64::new(0);
+
+fn cue_is_live(now_ms: u64, cue_at_ms: u64) -> bool {
+    cue_at_ms > 0 && now_ms.saturating_sub(cue_at_ms) <= EGW_CUE_TTL_MS
+}
+
+/// Record a cue if this window carries one, and report whether attribution is
+/// currently in force. A quotation typically gets attributed once and then runs
+/// for several windows, so the cue outlives the window that carried it.
+pub(crate) fn note_and_check_egw_cue(books: &[EgwBook], text: &str, now_ms: u64) -> bool {
+    if transcript_has_egw_cue(books, text) {
+        EGW_CUE_AT_MS.store(now_ms, Ordering::Relaxed);
+        return true;
+    }
+    cue_is_live(now_ms, EGW_CUE_AT_MS.load(Ordering::Relaxed))
+}
+
 /// Minimum spoken words before a quote search is worth running.
 const EGW_QUOTE_MIN_WORDS: usize = 5;
 /// BM25 nominates this many candidates; run-length verification decides.
@@ -486,6 +508,34 @@ pub(crate) fn apply_egw_auto_queue(
             .get(&(result.book_number, result.chapter, result.verse))
             .copied()
             .unwrap_or(false);
+    }
+}
+
+#[cfg(test)]
+mod cue_ttl_tests {
+    use super::{cue_is_live, EGW_CUE_TTL_MS};
+
+    #[test]
+    fn cue_is_live_within_the_window() {
+        assert!(cue_is_live(1_000, 1_000));
+        assert!(cue_is_live(1_000 + EGW_CUE_TTL_MS, 1_000));
+    }
+
+    #[test]
+    fn cue_expires_after_the_window() {
+        assert!(!cue_is_live(1_001 + EGW_CUE_TTL_MS, 1_000));
+    }
+
+    #[test]
+    fn never_cued_is_never_live() {
+        assert!(!cue_is_live(500_000, 0));
+    }
+
+    #[test]
+    fn clock_going_backwards_does_not_panic_or_extend() {
+        // Saturating arithmetic: an earlier `now` reads as still inside the window
+        // rather than underflowing.
+        assert!(cue_is_live(500, 1_000));
     }
 }
 
