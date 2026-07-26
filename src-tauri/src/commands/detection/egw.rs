@@ -58,6 +58,38 @@ fn longest_shared_content_run(window: &str, paragraph: &str) -> usize {
     best
 }
 
+/// Shared-run length at which a paragraph is treated as spoken aloud.
+const EGW_QUOTE_RUN_FIRE: usize = 6;
+/// Shared-run length that, with attribution, is strong enough to auto-queue.
+const EGW_QUOTE_RUN_AUTO_QUEUE: usize = 8;
+/// Shared-run length that becomes an operator hint once attribution is heard.
+const EGW_QUOTE_RUN_CUED_HINT: usize = 4;
+const EGW_QUOTE_MAX_CONFIDENCE: f64 = 0.92;
+
+/// Map a shared-run length to `(confidence, auto_queued)`, or `None` to drop.
+///
+/// BM25 rank is deliberately absent: rank measures how well a paragraph
+/// answers a keyword query, not whether its words were spoken, and treating
+/// rank as confidence is what flooded the panel the first time this was tried.
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "run lengths are single-digit word counts"
+)]
+fn egw_quote_score(run: usize, cue_active: bool) -> Option<(f64, bool)> {
+    if run >= EGW_QUOTE_RUN_AUTO_QUEUE && cue_active {
+        return Some((EGW_QUOTE_MAX_CONFIDENCE, true));
+    }
+    if run >= EGW_QUOTE_RUN_FIRE {
+        let over = (run - EGW_QUOTE_RUN_FIRE).min(4) as f64;
+        return Some(((0.88 + 0.01 * over).min(EGW_QUOTE_MAX_CONFIDENCE), false));
+    }
+    if run >= EGW_QUOTE_RUN_CUED_HINT && cue_active {
+        let over = (run - EGW_QUOTE_RUN_CUED_HINT) as f64;
+        return Some((0.75 + 0.05 * over, false));
+    }
+    None
+}
+
 fn integer_token(token: &str) -> Option<i32> {
     if token.chars().all(|ch| ch.is_ascii_digit()) {
         return token.parse::<i32>().ok().filter(|value| *value > 0);
@@ -436,6 +468,52 @@ pub(crate) fn apply_egw_auto_queue(
             .get(&(result.book_number, result.chapter, result.verse))
             .copied()
             .unwrap_or(false);
+    }
+}
+
+#[cfg(test)]
+mod quote_score_tests {
+    use super::egw_quote_score;
+
+    #[test]
+    fn long_run_with_cue_fires_and_auto_queues() {
+        let (confidence, auto_queued) = egw_quote_score(8, true).expect("should score");
+        assert!((confidence - 0.92).abs() < f64::EPSILON);
+        assert!(auto_queued);
+    }
+
+    #[test]
+    fn long_run_without_cue_fires_but_never_auto_queues() {
+        let (confidence, auto_queued) = egw_quote_score(9, false).expect("should score");
+        assert!((0.88..=0.92).contains(&confidence));
+        assert!(!auto_queued);
+    }
+
+    #[test]
+    fn fire_band_starts_at_six_regardless_of_cue() {
+        for cue in [true, false] {
+            let (confidence, auto_queued) = egw_quote_score(6, cue).expect("should score");
+            assert!(confidence >= 0.88, "run 6 should fire, got {confidence}");
+            assert!(!auto_queued, "run 6 must not auto-queue");
+        }
+    }
+
+    #[test]
+    fn short_run_is_a_hint_only_when_cued() {
+        let (confidence, auto_queued) = egw_quote_score(4, true).expect("should score");
+        assert!((0.75..0.88).contains(&confidence));
+        assert!(!auto_queued);
+
+        assert_eq!(egw_quote_score(4, false), None);
+        assert_eq!(egw_quote_score(5, false), None);
+    }
+
+    #[test]
+    fn three_or_fewer_shared_words_is_always_dropped() {
+        for run in 0..=3 {
+            assert_eq!(egw_quote_score(run, true), None, "run {run} with cue");
+            assert_eq!(egw_quote_score(run, false), None, "run {run} without cue");
+        }
     }
 }
 
