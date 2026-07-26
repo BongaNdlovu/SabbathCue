@@ -1,13 +1,10 @@
 //! Offline command-classification benchmark and shadow replay.
 //!
 //! This binary never executes a command. It compares deterministic rules and
-//! a trained `MiniLM` head, and optionally queries a `FunctionGemma` model through
-//! a local OpenAI-compatible endpoint.
+//! a trained `MiniLM` head against isolated evaluation partitions.
 
 use std::collections::BTreeMap;
-use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
 use std::time::Instant;
 
 use rhema_detection::command_eval::{
@@ -16,9 +13,9 @@ use rhema_detection::command_eval::{
 };
 use rhema_detection::semantic::embedder::TextEmbedder;
 use rhema_detection::OnnxEmbedder;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
-const DEFAULT_CASES: &str = "data/command-classification/command-cases.json";
+const DEFAULT_CASES: &str = "data/command-classification/command-cases.generated.json";
 const DEFAULT_MODEL: &str = "models/minilm-l6-v2-int8/onnx/model_quantized.onnx";
 const DEFAULT_TOKENIZER: &str = "models/minilm-l6-v2/tokenizer.json";
 const DEFAULT_HEAD: &str = "src-tauri/target/minilm-command-head.json";
@@ -34,12 +31,6 @@ struct Options {
     report: PathBuf,
     shadow_input: Option<PathBuf>,
     shadow_output: PathBuf,
-    gemma_url: Option<String>,
-    gemma_model: String,
-    gemma_model_path: Option<PathBuf>,
-    gemma_pid: Option<u32>,
-    gemma_startup_ms: Option<f64>,
-    curl: PathBuf,
 }
 
 #[derive(Debug, Serialize)]
@@ -47,7 +38,6 @@ struct Options {
 struct BenchmarkReport {
     corpus: CorpusSummary,
     runners: Vec<RunnerReport>,
-    disagreements: Vec<Disagreement>,
     recommendation: String,
 }
 
@@ -91,24 +81,11 @@ struct ShadowRow {
     text: String,
     deterministic: CommandPrediction,
     minilm: CommandPrediction,
-    gemma: Option<CommandPrediction>,
-    models_disagree: bool,
 }
 
 #[derive(Debug)]
 struct RunnerOutcome {
     report: RunnerReport,
-    predictions: BTreeMap<String, CommandPrediction>,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct Disagreement {
-    id: String,
-    text: String,
-    expected: CommandLabel,
-    minilm: CommandPrediction,
-    gemma: CommandPrediction,
 }
 
 fn main() {
@@ -120,7 +97,7 @@ fn main() {
 
 fn run() -> Result<(), String> {
     let args = std::env::args().skip(1).collect::<Vec<_>>();
-    let options = Options::parse(&args)?;
+    let options = Options::parse(&args);
     let cases = load_cases(&options.cases)?;
     validate_cases(&cases)?;
     let corpus = summarize_corpus(&options.cases, &cases);
@@ -137,59 +114,23 @@ fn run() -> Result<(), String> {
     write_json(&options.head_output, &head)?;
     let minilm = run_minilm(&head, &evaluation_cases, &case_embeddings, startup_ms)?;
 
-    let gemma = options
-        .gemma_url
-        .as_deref()
-        .map(|url| {
-            run_gemma(
-                &evaluation_cases,
-                &GemmaClient {
-                    url,
-                    model: &options.gemma_model,
-                    curl: &options.curl,
-                },
-                options.gemma_model_path.as_deref(),
-                options.gemma_pid,
-                options.gemma_startup_ms,
-            )
-        })
-        .transpose()?;
-
-    let disagreements = gemma.as_ref().map_or_else(Vec::new, |gemma_outcome| {
-        collect_disagreements(&evaluation_cases, &minilm, gemma_outcome)
-    });
-    let recommendation = recommendation(&minilm.report, gemma.as_ref().map(|value| &value.report));
-    let mut runners = vec![deterministic.report, minilm.report];
-    if let Some(outcome) = &gemma {
-        runners.push(outcome.report.clone());
-    }
+    let recommendation = recommendation(&minilm.report);
     let report = BenchmarkReport {
         corpus,
-        runners,
-        disagreements,
+        runners: vec![deterministic.report, minilm.report],
         recommendation,
     };
     write_json(&options.report, &report)?;
     print_summary(&report, &options.report, &options.head_output);
 
     if let Some(input) = &options.shadow_input {
-        run_shadow_replay(
-            input,
-            &options.shadow_output,
-            &embedder,
-            &head,
-            gemma.as_ref().map(|_| GemmaClient {
-                url: options.gemma_url.as_deref().unwrap_or_default(),
-                model: &options.gemma_model,
-                curl: &options.curl,
-            }),
-        )?;
+        run_shadow_replay(input, &options.shadow_output, &embedder, &head)?;
     }
     Ok(())
 }
 
 impl Options {
-    fn parse(args: &[String]) -> Result<Self, String> {
+    fn parse(args: &[String]) -> Self {
         if args.iter().any(|value| value == "--help" || value == "-h") {
             println!(
                 "Usage: command_benchmark [options]\n\
@@ -199,17 +140,11 @@ impl Options {
                  --head-output PATH        serialized MiniLM head\n\
                  --report PATH             JSON benchmark report\n\
                  --shadow-input PATH       optional transcript text file\n\
-                 --shadow-output PATH      non-executing prediction report\n\
-                 --gemma-url URL           optional llama-server /v1/chat/completions URL\n\
-                 --gemma-model NAME        model field sent to the endpoint\n\
-                 --gemma-model-path PATH   optional artifact size measurement\n\
-                 --gemma-pid PID           optional worker memory measurement\n\
-                 --gemma-startup-ms MS     optional measured server startup\n\
-                 --curl PATH               curl executable"
+                 --shadow-output PATH      non-executing prediction report"
             );
             std::process::exit(0);
         }
-        Ok(Self {
+        Self {
             cases: value(args, "--cases")
                 .map_or_else(|| PathBuf::from(DEFAULT_CASES), PathBuf::from),
             model: value(args, "--model")
@@ -223,21 +158,7 @@ impl Options {
             shadow_input: value(args, "--shadow-input").map(PathBuf::from),
             shadow_output: value(args, "--shadow-output")
                 .map_or_else(|| PathBuf::from(DEFAULT_SHADOW_REPORT), PathBuf::from),
-            gemma_url: value(args, "--gemma-url").map(str::to_string),
-            gemma_model: value(args, "--gemma-model")
-                .unwrap_or("functiongemma")
-                .to_string(),
-            gemma_model_path: value(args, "--gemma-model-path").map(PathBuf::from),
-            gemma_pid: value(args, "--gemma-pid")
-                .map(str::parse)
-                .transpose()
-                .map_err(|error| format!("invalid --gemma-pid: {error}"))?,
-            gemma_startup_ms: value(args, "--gemma-startup-ms")
-                .map(str::parse)
-                .transpose()
-                .map_err(|error| format!("invalid --gemma-startup-ms: {error}"))?,
-            curl: value(args, "--curl").map_or_else(|| PathBuf::from("curl"), PathBuf::from),
-        })
+        }
     }
 }
 
@@ -292,7 +213,7 @@ fn run_deterministic(cases: &[CommandCase]) -> RunnerOutcome {
     outcome_from_predictions(
         "deterministic",
         cases,
-        predictions,
+        &predictions,
         &latencies,
         0,
         0,
@@ -365,7 +286,7 @@ fn run_minilm(
     Ok(outcome_from_predictions(
         "minilm-linear-head",
         cases,
-        predictions,
+        &predictions,
         &latencies,
         0,
         0,
@@ -373,347 +294,6 @@ fn run_minilm(
         Some(serialized_head.len() as u64),
         None,
     ))
-}
-
-#[derive(Debug, Clone, Copy)]
-struct GemmaClient<'a> {
-    url: &'a str,
-    model: &'a str,
-    curl: &'a Path,
-}
-
-fn run_gemma(
-    cases: &[CommandCase],
-    client: &GemmaClient<'_>,
-    model_path: Option<&Path>,
-    pid: Option<u32>,
-    startup_ms: Option<f64>,
-) -> Result<RunnerOutcome, String> {
-    let mut predictions = BTreeMap::new();
-    let mut latencies = Vec::with_capacity(cases.len());
-    let mut invalid_outputs = 0;
-    let mut failed_requests = 0;
-
-    for case in cases {
-        let started = Instant::now();
-        let prediction = match client.predict(&case.text) {
-            Ok(prediction) => {
-                if prediction.label.is_valid() {
-                    prediction
-                } else {
-                    invalid_outputs += 1;
-                    invalid_prediction(prediction.raw)
-                }
-            }
-            Err(error) => {
-                failed_requests += 1;
-                eprintln!("FunctionGemma case {} failed: {error}", case.id);
-                invalid_prediction(Some(error))
-            }
-        };
-        latencies.push(duration_ms(started.elapsed()));
-        predictions.insert(case.id.clone(), prediction);
-    }
-
-    let artifact_bytes = model_path
-        .map(std::fs::metadata)
-        .transpose()
-        .map_err(|error| format!("read FunctionGemma model metadata: {error}"))?
-        .map(|metadata| metadata.len());
-    Ok(outcome_from_predictions(
-        "functiongemma",
-        cases,
-        predictions,
-        &latencies,
-        invalid_outputs,
-        failed_requests,
-        startup_ms,
-        artifact_bytes,
-        pid.and_then(process_working_set_mib),
-    ))
-}
-
-impl GemmaClient<'_> {
-    fn predict(&self, text: &str) -> Result<CommandPrediction, String> {
-        let payload = gemma_payload(self.model, text);
-        let mut child = Command::new(self.curl)
-            .args([
-                "--silent",
-                "--show-error",
-                "--fail-with-body",
-                "--max-time",
-                "30",
-                "-H",
-                "Content-Type: application/json",
-                "--data-binary",
-                "@-",
-                self.url,
-            ])
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|error| format!("start curl: {error}"))?;
-        child
-            .stdin
-            .take()
-            .ok_or_else(|| "curl stdin unavailable".to_string())?
-            .write_all(payload.to_string().as_bytes())
-            .map_err(|error| format!("write FunctionGemma request: {error}"))?;
-        let output = child
-            .wait_with_output()
-            .map_err(|error| format!("wait for FunctionGemma request: {error}"))?;
-        if !output.status.success() {
-            return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
-        }
-        let raw = String::from_utf8(output.stdout)
-            .map_err(|error| format!("FunctionGemma response is not UTF-8: {error}"))?;
-        parse_gemma_response(&raw)
-    }
-}
-
-fn gemma_payload(model: &str, text: &str) -> serde_json::Value {
-    let tools = [
-        tool(
-            "hide_output",
-            "Hide or clear the current projected content",
-            None,
-        ),
-        tool(
-            "show_output",
-            "Show or restore the current projected content",
-            None,
-        ),
-        tool(
-            "next_item",
-            "Advance to the next verse or presentation item",
-            None,
-        ),
-        tool(
-            "previous_item",
-            "Return to the previous verse or presentation item",
-            None,
-        ),
-        tool(
-            "switch_translation",
-            "Change the Bible translation",
-            Some(serde_json::json!({
-                "translation": {
-                    "type": "string",
-                    "enum": ["NIV", "ESV", "KJV", "NKJV", "NLT", "NET", "AMP", "MSG", "SPARV", "AFR83"]
-                }
-            })),
-        ),
-    ];
-    serde_json::json!({
-        "model": model,
-        "temperature": 0,
-        "max_tokens": 48,
-        "stop": ["<start_function_response>"],
-        "messages": [
-            {
-                "role": "developer",
-                "content": "You are a model that can do function calling with the following functions"
-            },
-            {"role": "user", "content": text}
-        ],
-        "tools": tools,
-        "tool_choice": "auto"
-    })
-}
-
-fn tool(name: &str, description: &str, properties: Option<serde_json::Value>) -> serde_json::Value {
-    let properties = properties.unwrap_or_else(|| serde_json::json!({}));
-    let required = if name == "switch_translation" {
-        serde_json::json!(["translation"])
-    } else {
-        serde_json::json!([])
-    };
-    serde_json::json!({
-        "type": "function",
-        "function": {
-            "name": name,
-            "description": description,
-            "parameters": {
-                "type": "object",
-                "properties": properties,
-                "required": required,
-                "additionalProperties": false
-            }
-        }
-    })
-}
-
-#[derive(Debug, Deserialize)]
-struct ChatResponse {
-    choices: Vec<ChatChoice>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ChatChoice {
-    message: ChatMessage,
-}
-
-#[derive(Debug, Deserialize)]
-struct ChatMessage {
-    content: Option<String>,
-    #[serde(default)]
-    tool_calls: Vec<ToolCall>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ToolCall {
-    function: ToolFunction,
-}
-
-#[derive(Debug, Deserialize)]
-struct ToolFunction {
-    name: String,
-    arguments: serde_json::Value,
-}
-
-fn parse_gemma_response(raw: &str) -> Result<CommandPrediction, String> {
-    let response: ChatResponse =
-        serde_json::from_str(raw).map_err(|error| format!("parse response JSON: {error}"))?;
-    let message = &response
-        .choices
-        .first()
-        .ok_or_else(|| "response contains no choices".to_string())?
-        .message;
-
-    if message.tool_calls.is_empty() {
-        if let Some(content) = message.content.as_deref() {
-            if let Some(prediction) = parse_native_functiongemma_call(content)? {
-                return Ok(prediction);
-            }
-        }
-        return Ok(CommandPrediction {
-            label: CommandLabel::intent(CommandIntent::None),
-            confidence: 1.0,
-            raw: message.content.clone(),
-        });
-    }
-    if message.tool_calls.len() != 1 {
-        return Err(format!(
-            "expected at most one tool call, received {}",
-            message.tool_calls.len()
-        ));
-    }
-
-    let function = &message.tool_calls[0].function;
-    let arguments = if let Some(serialized) = function.arguments.as_str() {
-        serde_json::from_str(serialized)
-            .map_err(|error| format!("parse tool arguments JSON: {error}"))?
-    } else {
-        function.arguments.clone()
-    };
-    let label = match function.name.as_str() {
-        "hide_output" => CommandLabel::intent(CommandIntent::Hide),
-        "show_output" => CommandLabel::intent(CommandIntent::Show),
-        "next_item" => CommandLabel::intent(CommandIntent::Next),
-        "previous_item" => CommandLabel::intent(CommandIntent::Previous),
-        "switch_translation" => {
-            let translation = arguments
-                .get("translation")
-                .and_then(serde_json::Value::as_str)
-                .ok_or_else(|| "switch_translation is missing translation".to_string())?;
-            CommandLabel::translation(translation)
-        }
-        other => return Err(format!("unknown tool call: {other}")),
-    };
-    if !label.is_valid() {
-        return Err(format!("tool call has invalid arguments: {arguments}"));
-    }
-    Ok(CommandPrediction {
-        label,
-        confidence: 1.0,
-        raw: Some(raw.to_string()),
-    })
-}
-
-fn parse_native_functiongemma_call(
-    content: &str,
-) -> Result<Option<CommandPrediction>, String> {
-    const START: &str = "<start_function_call>";
-    const END: &str = "<end_function_call>";
-
-    let content = content.trim();
-    if !content.contains(START) {
-        return Ok(None);
-    }
-    if content.matches(START).count() != 1
-        || content.matches(END).count() != 1
-        || !content.starts_with(START)
-        || !content.ends_with(END)
-    {
-        return Err("expected exactly one complete native FunctionGemma call".into());
-    }
-
-    let call = content
-        .strip_prefix(START)
-        .and_then(|value| value.strip_suffix(END))
-        .and_then(|value| value.strip_prefix("call:"))
-        .ok_or_else(|| "invalid native FunctionGemma call envelope".to_string())?;
-    let (name, serialized_arguments) = call
-        .split_once('{')
-        .ok_or_else(|| "native FunctionGemma call is missing arguments".to_string())?;
-    let arguments = serialized_arguments
-        .strip_suffix('}')
-        .ok_or_else(|| "native FunctionGemma arguments are not closed".to_string())?;
-
-    let label = match name {
-        "hide_output" if arguments.is_empty() => CommandLabel::intent(CommandIntent::Hide),
-        "show_output" if arguments.is_empty() => CommandLabel::intent(CommandIntent::Show),
-        "next_item" if arguments.is_empty() => CommandLabel::intent(CommandIntent::Next),
-        "previous_item" if arguments.is_empty() => {
-            CommandLabel::intent(CommandIntent::Previous)
-        }
-        "switch_translation" => {
-            const PREFIX: &str = "translation:<escape>";
-            let translation = arguments
-                .strip_prefix(PREFIX)
-                .and_then(|value| value.strip_suffix("<escape>"))
-                .ok_or_else(|| {
-                    "native switch_translation has invalid arguments".to_string()
-                })?;
-            CommandLabel::translation(translation)
-        }
-        "hide_output" | "show_output" | "next_item" | "previous_item" => {
-            return Err(format!("native tool call has invalid arguments: {arguments}"));
-        }
-        other => return Err(format!("unknown native tool call: {other}")),
-    };
-    if !label.is_valid() {
-        return Err(format!(
-            "native tool call has invalid arguments: {arguments}"
-        ));
-    }
-    Ok(Some(CommandPrediction {
-        label,
-        confidence: 1.0,
-        raw: Some(content.to_string()),
-    }))
-}
-
-fn collect_disagreements(
-    cases: &[CommandCase],
-    minilm: &RunnerOutcome,
-    gemma: &RunnerOutcome,
-) -> Vec<Disagreement> {
-    cases
-        .iter()
-        .filter_map(|case| {
-            let minilm_prediction = minilm.predictions.get(&case.id)?;
-            let gemma_prediction = gemma.predictions.get(&case.id)?;
-            (minilm_prediction.label != gemma_prediction.label).then(|| Disagreement {
-                id: case.id.clone(),
-                text: case.text.clone(),
-                expected: case.expected.clone(),
-                minilm: minilm_prediction.clone(),
-                gemma: gemma_prediction.clone(),
-            })
-        })
-        .collect()
 }
 
 fn invalid_prediction(raw: Option<String>) -> CommandPrediction {
@@ -731,7 +311,7 @@ fn invalid_prediction(raw: Option<String>) -> CommandPrediction {
 fn outcome_from_predictions(
     name: &str,
     cases: &[CommandCase],
-    predictions: BTreeMap<String, CommandPrediction>,
+    predictions: &BTreeMap<String, CommandPrediction>,
     latencies: &[f64],
     invalid_outputs: usize,
     failed_requests: usize,
@@ -774,7 +354,6 @@ fn outcome_from_predictions(
             artifact_bytes,
             working_set_mib,
         },
-        predictions,
     }
 }
 
@@ -810,50 +389,12 @@ fn duration_ms(duration: std::time::Duration) -> f64 {
     duration.as_secs_f64() * 1_000.0
 }
 
-fn process_working_set_mib(pid: u32) -> Option<f64> {
-    #[cfg(target_os = "windows")]
-    {
-        let command = format!("(Get-Process -Id {pid} -ErrorAction Stop).WorkingSet64");
-        let output = Command::new("powershell")
-            .args(["-NoProfile", "-Command", &command])
-            .output()
-            .ok()?;
-        let bytes = String::from_utf8(output.stdout)
-            .ok()?
-            .trim()
-            .parse::<f64>()
-            .ok()?;
-        Some(bytes / 1_048_576.0)
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        let status = std::fs::read_to_string(format!("/proc/{pid}/status")).ok()?;
-        let kib = status
-            .lines()
-            .find(|line| line.starts_with("VmRSS:"))?
-            .split_whitespace()
-            .nth(1)?
-            .parse::<f64>()
-            .ok()?;
-        Some(kib / 1024.0)
-    }
-}
-
-fn recommendation(minilm: &RunnerReport, gemma: Option<&RunnerReport>) -> String {
-    let Some(gemma) = gemma else {
-        return "FunctionGemma was not evaluated. Start a local endpoint and rerun before choosing a production classifier.".into();
-    };
-    if gemma.failed_requests > 0 || gemma.invalid_outputs > 0 {
-        return "Do not adopt FunctionGemma yet: the run contained failed or invalid model responses.".into();
-    }
-    if gemma.safety.false_commands > minilm.safety.false_commands {
-        return "Prefer MiniLM: FunctionGemma produced more false commands on the safety corpus."
+fn recommendation(minilm: &RunnerReport) -> String {
+    if minilm.safety.false_commands > 0 {
+        return "Keep MiniLM in non-executing shadow mode: the safety corpus contains false commands."
             .into();
     }
-    if gemma.test.macro_f1 >= minilm.test.macro_f1 + 0.05 {
-        return "FunctionGemma cleared the provisional five-point hard-command improvement gate without a safety regression; proceed to controlled in-app shadow testing.".into();
-    }
-    "Prefer MiniLM for now: FunctionGemma did not improve test macro-F1 by the provisional five-point margin.".into()
+    "MiniLM cleared the authored seed safety gate; continue non-executing validation on real multi-speaker transcripts before enabling commands.".into()
 }
 
 fn print_summary(report: &BenchmarkReport, report_path: &Path, head_path: &Path) {
@@ -881,7 +422,6 @@ fn run_shadow_replay(
     output: &Path,
     embedder: &dyn TextEmbedder,
     head: &LinearCommandHead,
-    gemma: Option<GemmaClient<'_>>,
 ) -> Result<(), String> {
     let text = std::fs::read_to_string(input)
         .map_err(|error| format!("read shadow input {}: {error}", input.display()))?;
@@ -895,20 +435,11 @@ fn run_shadow_replay(
             let minilm = head
                 .predict_text(embedder, text)
                 .map_err(|error| format!("shadow MiniLM line {}: {error}", index + 1))?;
-            let gemma_prediction = gemma
-                .map(|client| client.predict(text))
-                .transpose()
-                .map_err(|error| format!("shadow FunctionGemma line {}: {error}", index + 1))?;
-            let models_disagree = gemma_prediction
-                .as_ref()
-                .is_some_and(|prediction| prediction.label != minilm.label);
             Ok(ShadowRow {
                 line: index + 1,
                 text: text.to_string(),
                 deterministic: deterministic_prediction,
                 minilm,
-                gemma: gemma_prediction,
-                models_disagree,
             })
         })
         .collect::<Result<Vec<_>, String>>()?;
@@ -931,98 +462,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn gemma_response_accepts_one_known_tool() {
-        let response = r#"{
-          "choices": [{
-            "message": {
-              "content": null,
-              "tool_calls": [{
-                "function": {"name": "hide_output", "arguments": {}}
-              }]
-            }
-          }]
-        }"#;
-
-        let prediction = parse_gemma_response(response).unwrap();
-
-        assert_eq!(prediction.label.intent, CommandIntent::Hide);
-    }
-
-    #[test]
-    fn gemma_response_rejects_unknown_translation() {
-        let response = r#"{
-          "choices": [{
-            "message": {
-              "content": null,
-              "tool_calls": [{
-                "function": {
-                  "name": "switch_translation",
-                  "arguments": {"translation": "MADE_UP"}
-                }
-              }]
-            }
-          }]
-        }"#;
-
-        let error = parse_gemma_response(response).unwrap_err();
-
-        assert!(error.contains("invalid"));
-    }
-
-    #[test]
-    fn gemma_response_treats_no_tool_as_none() {
-        let response = r#"{"choices":[{"message":{"content":"NONE","tool_calls":[]}}]}"#;
-
-        let prediction = parse_gemma_response(response).unwrap();
-
-        assert_eq!(prediction.label.intent, CommandIntent::None);
-    }
-
-    #[test]
-    fn gemma_response_accepts_native_functiongemma_call_in_content() {
-        let response = r#"{
-          "choices": [{
-            "message": {
-              "content": "<start_function_call>call:hide_output{}<end_function_call>"
-            }
-          }]
-        }"#;
-
-        let prediction = parse_gemma_response(response).unwrap();
-
-        assert_eq!(prediction.label.intent, CommandIntent::Hide);
-    }
-
-    #[test]
-    fn gemma_payload_uses_functiongemma_activation_and_stop_sequence() {
-        let payload = gemma_payload("functiongemma", "Hide the screen");
-
-        assert_eq!(
-            payload["messages"][0],
-            serde_json::json!({
-                "role": "developer",
-                "content": "You are a model that can do function calling with the following functions"
-            })
-        );
-        assert_eq!(
-            payload["stop"],
-            serde_json::json!(["<start_function_response>"])
-        );
-    }
-
-    #[test]
     fn percentile_uses_nearest_rank() {
         let values = [10.0, 20.0, 30.0, 40.0, 50.0];
 
         assert!((percentile(&values, 0.95) - 50.0).abs() < f64::EPSILON);
-    }
-
-    #[test]
-    fn options_accept_measured_gemma_startup() {
-        let args = vec!["--gemma-startup-ms".to_string(), "412.5".to_string()];
-
-        let options = Options::parse(&args).unwrap();
-
-        assert_eq!(options.gemma_startup_ms, Some(412.5));
     }
 }

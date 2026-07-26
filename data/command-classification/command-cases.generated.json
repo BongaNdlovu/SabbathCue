@@ -1,0 +1,3714 @@
+[
+  {
+    "id": "synthetic-sermon-001-line-01",
+    "split": "train",
+    "family": "synthetic-speaker-01",
+    "text": "Today we continue our study of grace.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-01",
+    "sermonId": "sermon-001",
+    "source": "deterministic-template",
+    "sequence": 0
+  },
+  {
+    "id": "synthetic-sermon-001-line-13",
+    "split": "train",
+    "family": "synthetic-speaker-01",
+    "text": "Hide the screen please",
+    "expected": {
+      "intent": "hide"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-01",
+    "sermonId": "sermon-001",
+    "source": "deterministic-template",
+    "sequence": 12
+  },
+  {
+    "id": "synthetic-sermon-002-line-02",
+    "split": "train",
+    "family": "synthetic-speaker-01",
+    "text": "God can remove the burden of guilt that people carry.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-01",
+    "sermonId": "sermon-002",
+    "source": "deterministic-template",
+    "sequence": 101
+  },
+  {
+    "id": "synthetic-sermon-002-line-14",
+    "split": "train",
+    "family": "synthetic-speaker-01",
+    "text": "Restore the verse display",
+    "expected": {
+      "intent": "show"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-01",
+    "sermonId": "sermon-002",
+    "source": "deterministic-template",
+    "sequence": 113
+  },
+  {
+    "id": "synthetic-sermon-003-line-03",
+    "split": "train",
+    "family": "synthetic-speaker-02",
+    "text": "Today we continue our study of forgiveness.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-02",
+    "sermonId": "sermon-003",
+    "source": "deterministic-template",
+    "sequence": 202
+  },
+  {
+    "id": "synthetic-sermon-003-line-15",
+    "split": "train",
+    "family": "synthetic-speaker-02",
+    "text": "Next verse please",
+    "expected": {
+      "intent": "next"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-02",
+    "sermonId": "sermon-003",
+    "source": "deterministic-template",
+    "sequence": 214
+  },
+  {
+    "id": "synthetic-sermon-004-line-04",
+    "split": "train",
+    "family": "synthetic-speaker-02",
+    "text": "God can remove the burden of guilt that people carry.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-02",
+    "sermonId": "sermon-004",
+    "source": "deterministic-template",
+    "sequence": 303
+  },
+  {
+    "id": "synthetic-sermon-004-line-16",
+    "split": "train",
+    "family": "synthetic-speaker-02",
+    "text": "Rewind to the last scripture",
+    "expected": {
+      "intent": "previous"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-02",
+    "sermonId": "sermon-004",
+    "source": "deterministic-template",
+    "sequence": 315
+  },
+  {
+    "id": "synthetic-sermon-005-line-05",
+    "split": "train",
+    "family": "synthetic-speaker-03",
+    "text": "Today we continue our study of prayer.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-03",
+    "sermonId": "sermon-005",
+    "source": "deterministic-template",
+    "sequence": 404
+  },
+  {
+    "id": "synthetic-sermon-005-line-17",
+    "split": "train",
+    "family": "synthetic-speaker-03",
+    "text": "Can I have it in the NLT",
+    "expected": {
+      "intent": "switch_translation",
+      "translation": "NLT"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-03",
+    "sermonId": "sermon-005",
+    "source": "deterministic-template",
+    "sequence": 416
+  },
+  {
+    "id": "synthetic-sermon-006-line-06",
+    "split": "train",
+    "family": "synthetic-speaker-03",
+    "text": "God can remove the burden of guilt that people carry.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-03",
+    "sermonId": "sermon-006",
+    "source": "deterministic-template",
+    "sequence": 505
+  },
+  {
+    "id": "synthetic-sermon-006-line-13",
+    "split": "train",
+    "family": "synthetic-speaker-03",
+    "text": "Blank the output until I ask again",
+    "expected": {
+      "intent": "hide"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-03",
+    "sermonId": "sermon-006",
+    "source": "deterministic-template",
+    "sequence": 512
+  },
+  {
+    "id": "synthetic-sermon-007-line-07",
+    "split": "train",
+    "family": "synthetic-speaker-04",
+    "text": "Today we continue our study of discipleship.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-04",
+    "sermonId": "sermon-007",
+    "source": "deterministic-template",
+    "sequence": 606
+  },
+  {
+    "id": "synthetic-sermon-007-line-14",
+    "split": "train",
+    "family": "synthetic-speaker-04",
+    "text": "Put that scripture back up",
+    "expected": {
+      "intent": "show"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-04",
+    "sermonId": "sermon-007",
+    "source": "deterministic-template",
+    "sequence": 613
+  },
+  {
+    "id": "synthetic-sermon-008-line-08",
+    "split": "train",
+    "family": "synthetic-speaker-04",
+    "text": "God can remove the burden of guilt that people carry.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-04",
+    "sermonId": "sermon-008",
+    "source": "deterministic-template",
+    "sequence": 707
+  },
+  {
+    "id": "synthetic-sermon-008-line-15",
+    "split": "train",
+    "family": "synthetic-speaker-04",
+    "text": "Continue to the following verse",
+    "expected": {
+      "intent": "next"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-04",
+    "sermonId": "sermon-008",
+    "source": "deterministic-template",
+    "sequence": 714
+  },
+  {
+    "id": "synthetic-sermon-009-line-09",
+    "split": "train",
+    "family": "synthetic-speaker-05",
+    "text": "Today we continue our study of the covenant.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-05",
+    "sermonId": "sermon-009",
+    "source": "deterministic-template",
+    "sequence": 808
+  },
+  {
+    "id": "synthetic-sermon-009-line-16",
+    "split": "train",
+    "family": "synthetic-speaker-05",
+    "text": "Go back one",
+    "expected": {
+      "intent": "previous"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-05",
+    "sermonId": "sermon-009",
+    "source": "deterministic-template",
+    "sequence": 815
+  },
+  {
+    "id": "synthetic-sermon-010-line-10",
+    "split": "train",
+    "family": "synthetic-speaker-05",
+    "text": "God can remove the burden of guilt that people carry.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-05",
+    "sermonId": "sermon-010",
+    "source": "deterministic-template",
+    "sequence": 909
+  },
+  {
+    "id": "synthetic-sermon-010-line-17",
+    "split": "train",
+    "family": "synthetic-speaker-05",
+    "text": "Can we have it in Afrikaans",
+    "expected": {
+      "intent": "switch_translation",
+      "translation": "AFR83"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-05",
+    "sermonId": "sermon-010",
+    "source": "deterministic-template",
+    "sequence": 916
+  },
+  {
+    "id": "synthetic-sermon-011-line-11",
+    "split": "train",
+    "family": "synthetic-speaker-06",
+    "text": "Today we continue our study of grace.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-06",
+    "sermonId": "sermon-011",
+    "source": "deterministic-template",
+    "sequence": 1010
+  },
+  {
+    "id": "synthetic-sermon-011-line-13",
+    "split": "train",
+    "family": "synthetic-speaker-06",
+    "text": "Clear the projected output",
+    "expected": {
+      "intent": "hide"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-06",
+    "sermonId": "sermon-011",
+    "source": "deterministic-template",
+    "sequence": 1012
+  },
+  {
+    "id": "synthetic-sermon-012-line-12",
+    "split": "train",
+    "family": "synthetic-speaker-06",
+    "text": "God can remove the burden of guilt that people carry.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-06",
+    "sermonId": "sermon-012",
+    "source": "deterministic-template",
+    "sequence": 1111
+  },
+  {
+    "id": "synthetic-sermon-012-line-14",
+    "split": "train",
+    "family": "synthetic-speaker-06",
+    "text": "Can we see that text once more",
+    "expected": {
+      "intent": "show"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-06",
+    "sermonId": "sermon-012",
+    "source": "deterministic-template",
+    "sequence": 1113
+  },
+  {
+    "id": "synthetic-sermon-013-line-01",
+    "split": "train",
+    "family": "synthetic-speaker-07",
+    "text": "God can remove the burden of guilt that people carry.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-07",
+    "sermonId": "sermon-013",
+    "source": "deterministic-template",
+    "sequence": 1200
+  },
+  {
+    "id": "synthetic-sermon-013-line-15",
+    "split": "train",
+    "family": "synthetic-speaker-07",
+    "text": "Take us to the following passage",
+    "expected": {
+      "intent": "next"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-07",
+    "sermonId": "sermon-013",
+    "source": "deterministic-template",
+    "sequence": 1214
+  },
+  {
+    "id": "synthetic-sermon-014-line-02",
+    "split": "train",
+    "family": "synthetic-speaker-07",
+    "text": "Today we continue our study of hope.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-07",
+    "sermonId": "sermon-014",
+    "source": "deterministic-template",
+    "sequence": 1301
+  },
+  {
+    "id": "synthetic-sermon-014-line-16",
+    "split": "train",
+    "family": "synthetic-speaker-07",
+    "text": "Move back to the previous item",
+    "expected": {
+      "intent": "previous"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-07",
+    "sermonId": "sermon-014",
+    "source": "deterministic-template",
+    "sequence": 1315
+  },
+  {
+    "id": "synthetic-sermon-015-line-03",
+    "split": "train",
+    "family": "synthetic-speaker-08",
+    "text": "God can remove the burden of guilt that people carry.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-08",
+    "sermonId": "sermon-015",
+    "source": "deterministic-template",
+    "sequence": 1402
+  },
+  {
+    "id": "synthetic-sermon-015-line-17",
+    "split": "train",
+    "family": "synthetic-speaker-08",
+    "text": "Can I have it in the NLT",
+    "expected": {
+      "intent": "switch_translation",
+      "translation": "NLT"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-08",
+    "sermonId": "sermon-015",
+    "source": "deterministic-template",
+    "sequence": 1416
+  },
+  {
+    "id": "synthetic-sermon-016-line-04",
+    "split": "train",
+    "family": "synthetic-speaker-08",
+    "text": "Today we continue our study of service.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-08",
+    "sermonId": "sermon-016",
+    "source": "deterministic-template",
+    "sequence": 1503
+  },
+  {
+    "id": "synthetic-sermon-016-line-13",
+    "split": "train",
+    "family": "synthetic-speaker-08",
+    "text": "Take the words away for now",
+    "expected": {
+      "intent": "hide"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-08",
+    "sermonId": "sermon-016",
+    "source": "deterministic-template",
+    "sequence": 1512
+  },
+  {
+    "id": "synthetic-sermon-017-line-05",
+    "split": "train",
+    "family": "synthetic-speaker-09",
+    "text": "God can remove the burden of guilt that people carry.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-09",
+    "sermonId": "sermon-017",
+    "source": "deterministic-template",
+    "sequence": 1604
+  },
+  {
+    "id": "synthetic-sermon-017-line-14",
+    "split": "train",
+    "family": "synthetic-speaker-09",
+    "text": "Let the congregation see that again",
+    "expected": {
+      "intent": "show"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-09",
+    "sermonId": "sermon-017",
+    "source": "deterministic-template",
+    "sequence": 1613
+  },
+  {
+    "id": "synthetic-sermon-018-line-06",
+    "split": "train",
+    "family": "synthetic-speaker-09",
+    "text": "Today we continue our study of the resurrection.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-09",
+    "sermonId": "sermon-018",
+    "source": "deterministic-template",
+    "sequence": 1705
+  },
+  {
+    "id": "synthetic-sermon-018-line-15",
+    "split": "train",
+    "family": "synthetic-speaker-09",
+    "text": "Go to the nex slide",
+    "expected": {
+      "intent": "next"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-09",
+    "sermonId": "sermon-018",
+    "source": "deterministic-template",
+    "sequence": 1714
+  },
+  {
+    "id": "synthetic-sermon-019-line-07",
+    "split": "train",
+    "family": "synthetic-speaker-10",
+    "text": "God can remove the burden of guilt that people carry.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-10",
+    "sermonId": "sermon-019",
+    "source": "deterministic-template",
+    "sequence": 1806
+  },
+  {
+    "id": "synthetic-sermon-019-line-16",
+    "split": "train",
+    "family": "synthetic-speaker-10",
+    "text": "Put the one before this back up",
+    "expected": {
+      "intent": "previous"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-10",
+    "sermonId": "sermon-019",
+    "source": "deterministic-template",
+    "sequence": 1815
+  },
+  {
+    "id": "synthetic-sermon-020-line-08",
+    "split": "train",
+    "family": "synthetic-speaker-10",
+    "text": "Today we continue our study of Christian character.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-10",
+    "sermonId": "sermon-020",
+    "source": "deterministic-template",
+    "sequence": 1907
+  },
+  {
+    "id": "synthetic-sermon-020-line-17",
+    "split": "train",
+    "family": "synthetic-speaker-10",
+    "text": "Can we have it in Afrikaans",
+    "expected": {
+      "intent": "switch_translation",
+      "translation": "AFR83"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-10",
+    "sermonId": "sermon-020",
+    "source": "deterministic-template",
+    "sequence": 1916
+  },
+  {
+    "id": "synthetic-sermon-021-line-09",
+    "split": "train",
+    "family": "synthetic-speaker-11",
+    "text": "God can remove the burden of guilt that people carry.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-11",
+    "sermonId": "sermon-021",
+    "source": "deterministic-template",
+    "sequence": 2008
+  },
+  {
+    "id": "synthetic-sermon-021-line-13",
+    "split": "train",
+    "family": "synthetic-speaker-11",
+    "text": "I do not need that projected anymore",
+    "expected": {
+      "intent": "hide"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-11",
+    "sermonId": "sermon-021",
+    "source": "deterministic-template",
+    "sequence": 2012
+  },
+  {
+    "id": "synthetic-sermon-022-line-10",
+    "split": "train",
+    "family": "synthetic-speaker-11",
+    "text": "Today we continue our study of faith.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-11",
+    "sermonId": "sermon-022",
+    "source": "deterministic-template",
+    "sequence": 2109
+  },
+  {
+    "id": "synthetic-sermon-022-line-14",
+    "split": "train",
+    "family": "synthetic-speaker-11",
+    "text": "Show the verse again",
+    "expected": {
+      "intent": "show"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-11",
+    "sermonId": "sermon-022",
+    "source": "deterministic-template",
+    "sequence": 2113
+  },
+  {
+    "id": "synthetic-sermon-023-line-11",
+    "split": "train",
+    "family": "synthetic-speaker-12",
+    "text": "God can remove the burden of guilt that people carry.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-12",
+    "sermonId": "sermon-023",
+    "source": "deterministic-template",
+    "sequence": 2210
+  },
+  {
+    "id": "synthetic-sermon-023-line-15",
+    "split": "train",
+    "family": "synthetic-speaker-12",
+    "text": "Let us have the one after this",
+    "expected": {
+      "intent": "next"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-12",
+    "sermonId": "sermon-023",
+    "source": "deterministic-template",
+    "sequence": 2214
+  },
+  {
+    "id": "synthetic-sermon-024-line-12",
+    "split": "train",
+    "family": "synthetic-speaker-12",
+    "text": "Today we continue our study of hope.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-12",
+    "sermonId": "sermon-024",
+    "source": "deterministic-template",
+    "sequence": 2311
+  },
+  {
+    "id": "synthetic-sermon-024-line-16",
+    "split": "train",
+    "family": "synthetic-speaker-12",
+    "text": "Previous verse please",
+    "expected": {
+      "intent": "previous"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-12",
+    "sermonId": "sermon-024",
+    "source": "deterministic-template",
+    "sequence": 2315
+  },
+  {
+    "id": "synthetic-sermon-025-line-01",
+    "split": "train",
+    "family": "synthetic-speaker-13",
+    "text": "Today we continue our study of prayer.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-13",
+    "sermonId": "sermon-025",
+    "source": "deterministic-template",
+    "sequence": 2400
+  },
+  {
+    "id": "synthetic-sermon-025-line-17",
+    "split": "train",
+    "family": "synthetic-speaker-13",
+    "text": "Can I have it in the NLT",
+    "expected": {
+      "intent": "switch_translation",
+      "translation": "NLT"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-13",
+    "sermonId": "sermon-025",
+    "source": "deterministic-template",
+    "sequence": 2416
+  },
+  {
+    "id": "synthetic-sermon-026-line-02",
+    "split": "train",
+    "family": "synthetic-speaker-13",
+    "text": "God can remove the burden of guilt that people carry.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-13",
+    "sermonId": "sermon-026",
+    "source": "deterministic-template",
+    "sequence": 2501
+  },
+  {
+    "id": "synthetic-sermon-026-line-13",
+    "split": "train",
+    "family": "synthetic-speaker-13",
+    "text": "Take that verse off the screen",
+    "expected": {
+      "intent": "hide"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-13",
+    "sermonId": "sermon-026",
+    "source": "deterministic-template",
+    "sequence": 2512
+  },
+  {
+    "id": "synthetic-sermon-027-line-03",
+    "split": "train",
+    "family": "synthetic-speaker-14",
+    "text": "Today we continue our study of discipleship.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-14",
+    "sermonId": "sermon-027",
+    "source": "deterministic-template",
+    "sequence": 2602
+  },
+  {
+    "id": "synthetic-sermon-027-line-14",
+    "split": "train",
+    "family": "synthetic-speaker-14",
+    "text": "Please display that passage again",
+    "expected": {
+      "intent": "show"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-14",
+    "sermonId": "sermon-027",
+    "source": "deterministic-template",
+    "sequence": 2613
+  },
+  {
+    "id": "synthetic-sermon-028-line-04",
+    "split": "train",
+    "family": "synthetic-speaker-14",
+    "text": "God can remove the burden of guilt that people carry.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-14",
+    "sermonId": "sermon-028",
+    "source": "deterministic-template",
+    "sequence": 2703
+  },
+  {
+    "id": "synthetic-sermon-028-line-15",
+    "split": "train",
+    "family": "synthetic-speaker-14",
+    "text": "Move forward one",
+    "expected": {
+      "intent": "next"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-14",
+    "sermonId": "sermon-028",
+    "source": "deterministic-template",
+    "sequence": 2714
+  },
+  {
+    "id": "synthetic-sermon-029-line-05",
+    "split": "train",
+    "family": "synthetic-speaker-15",
+    "text": "Today we continue our study of the covenant.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-15",
+    "sermonId": "sermon-029",
+    "source": "deterministic-template",
+    "sequence": 2804
+  },
+  {
+    "id": "synthetic-sermon-029-line-16",
+    "split": "train",
+    "family": "synthetic-speaker-15",
+    "text": "Back one please",
+    "expected": {
+      "intent": "previous"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-15",
+    "sermonId": "sermon-029",
+    "source": "deterministic-template",
+    "sequence": 2815
+  },
+  {
+    "id": "synthetic-sermon-030-line-06",
+    "split": "train",
+    "family": "synthetic-speaker-15",
+    "text": "God can remove the burden of guilt that people carry.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-15",
+    "sermonId": "sermon-030",
+    "source": "deterministic-template",
+    "sequence": 2905
+  },
+  {
+    "id": "synthetic-sermon-030-line-17",
+    "split": "train",
+    "family": "synthetic-speaker-15",
+    "text": "Can we have it in Afrikaans",
+    "expected": {
+      "intent": "switch_translation",
+      "translation": "AFR83"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-15",
+    "sermonId": "sermon-030",
+    "source": "deterministic-template",
+    "sequence": 2916
+  },
+  {
+    "id": "synthetic-sermon-031-line-07",
+    "split": "train",
+    "family": "synthetic-speaker-16",
+    "text": "Today we continue our study of grace.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-16",
+    "sermonId": "sermon-031",
+    "source": "deterministic-template",
+    "sequence": 3006
+  },
+  {
+    "id": "synthetic-sermon-031-line-13",
+    "split": "train",
+    "family": "synthetic-speaker-16",
+    "text": "Please remove that passage from the display",
+    "expected": {
+      "intent": "hide"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-16",
+    "sermonId": "sermon-031",
+    "source": "deterministic-template",
+    "sequence": 3012
+  },
+  {
+    "id": "synthetic-sermon-032-line-08",
+    "split": "train",
+    "family": "synthetic-speaker-16",
+    "text": "God can remove the burden of guilt that people carry.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-16",
+    "sermonId": "sermon-032",
+    "source": "deterministic-template",
+    "sequence": 3107
+  },
+  {
+    "id": "synthetic-sermon-032-line-14",
+    "split": "train",
+    "family": "synthetic-speaker-16",
+    "text": "Bring the passage onto the projector",
+    "expected": {
+      "intent": "show"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-16",
+    "sermonId": "sermon-032",
+    "source": "deterministic-template",
+    "sequence": 3113
+  },
+  {
+    "id": "synthetic-sermon-033-line-09",
+    "split": "train",
+    "family": "synthetic-speaker-17",
+    "text": "Today we continue our study of forgiveness.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-17",
+    "sermonId": "sermon-033",
+    "source": "deterministic-template",
+    "sequence": 3208
+  },
+  {
+    "id": "synthetic-sermon-033-line-15",
+    "split": "train",
+    "family": "synthetic-speaker-17",
+    "text": "Forward one please",
+    "expected": {
+      "intent": "next"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-17",
+    "sermonId": "sermon-033",
+    "source": "deterministic-template",
+    "sequence": 3214
+  },
+  {
+    "id": "synthetic-sermon-034-line-10",
+    "split": "train",
+    "family": "synthetic-speaker-17",
+    "text": "God can remove the burden of guilt that people carry.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-17",
+    "sermonId": "sermon-034",
+    "source": "deterministic-template",
+    "sequence": 3309
+  },
+  {
+    "id": "synthetic-sermon-034-line-16",
+    "split": "train",
+    "family": "synthetic-speaker-17",
+    "text": "Return to what was displayed before",
+    "expected": {
+      "intent": "previous"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-17",
+    "sermonId": "sermon-034",
+    "source": "deterministic-template",
+    "sequence": 3315
+  },
+  {
+    "id": "synthetic-sermon-035-line-11",
+    "split": "train",
+    "family": "synthetic-speaker-18",
+    "text": "Today we continue our study of prayer.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-18",
+    "sermonId": "sermon-035",
+    "source": "deterministic-template",
+    "sequence": 3410
+  },
+  {
+    "id": "synthetic-sermon-035-line-17",
+    "split": "train",
+    "family": "synthetic-speaker-18",
+    "text": "Can I have it in the NLT",
+    "expected": {
+      "intent": "switch_translation",
+      "translation": "NLT"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-18",
+    "sermonId": "sermon-035",
+    "source": "deterministic-template",
+    "sequence": 3416
+  },
+  {
+    "id": "synthetic-sermon-036-line-12",
+    "split": "train",
+    "family": "synthetic-speaker-18",
+    "text": "God can remove the burden of guilt that people carry.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-18",
+    "sermonId": "sermon-036",
+    "source": "deterministic-template",
+    "sequence": 3511
+  },
+  {
+    "id": "synthetic-sermon-036-line-13",
+    "split": "train",
+    "family": "synthetic-speaker-18",
+    "text": "Leave the screen empty for a moment",
+    "expected": {
+      "intent": "hide"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-18",
+    "sermonId": "sermon-036",
+    "source": "deterministic-template",
+    "sequence": 3512
+  },
+  {
+    "id": "synthetic-sermon-037-line-01",
+    "split": "train",
+    "family": "synthetic-speaker-19",
+    "text": "God can remove the burden of guilt that people carry.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-19",
+    "sermonId": "sermon-037",
+    "source": "deterministic-template",
+    "sequence": 3600
+  },
+  {
+    "id": "synthetic-sermon-037-line-14",
+    "split": "train",
+    "family": "synthetic-speaker-19",
+    "text": "Put it bak up on the screen",
+    "expected": {
+      "intent": "show"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-19",
+    "sermonId": "sermon-037",
+    "source": "deterministic-template",
+    "sequence": 3613
+  },
+  {
+    "id": "synthetic-sermon-038-line-02",
+    "split": "train",
+    "family": "synthetic-speaker-19",
+    "text": "Today we continue our study of the resurrection.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-19",
+    "sermonId": "sermon-038",
+    "source": "deterministic-template",
+    "sequence": 3701
+  },
+  {
+    "id": "synthetic-sermon-038-line-15",
+    "split": "train",
+    "family": "synthetic-speaker-19",
+    "text": "Advance to the next item",
+    "expected": {
+      "intent": "next"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-19",
+    "sermonId": "sermon-038",
+    "source": "deterministic-template",
+    "sequence": 3714
+  },
+  {
+    "id": "synthetic-sermon-039-line-03",
+    "split": "train",
+    "family": "synthetic-speaker-20",
+    "text": "God can remove the burden of guilt that people carry.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-20",
+    "sermonId": "sermon-039",
+    "source": "deterministic-template",
+    "sequence": 3802
+  },
+  {
+    "id": "synthetic-sermon-039-line-16",
+    "split": "train",
+    "family": "synthetic-speaker-20",
+    "text": "Bring the previus verse back",
+    "expected": {
+      "intent": "previous"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-20",
+    "sermonId": "sermon-039",
+    "source": "deterministic-template",
+    "sequence": 3815
+  },
+  {
+    "id": "synthetic-sermon-040-line-04",
+    "split": "train",
+    "family": "synthetic-speaker-20",
+    "text": "Today we continue our study of Christian character.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-20",
+    "sermonId": "sermon-040",
+    "source": "deterministic-template",
+    "sequence": 3903
+  },
+  {
+    "id": "synthetic-sermon-040-line-17",
+    "split": "train",
+    "family": "synthetic-speaker-20",
+    "text": "Can we have it in Afrikaans",
+    "expected": {
+      "intent": "switch_translation",
+      "translation": "AFR83"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-20",
+    "sermonId": "sermon-040",
+    "source": "deterministic-template",
+    "sequence": 3916
+  },
+  {
+    "id": "synthetic-sermon-041-line-05",
+    "split": "train",
+    "family": "synthetic-speaker-21",
+    "text": "God can remove the burden of guilt that people carry.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-21",
+    "sermonId": "sermon-041",
+    "source": "deterministic-template",
+    "sequence": 4004
+  },
+  {
+    "id": "synthetic-sermon-041-line-13",
+    "split": "train",
+    "family": "synthetic-speaker-21",
+    "text": "Hide the screen please",
+    "expected": {
+      "intent": "hide"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-21",
+    "sermonId": "sermon-041",
+    "source": "deterministic-template",
+    "sequence": 4012
+  },
+  {
+    "id": "synthetic-sermon-042-line-06",
+    "split": "train",
+    "family": "synthetic-speaker-21",
+    "text": "Today we continue our study of faith.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-21",
+    "sermonId": "sermon-042",
+    "source": "deterministic-template",
+    "sequence": 4105
+  },
+  {
+    "id": "synthetic-sermon-042-line-14",
+    "split": "train",
+    "family": "synthetic-speaker-21",
+    "text": "Restore the verse display",
+    "expected": {
+      "intent": "show"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-21",
+    "sermonId": "sermon-042",
+    "source": "deterministic-template",
+    "sequence": 4113
+  },
+  {
+    "id": "synthetic-sermon-043-line-07",
+    "split": "train",
+    "family": "synthetic-speaker-22",
+    "text": "God can remove the burden of guilt that people carry.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-22",
+    "sermonId": "sermon-043",
+    "source": "deterministic-template",
+    "sequence": 4206
+  },
+  {
+    "id": "synthetic-sermon-043-line-15",
+    "split": "train",
+    "family": "synthetic-speaker-22",
+    "text": "Next verse please",
+    "expected": {
+      "intent": "next"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-22",
+    "sermonId": "sermon-043",
+    "source": "deterministic-template",
+    "sequence": 4214
+  },
+  {
+    "id": "synthetic-sermon-044-line-08",
+    "split": "train",
+    "family": "synthetic-speaker-22",
+    "text": "Today we continue our study of hope.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-22",
+    "sermonId": "sermon-044",
+    "source": "deterministic-template",
+    "sequence": 4307
+  },
+  {
+    "id": "synthetic-sermon-044-line-16",
+    "split": "train",
+    "family": "synthetic-speaker-22",
+    "text": "Rewind to the last scripture",
+    "expected": {
+      "intent": "previous"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-22",
+    "sermonId": "sermon-044",
+    "source": "deterministic-template",
+    "sequence": 4315
+  },
+  {
+    "id": "synthetic-sermon-045-line-09",
+    "split": "train",
+    "family": "synthetic-speaker-23",
+    "text": "God can remove the burden of guilt that people carry.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-23",
+    "sermonId": "sermon-045",
+    "source": "deterministic-template",
+    "sequence": 4408
+  },
+  {
+    "id": "synthetic-sermon-045-line-17",
+    "split": "train",
+    "family": "synthetic-speaker-23",
+    "text": "Can I have it in the NLT",
+    "expected": {
+      "intent": "switch_translation",
+      "translation": "NLT"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-23",
+    "sermonId": "sermon-045",
+    "source": "deterministic-template",
+    "sequence": 4416
+  },
+  {
+    "id": "synthetic-sermon-046-line-10",
+    "split": "train",
+    "family": "synthetic-speaker-23",
+    "text": "Today we continue our study of service.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-23",
+    "sermonId": "sermon-046",
+    "source": "deterministic-template",
+    "sequence": 4509
+  },
+  {
+    "id": "synthetic-sermon-046-line-13",
+    "split": "train",
+    "family": "synthetic-speaker-23",
+    "text": "Blank the output until I ask again",
+    "expected": {
+      "intent": "hide"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-23",
+    "sermonId": "sermon-046",
+    "source": "deterministic-template",
+    "sequence": 4512
+  },
+  {
+    "id": "synthetic-sermon-047-line-11",
+    "split": "train",
+    "family": "synthetic-speaker-24",
+    "text": "God can remove the burden of guilt that people carry.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-24",
+    "sermonId": "sermon-047",
+    "source": "deterministic-template",
+    "sequence": 4610
+  },
+  {
+    "id": "synthetic-sermon-047-line-14",
+    "split": "train",
+    "family": "synthetic-speaker-24",
+    "text": "Put that scripture back up",
+    "expected": {
+      "intent": "show"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-24",
+    "sermonId": "sermon-047",
+    "source": "deterministic-template",
+    "sequence": 4613
+  },
+  {
+    "id": "synthetic-sermon-048-line-12",
+    "split": "train",
+    "family": "synthetic-speaker-24",
+    "text": "Today we continue our study of the resurrection.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-24",
+    "sermonId": "sermon-048",
+    "source": "deterministic-template",
+    "sequence": 4711
+  },
+  {
+    "id": "synthetic-sermon-048-line-15",
+    "split": "train",
+    "family": "synthetic-speaker-24",
+    "text": "Continue to the following verse",
+    "expected": {
+      "intent": "next"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-24",
+    "sermonId": "sermon-048",
+    "source": "deterministic-template",
+    "sequence": 4714
+  },
+  {
+    "id": "synthetic-sermon-049-line-01",
+    "split": "train",
+    "family": "synthetic-speaker-25",
+    "text": "Today we continue our study of the covenant.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-25",
+    "sermonId": "sermon-049",
+    "source": "deterministic-template",
+    "sequence": 4800
+  },
+  {
+    "id": "synthetic-sermon-049-line-16",
+    "split": "train",
+    "family": "synthetic-speaker-25",
+    "text": "Go back one",
+    "expected": {
+      "intent": "previous"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-25",
+    "sermonId": "sermon-049",
+    "source": "deterministic-template",
+    "sequence": 4815
+  },
+  {
+    "id": "synthetic-sermon-050-line-02",
+    "split": "train",
+    "family": "synthetic-speaker-25",
+    "text": "God can remove the burden of guilt that people carry.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-25",
+    "sermonId": "sermon-050",
+    "source": "deterministic-template",
+    "sequence": 4901
+  },
+  {
+    "id": "synthetic-sermon-050-line-17",
+    "split": "train",
+    "family": "synthetic-speaker-25",
+    "text": "Can we have it in Afrikaans",
+    "expected": {
+      "intent": "switch_translation",
+      "translation": "AFR83"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-25",
+    "sermonId": "sermon-050",
+    "source": "deterministic-template",
+    "sequence": 4916
+  },
+  {
+    "id": "synthetic-sermon-051-line-03",
+    "split": "train",
+    "family": "synthetic-speaker-26",
+    "text": "Today we continue our study of grace.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-26",
+    "sermonId": "sermon-051",
+    "source": "deterministic-template",
+    "sequence": 5002
+  },
+  {
+    "id": "synthetic-sermon-051-line-13",
+    "split": "train",
+    "family": "synthetic-speaker-26",
+    "text": "Clear the projected output",
+    "expected": {
+      "intent": "hide"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-26",
+    "sermonId": "sermon-051",
+    "source": "deterministic-template",
+    "sequence": 5012
+  },
+  {
+    "id": "synthetic-sermon-052-line-04",
+    "split": "train",
+    "family": "synthetic-speaker-26",
+    "text": "God can remove the burden of guilt that people carry.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-26",
+    "sermonId": "sermon-052",
+    "source": "deterministic-template",
+    "sequence": 5103
+  },
+  {
+    "id": "synthetic-sermon-052-line-14",
+    "split": "train",
+    "family": "synthetic-speaker-26",
+    "text": "Can we see that text once more",
+    "expected": {
+      "intent": "show"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-26",
+    "sermonId": "sermon-052",
+    "source": "deterministic-template",
+    "sequence": 5113
+  },
+  {
+    "id": "synthetic-sermon-053-line-05",
+    "split": "train",
+    "family": "synthetic-speaker-27",
+    "text": "Today we continue our study of forgiveness.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-27",
+    "sermonId": "sermon-053",
+    "source": "deterministic-template",
+    "sequence": 5204
+  },
+  {
+    "id": "synthetic-sermon-053-line-15",
+    "split": "train",
+    "family": "synthetic-speaker-27",
+    "text": "Take us to the following passage",
+    "expected": {
+      "intent": "next"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-27",
+    "sermonId": "sermon-053",
+    "source": "deterministic-template",
+    "sequence": 5214
+  },
+  {
+    "id": "synthetic-sermon-054-line-06",
+    "split": "train",
+    "family": "synthetic-speaker-27",
+    "text": "God can remove the burden of guilt that people carry.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-27",
+    "sermonId": "sermon-054",
+    "source": "deterministic-template",
+    "sequence": 5305
+  },
+  {
+    "id": "synthetic-sermon-054-line-16",
+    "split": "train",
+    "family": "synthetic-speaker-27",
+    "text": "Move back to the previous item",
+    "expected": {
+      "intent": "previous"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-27",
+    "sermonId": "sermon-054",
+    "source": "deterministic-template",
+    "sequence": 5315
+  },
+  {
+    "id": "synthetic-sermon-055-line-07",
+    "split": "train",
+    "family": "synthetic-speaker-28",
+    "text": "Today we continue our study of prayer.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-28",
+    "sermonId": "sermon-055",
+    "source": "deterministic-template",
+    "sequence": 5406
+  },
+  {
+    "id": "synthetic-sermon-055-line-17",
+    "split": "train",
+    "family": "synthetic-speaker-28",
+    "text": "Can I have it in the NLT",
+    "expected": {
+      "intent": "switch_translation",
+      "translation": "NLT"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-28",
+    "sermonId": "sermon-055",
+    "source": "deterministic-template",
+    "sequence": 5416
+  },
+  {
+    "id": "synthetic-sermon-056-line-08",
+    "split": "train",
+    "family": "synthetic-speaker-28",
+    "text": "God can remove the burden of guilt that people carry.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-28",
+    "sermonId": "sermon-056",
+    "source": "deterministic-template",
+    "sequence": 5507
+  },
+  {
+    "id": "synthetic-sermon-056-line-13",
+    "split": "train",
+    "family": "synthetic-speaker-28",
+    "text": "Take the words away for now",
+    "expected": {
+      "intent": "hide"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-28",
+    "sermonId": "sermon-056",
+    "source": "deterministic-template",
+    "sequence": 5512
+  },
+  {
+    "id": "synthetic-sermon-057-line-09",
+    "split": "train",
+    "family": "synthetic-speaker-29",
+    "text": "Today we continue our study of discipleship.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-29",
+    "sermonId": "sermon-057",
+    "source": "deterministic-template",
+    "sequence": 5608
+  },
+  {
+    "id": "synthetic-sermon-057-line-14",
+    "split": "train",
+    "family": "synthetic-speaker-29",
+    "text": "Let the congregation see that again",
+    "expected": {
+      "intent": "show"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-29",
+    "sermonId": "sermon-057",
+    "source": "deterministic-template",
+    "sequence": 5613
+  },
+  {
+    "id": "synthetic-sermon-058-line-10",
+    "split": "train",
+    "family": "synthetic-speaker-29",
+    "text": "God can remove the burden of guilt that people carry.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-29",
+    "sermonId": "sermon-058",
+    "source": "deterministic-template",
+    "sequence": 5709
+  },
+  {
+    "id": "synthetic-sermon-058-line-15",
+    "split": "train",
+    "family": "synthetic-speaker-29",
+    "text": "Go to the nex slide",
+    "expected": {
+      "intent": "next"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-29",
+    "sermonId": "sermon-058",
+    "source": "deterministic-template",
+    "sequence": 5714
+  },
+  {
+    "id": "synthetic-sermon-059-line-11",
+    "split": "train",
+    "family": "synthetic-speaker-30",
+    "text": "Today we continue our study of the covenant.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-30",
+    "sermonId": "sermon-059",
+    "source": "deterministic-template",
+    "sequence": 5810
+  },
+  {
+    "id": "synthetic-sermon-059-line-16",
+    "split": "train",
+    "family": "synthetic-speaker-30",
+    "text": "Put the one before this back up",
+    "expected": {
+      "intent": "previous"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-30",
+    "sermonId": "sermon-059",
+    "source": "deterministic-template",
+    "sequence": 5815
+  },
+  {
+    "id": "synthetic-sermon-060-line-12",
+    "split": "train",
+    "family": "synthetic-speaker-30",
+    "text": "God can remove the burden of guilt that people carry.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-30",
+    "sermonId": "sermon-060",
+    "source": "deterministic-template",
+    "sequence": 5911
+  },
+  {
+    "id": "synthetic-sermon-060-line-17",
+    "split": "train",
+    "family": "synthetic-speaker-30",
+    "text": "Can we have it in Afrikaans",
+    "expected": {
+      "intent": "switch_translation",
+      "translation": "AFR83"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-30",
+    "sermonId": "sermon-060",
+    "source": "deterministic-template",
+    "sequence": 5916
+  },
+  {
+    "id": "synthetic-sermon-061-line-01",
+    "split": "train",
+    "family": "synthetic-speaker-31",
+    "text": "God can remove the burden of guilt that people carry.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-31",
+    "sermonId": "sermon-061",
+    "source": "deterministic-template",
+    "sequence": 6000
+  },
+  {
+    "id": "synthetic-sermon-061-line-13",
+    "split": "train",
+    "family": "synthetic-speaker-31",
+    "text": "I do not need that projected anymore",
+    "expected": {
+      "intent": "hide"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-31",
+    "sermonId": "sermon-061",
+    "source": "deterministic-template",
+    "sequence": 6012
+  },
+  {
+    "id": "synthetic-sermon-062-line-02",
+    "split": "train",
+    "family": "synthetic-speaker-31",
+    "text": "Today we continue our study of faith.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-31",
+    "sermonId": "sermon-062",
+    "source": "deterministic-template",
+    "sequence": 6101
+  },
+  {
+    "id": "synthetic-sermon-062-line-14",
+    "split": "train",
+    "family": "synthetic-speaker-31",
+    "text": "Show the verse again",
+    "expected": {
+      "intent": "show"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-31",
+    "sermonId": "sermon-062",
+    "source": "deterministic-template",
+    "sequence": 6113
+  },
+  {
+    "id": "synthetic-sermon-063-line-03",
+    "split": "train",
+    "family": "synthetic-speaker-32",
+    "text": "God can remove the burden of guilt that people carry.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-32",
+    "sermonId": "sermon-063",
+    "source": "deterministic-template",
+    "sequence": 6202
+  },
+  {
+    "id": "synthetic-sermon-063-line-15",
+    "split": "train",
+    "family": "synthetic-speaker-32",
+    "text": "Let us have the one after this",
+    "expected": {
+      "intent": "next"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-32",
+    "sermonId": "sermon-063",
+    "source": "deterministic-template",
+    "sequence": 6214
+  },
+  {
+    "id": "synthetic-sermon-064-line-04",
+    "split": "train",
+    "family": "synthetic-speaker-32",
+    "text": "Today we continue our study of hope.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-32",
+    "sermonId": "sermon-064",
+    "source": "deterministic-template",
+    "sequence": 6303
+  },
+  {
+    "id": "synthetic-sermon-064-line-16",
+    "split": "train",
+    "family": "synthetic-speaker-32",
+    "text": "Previous verse please",
+    "expected": {
+      "intent": "previous"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-32",
+    "sermonId": "sermon-064",
+    "source": "deterministic-template",
+    "sequence": 6315
+  },
+  {
+    "id": "synthetic-sermon-065-line-05",
+    "split": "train",
+    "family": "synthetic-speaker-33",
+    "text": "God can remove the burden of guilt that people carry.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-33",
+    "sermonId": "sermon-065",
+    "source": "deterministic-template",
+    "sequence": 6404
+  },
+  {
+    "id": "synthetic-sermon-065-line-17",
+    "split": "train",
+    "family": "synthetic-speaker-33",
+    "text": "Can I have it in the NLT",
+    "expected": {
+      "intent": "switch_translation",
+      "translation": "NLT"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-33",
+    "sermonId": "sermon-065",
+    "source": "deterministic-template",
+    "sequence": 6416
+  },
+  {
+    "id": "synthetic-sermon-066-line-06",
+    "split": "train",
+    "family": "synthetic-speaker-33",
+    "text": "Today we continue our study of service.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-33",
+    "sermonId": "sermon-066",
+    "source": "deterministic-template",
+    "sequence": 6505
+  },
+  {
+    "id": "synthetic-sermon-066-line-13",
+    "split": "train",
+    "family": "synthetic-speaker-33",
+    "text": "Take that verse off the screen",
+    "expected": {
+      "intent": "hide"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-33",
+    "sermonId": "sermon-066",
+    "source": "deterministic-template",
+    "sequence": 6512
+  },
+  {
+    "id": "synthetic-sermon-067-line-07",
+    "split": "train",
+    "family": "synthetic-speaker-34",
+    "text": "God can remove the burden of guilt that people carry.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-34",
+    "sermonId": "sermon-067",
+    "source": "deterministic-template",
+    "sequence": 6606
+  },
+  {
+    "id": "synthetic-sermon-067-line-14",
+    "split": "train",
+    "family": "synthetic-speaker-34",
+    "text": "Please display that passage again",
+    "expected": {
+      "intent": "show"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-34",
+    "sermonId": "sermon-067",
+    "source": "deterministic-template",
+    "sequence": 6613
+  },
+  {
+    "id": "synthetic-sermon-068-line-08",
+    "split": "train",
+    "family": "synthetic-speaker-34",
+    "text": "Today we continue our study of the resurrection.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-34",
+    "sermonId": "sermon-068",
+    "source": "deterministic-template",
+    "sequence": 6707
+  },
+  {
+    "id": "synthetic-sermon-068-line-15",
+    "split": "train",
+    "family": "synthetic-speaker-34",
+    "text": "Move forward one",
+    "expected": {
+      "intent": "next"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-34",
+    "sermonId": "sermon-068",
+    "source": "deterministic-template",
+    "sequence": 6714
+  },
+  {
+    "id": "synthetic-sermon-069-line-09",
+    "split": "train",
+    "family": "synthetic-speaker-35",
+    "text": "God can remove the burden of guilt that people carry.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-35",
+    "sermonId": "sermon-069",
+    "source": "deterministic-template",
+    "sequence": 6808
+  },
+  {
+    "id": "synthetic-sermon-069-line-16",
+    "split": "train",
+    "family": "synthetic-speaker-35",
+    "text": "Back one please",
+    "expected": {
+      "intent": "previous"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-35",
+    "sermonId": "sermon-069",
+    "source": "deterministic-template",
+    "sequence": 6815
+  },
+  {
+    "id": "synthetic-sermon-070-line-10",
+    "split": "train",
+    "family": "synthetic-speaker-35",
+    "text": "Today we continue our study of Christian character.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-35",
+    "sermonId": "sermon-070",
+    "source": "deterministic-template",
+    "sequence": 6909
+  },
+  {
+    "id": "synthetic-sermon-070-line-17",
+    "split": "train",
+    "family": "synthetic-speaker-35",
+    "text": "Can we have it in Afrikaans",
+    "expected": {
+      "intent": "switch_translation",
+      "translation": "AFR83"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-35",
+    "sermonId": "sermon-070",
+    "source": "deterministic-template",
+    "sequence": 6916
+  },
+  {
+    "id": "synthetic-sermon-071-line-11",
+    "split": "train",
+    "family": "synthetic-speaker-36",
+    "text": "God can remove the burden of guilt that people carry.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-36",
+    "sermonId": "sermon-071",
+    "source": "deterministic-template",
+    "sequence": 7010
+  },
+  {
+    "id": "synthetic-sermon-071-line-13",
+    "split": "train",
+    "family": "synthetic-speaker-36",
+    "text": "Please remove that passage from the display",
+    "expected": {
+      "intent": "hide"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-36",
+    "sermonId": "sermon-071",
+    "source": "deterministic-template",
+    "sequence": 7012
+  },
+  {
+    "id": "synthetic-sermon-072-line-12",
+    "split": "train",
+    "family": "synthetic-speaker-36",
+    "text": "Today we continue our study of faith.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-36",
+    "sermonId": "sermon-072",
+    "source": "deterministic-template",
+    "sequence": 7111
+  },
+  {
+    "id": "synthetic-sermon-072-line-14",
+    "split": "train",
+    "family": "synthetic-speaker-36",
+    "text": "Bring the passage onto the projector",
+    "expected": {
+      "intent": "show"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-36",
+    "sermonId": "sermon-072",
+    "source": "deterministic-template",
+    "sequence": 7113
+  },
+  {
+    "id": "synthetic-sermon-073-line-01",
+    "split": "train",
+    "family": "synthetic-speaker-37",
+    "text": "Today we continue our study of forgiveness.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-37",
+    "sermonId": "sermon-073",
+    "source": "deterministic-template",
+    "sequence": 7200
+  },
+  {
+    "id": "synthetic-sermon-073-line-15",
+    "split": "train",
+    "family": "synthetic-speaker-37",
+    "text": "Forward one please",
+    "expected": {
+      "intent": "next"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-37",
+    "sermonId": "sermon-073",
+    "source": "deterministic-template",
+    "sequence": 7214
+  },
+  {
+    "id": "synthetic-sermon-074-line-02",
+    "split": "train",
+    "family": "synthetic-speaker-37",
+    "text": "God can remove the burden of guilt that people carry.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-37",
+    "sermonId": "sermon-074",
+    "source": "deterministic-template",
+    "sequence": 7301
+  },
+  {
+    "id": "synthetic-sermon-074-line-16",
+    "split": "train",
+    "family": "synthetic-speaker-37",
+    "text": "Return to what was displayed before",
+    "expected": {
+      "intent": "previous"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-37",
+    "sermonId": "sermon-074",
+    "source": "deterministic-template",
+    "sequence": 7315
+  },
+  {
+    "id": "synthetic-sermon-075-line-03",
+    "split": "train",
+    "family": "synthetic-speaker-38",
+    "text": "Today we continue our study of prayer.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-38",
+    "sermonId": "sermon-075",
+    "source": "deterministic-template",
+    "sequence": 7402
+  },
+  {
+    "id": "synthetic-sermon-075-line-17",
+    "split": "train",
+    "family": "synthetic-speaker-38",
+    "text": "Can I have it in the NLT",
+    "expected": {
+      "intent": "switch_translation",
+      "translation": "NLT"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-38",
+    "sermonId": "sermon-075",
+    "source": "deterministic-template",
+    "sequence": 7416
+  },
+  {
+    "id": "synthetic-sermon-076-line-04",
+    "split": "train",
+    "family": "synthetic-speaker-38",
+    "text": "God can remove the burden of guilt that people carry.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-38",
+    "sermonId": "sermon-076",
+    "source": "deterministic-template",
+    "sequence": 7503
+  },
+  {
+    "id": "synthetic-sermon-076-line-13",
+    "split": "train",
+    "family": "synthetic-speaker-38",
+    "text": "Leave the screen empty for a moment",
+    "expected": {
+      "intent": "hide"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-38",
+    "sermonId": "sermon-076",
+    "source": "deterministic-template",
+    "sequence": 7512
+  },
+  {
+    "id": "synthetic-sermon-077-line-05",
+    "split": "train",
+    "family": "synthetic-speaker-39",
+    "text": "Today we continue our study of discipleship.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-39",
+    "sermonId": "sermon-077",
+    "source": "deterministic-template",
+    "sequence": 7604
+  },
+  {
+    "id": "synthetic-sermon-077-line-14",
+    "split": "train",
+    "family": "synthetic-speaker-39",
+    "text": "Put it bak up on the screen",
+    "expected": {
+      "intent": "show"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-39",
+    "sermonId": "sermon-077",
+    "source": "deterministic-template",
+    "sequence": 7613
+  },
+  {
+    "id": "synthetic-sermon-078-line-06",
+    "split": "train",
+    "family": "synthetic-speaker-39",
+    "text": "God can remove the burden of guilt that people carry.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-39",
+    "sermonId": "sermon-078",
+    "source": "deterministic-template",
+    "sequence": 7705
+  },
+  {
+    "id": "synthetic-sermon-078-line-15",
+    "split": "train",
+    "family": "synthetic-speaker-39",
+    "text": "Advance to the next item",
+    "expected": {
+      "intent": "next"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-39",
+    "sermonId": "sermon-078",
+    "source": "deterministic-template",
+    "sequence": 7714
+  },
+  {
+    "id": "synthetic-sermon-079-line-07",
+    "split": "train",
+    "family": "synthetic-speaker-40",
+    "text": "Today we continue our study of the covenant.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-40",
+    "sermonId": "sermon-079",
+    "source": "deterministic-template",
+    "sequence": 7806
+  },
+  {
+    "id": "synthetic-sermon-079-line-16",
+    "split": "train",
+    "family": "synthetic-speaker-40",
+    "text": "Bring the previus verse back",
+    "expected": {
+      "intent": "previous"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-40",
+    "sermonId": "sermon-079",
+    "source": "deterministic-template",
+    "sequence": 7815
+  },
+  {
+    "id": "synthetic-sermon-080-line-08",
+    "split": "train",
+    "family": "synthetic-speaker-40",
+    "text": "God can remove the burden of guilt that people carry.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-40",
+    "sermonId": "sermon-080",
+    "source": "deterministic-template",
+    "sequence": 7907
+  },
+  {
+    "id": "synthetic-sermon-080-line-17",
+    "split": "train",
+    "family": "synthetic-speaker-40",
+    "text": "Can we have it in Afrikaans",
+    "expected": {
+      "intent": "switch_translation",
+      "translation": "AFR83"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-40",
+    "sermonId": "sermon-080",
+    "source": "deterministic-template",
+    "sequence": 7916
+  },
+  {
+    "id": "synthetic-sermon-081-line-09",
+    "split": "validation",
+    "family": "synthetic-speaker-41",
+    "text": "Today we continue our study of grace.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-41",
+    "sermonId": "sermon-081",
+    "source": "deterministic-template",
+    "sequence": 8008
+  },
+  {
+    "id": "synthetic-sermon-081-line-13",
+    "split": "validation",
+    "family": "synthetic-speaker-41",
+    "text": "Hide the screen please",
+    "expected": {
+      "intent": "hide"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-41",
+    "sermonId": "sermon-081",
+    "source": "deterministic-template",
+    "sequence": 8012
+  },
+  {
+    "id": "synthetic-sermon-082-line-10",
+    "split": "validation",
+    "family": "synthetic-speaker-41",
+    "text": "God can remove the burden of guilt that people carry.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-41",
+    "sermonId": "sermon-082",
+    "source": "deterministic-template",
+    "sequence": 8109
+  },
+  {
+    "id": "synthetic-sermon-082-line-14",
+    "split": "validation",
+    "family": "synthetic-speaker-41",
+    "text": "Restore the verse display",
+    "expected": {
+      "intent": "show"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-41",
+    "sermonId": "sermon-082",
+    "source": "deterministic-template",
+    "sequence": 8113
+  },
+  {
+    "id": "synthetic-sermon-083-line-11",
+    "split": "validation",
+    "family": "synthetic-speaker-42",
+    "text": "Today we continue our study of forgiveness.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-42",
+    "sermonId": "sermon-083",
+    "source": "deterministic-template",
+    "sequence": 8210
+  },
+  {
+    "id": "synthetic-sermon-083-line-15",
+    "split": "validation",
+    "family": "synthetic-speaker-42",
+    "text": "Next verse please",
+    "expected": {
+      "intent": "next"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-42",
+    "sermonId": "sermon-083",
+    "source": "deterministic-template",
+    "sequence": 8214
+  },
+  {
+    "id": "synthetic-sermon-084-line-12",
+    "split": "validation",
+    "family": "synthetic-speaker-42",
+    "text": "God can remove the burden of guilt that people carry.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-42",
+    "sermonId": "sermon-084",
+    "source": "deterministic-template",
+    "sequence": 8311
+  },
+  {
+    "id": "synthetic-sermon-084-line-16",
+    "split": "validation",
+    "family": "synthetic-speaker-42",
+    "text": "Rewind to the last scripture",
+    "expected": {
+      "intent": "previous"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-42",
+    "sermonId": "sermon-084",
+    "source": "deterministic-template",
+    "sequence": 8315
+  },
+  {
+    "id": "synthetic-sermon-085-line-01",
+    "split": "validation",
+    "family": "synthetic-speaker-43",
+    "text": "God can remove the burden of guilt that people carry.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-43",
+    "sermonId": "sermon-085",
+    "source": "deterministic-template",
+    "sequence": 8400
+  },
+  {
+    "id": "synthetic-sermon-085-line-17",
+    "split": "validation",
+    "family": "synthetic-speaker-43",
+    "text": "Can I have it in the NLT",
+    "expected": {
+      "intent": "switch_translation",
+      "translation": "NLT"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-43",
+    "sermonId": "sermon-085",
+    "source": "deterministic-template",
+    "sequence": 8416
+  },
+  {
+    "id": "synthetic-sermon-086-line-02",
+    "split": "validation",
+    "family": "synthetic-speaker-43",
+    "text": "Today we continue our study of service.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-43",
+    "sermonId": "sermon-086",
+    "source": "deterministic-template",
+    "sequence": 8501
+  },
+  {
+    "id": "synthetic-sermon-086-line-13",
+    "split": "validation",
+    "family": "synthetic-speaker-43",
+    "text": "Blank the output until I ask again",
+    "expected": {
+      "intent": "hide"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-43",
+    "sermonId": "sermon-086",
+    "source": "deterministic-template",
+    "sequence": 8512
+  },
+  {
+    "id": "synthetic-sermon-087-line-03",
+    "split": "validation",
+    "family": "synthetic-speaker-44",
+    "text": "God can remove the burden of guilt that people carry.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-44",
+    "sermonId": "sermon-087",
+    "source": "deterministic-template",
+    "sequence": 8602
+  },
+  {
+    "id": "synthetic-sermon-087-line-14",
+    "split": "validation",
+    "family": "synthetic-speaker-44",
+    "text": "Put that scripture back up",
+    "expected": {
+      "intent": "show"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-44",
+    "sermonId": "sermon-087",
+    "source": "deterministic-template",
+    "sequence": 8613
+  },
+  {
+    "id": "synthetic-sermon-088-line-04",
+    "split": "validation",
+    "family": "synthetic-speaker-44",
+    "text": "Today we continue our study of the resurrection.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-44",
+    "sermonId": "sermon-088",
+    "source": "deterministic-template",
+    "sequence": 8703
+  },
+  {
+    "id": "synthetic-sermon-088-line-15",
+    "split": "validation",
+    "family": "synthetic-speaker-44",
+    "text": "Continue to the following verse",
+    "expected": {
+      "intent": "next"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-44",
+    "sermonId": "sermon-088",
+    "source": "deterministic-template",
+    "sequence": 8714
+  },
+  {
+    "id": "synthetic-sermon-089-line-05",
+    "split": "validation",
+    "family": "synthetic-speaker-45",
+    "text": "God can remove the burden of guilt that people carry.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-45",
+    "sermonId": "sermon-089",
+    "source": "deterministic-template",
+    "sequence": 8804
+  },
+  {
+    "id": "synthetic-sermon-089-line-16",
+    "split": "validation",
+    "family": "synthetic-speaker-45",
+    "text": "Go back one",
+    "expected": {
+      "intent": "previous"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-45",
+    "sermonId": "sermon-089",
+    "source": "deterministic-template",
+    "sequence": 8815
+  },
+  {
+    "id": "synthetic-sermon-090-line-06",
+    "split": "validation",
+    "family": "synthetic-speaker-45",
+    "text": "Today we continue our study of Christian character.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-45",
+    "sermonId": "sermon-090",
+    "source": "deterministic-template",
+    "sequence": 8905
+  },
+  {
+    "id": "synthetic-sermon-090-line-17",
+    "split": "validation",
+    "family": "synthetic-speaker-45",
+    "text": "Can we have it in Afrikaans",
+    "expected": {
+      "intent": "switch_translation",
+      "translation": "AFR83"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-45",
+    "sermonId": "sermon-090",
+    "source": "deterministic-template",
+    "sequence": 8916
+  },
+  {
+    "id": "synthetic-sermon-091-line-07",
+    "split": "validation",
+    "family": "synthetic-speaker-46",
+    "text": "God can remove the burden of guilt that people carry.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-46",
+    "sermonId": "sermon-091",
+    "source": "deterministic-template",
+    "sequence": 9006
+  },
+  {
+    "id": "synthetic-sermon-091-line-13",
+    "split": "validation",
+    "family": "synthetic-speaker-46",
+    "text": "Clear the projected output",
+    "expected": {
+      "intent": "hide"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-46",
+    "sermonId": "sermon-091",
+    "source": "deterministic-template",
+    "sequence": 9012
+  },
+  {
+    "id": "synthetic-sermon-092-line-08",
+    "split": "validation",
+    "family": "synthetic-speaker-46",
+    "text": "Today we continue our study of faith.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-46",
+    "sermonId": "sermon-092",
+    "source": "deterministic-template",
+    "sequence": 9107
+  },
+  {
+    "id": "synthetic-sermon-092-line-14",
+    "split": "validation",
+    "family": "synthetic-speaker-46",
+    "text": "Can we see that text once more",
+    "expected": {
+      "intent": "show"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-46",
+    "sermonId": "sermon-092",
+    "source": "deterministic-template",
+    "sequence": 9113
+  },
+  {
+    "id": "synthetic-sermon-093-line-09",
+    "split": "validation",
+    "family": "synthetic-speaker-47",
+    "text": "God can remove the burden of guilt that people carry.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-47",
+    "sermonId": "sermon-093",
+    "source": "deterministic-template",
+    "sequence": 9208
+  },
+  {
+    "id": "synthetic-sermon-093-line-15",
+    "split": "validation",
+    "family": "synthetic-speaker-47",
+    "text": "Take us to the following passage",
+    "expected": {
+      "intent": "next"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-47",
+    "sermonId": "sermon-093",
+    "source": "deterministic-template",
+    "sequence": 9214
+  },
+  {
+    "id": "synthetic-sermon-094-line-10",
+    "split": "validation",
+    "family": "synthetic-speaker-47",
+    "text": "Today we continue our study of hope.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-47",
+    "sermonId": "sermon-094",
+    "source": "deterministic-template",
+    "sequence": 9309
+  },
+  {
+    "id": "synthetic-sermon-094-line-16",
+    "split": "validation",
+    "family": "synthetic-speaker-47",
+    "text": "Move back to the previous item",
+    "expected": {
+      "intent": "previous"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-47",
+    "sermonId": "sermon-094",
+    "source": "deterministic-template",
+    "sequence": 9315
+  },
+  {
+    "id": "synthetic-sermon-095-line-11",
+    "split": "validation",
+    "family": "synthetic-speaker-48",
+    "text": "God can remove the burden of guilt that people carry.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-48",
+    "sermonId": "sermon-095",
+    "source": "deterministic-template",
+    "sequence": 9410
+  },
+  {
+    "id": "synthetic-sermon-095-line-17",
+    "split": "validation",
+    "family": "synthetic-speaker-48",
+    "text": "Can I have it in the NLT",
+    "expected": {
+      "intent": "switch_translation",
+      "translation": "NLT"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-48",
+    "sermonId": "sermon-095",
+    "source": "deterministic-template",
+    "sequence": 9416
+  },
+  {
+    "id": "synthetic-sermon-096-line-12",
+    "split": "validation",
+    "family": "synthetic-speaker-48",
+    "text": "Today we continue our study of service.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-48",
+    "sermonId": "sermon-096",
+    "source": "deterministic-template",
+    "sequence": 9511
+  },
+  {
+    "id": "synthetic-sermon-096-line-13",
+    "split": "validation",
+    "family": "synthetic-speaker-48",
+    "text": "Take the words away for now",
+    "expected": {
+      "intent": "hide"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-48",
+    "sermonId": "sermon-096",
+    "source": "deterministic-template",
+    "sequence": 9512
+  },
+  {
+    "id": "synthetic-sermon-097-line-01",
+    "split": "validation",
+    "family": "synthetic-speaker-49",
+    "text": "Today we continue our study of discipleship.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-49",
+    "sermonId": "sermon-097",
+    "source": "deterministic-template",
+    "sequence": 9600
+  },
+  {
+    "id": "synthetic-sermon-097-line-14",
+    "split": "validation",
+    "family": "synthetic-speaker-49",
+    "text": "Let the congregation see that again",
+    "expected": {
+      "intent": "show"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-49",
+    "sermonId": "sermon-097",
+    "source": "deterministic-template",
+    "sequence": 9613
+  },
+  {
+    "id": "synthetic-sermon-098-line-02",
+    "split": "validation",
+    "family": "synthetic-speaker-49",
+    "text": "God can remove the burden of guilt that people carry.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-49",
+    "sermonId": "sermon-098",
+    "source": "deterministic-template",
+    "sequence": 9701
+  },
+  {
+    "id": "synthetic-sermon-098-line-15",
+    "split": "validation",
+    "family": "synthetic-speaker-49",
+    "text": "Go to the nex slide",
+    "expected": {
+      "intent": "next"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-49",
+    "sermonId": "sermon-098",
+    "source": "deterministic-template",
+    "sequence": 9714
+  },
+  {
+    "id": "synthetic-sermon-099-line-03",
+    "split": "validation",
+    "family": "synthetic-speaker-50",
+    "text": "Today we continue our study of the covenant.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-50",
+    "sermonId": "sermon-099",
+    "source": "deterministic-template",
+    "sequence": 9802
+  },
+  {
+    "id": "synthetic-sermon-099-line-16",
+    "split": "validation",
+    "family": "synthetic-speaker-50",
+    "text": "Put the one before this back up",
+    "expected": {
+      "intent": "previous"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-50",
+    "sermonId": "sermon-099",
+    "source": "deterministic-template",
+    "sequence": 9815
+  },
+  {
+    "id": "synthetic-sermon-100-line-04",
+    "split": "validation",
+    "family": "synthetic-speaker-50",
+    "text": "God can remove the burden of guilt that people carry.",
+    "expected": {
+      "intent": "none"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-50",
+    "sermonId": "sermon-100",
+    "source": "deterministic-template",
+    "sequence": 9903
+  },
+  {
+    "id": "synthetic-sermon-100-line-17",
+    "split": "validation",
+    "family": "synthetic-speaker-50",
+    "text": "Can we have it in Afrikaans",
+    "expected": {
+      "intent": "switch_translation",
+      "translation": "AFR83"
+    },
+    "synthetic": true,
+    "speakerId": "speaker-50",
+    "sermonId": "sermon-100",
+    "source": "deterministic-template",
+    "sequence": 9916
+  },
+  {
+    "id": "train-none-01",
+    "split": "train",
+    "family": "sermon-grace",
+    "text": "Grace changes the way we see one another",
+    "expected": {
+      "intent": "none"
+    }
+  },
+  {
+    "id": "train-none-02",
+    "split": "train",
+    "family": "sermon-next-point",
+    "text": "Next Paul turns his attention to the church",
+    "expected": {
+      "intent": "none"
+    }
+  },
+  {
+    "id": "train-none-03",
+    "split": "train",
+    "family": "sermon-hidden",
+    "text": "Your life is hidden with Christ in God",
+    "expected": {
+      "intent": "none"
+    }
+  },
+  {
+    "id": "train-none-04",
+    "split": "train",
+    "family": "sermon-show-mercy",
+    "text": "We must show mercy to the people around us",
+    "expected": {
+      "intent": "none"
+    }
+  },
+  {
+    "id": "train-none-05",
+    "split": "train",
+    "family": "sermon-language",
+    "text": "The English wording makes the promise especially clear",
+    "expected": {
+      "intent": "none"
+    }
+  },
+  {
+    "id": "train-hide-01",
+    "split": "train",
+    "family": "hide-direct",
+    "text": "Hide the verse",
+    "expected": {
+      "intent": "hide"
+    }
+  },
+  {
+    "id": "train-hide-02",
+    "split": "train",
+    "family": "hide-screen",
+    "text": "Clear the screen please",
+    "expected": {
+      "intent": "hide"
+    }
+  },
+  {
+    "id": "train-hide-03",
+    "split": "train",
+    "family": "hide-remove",
+    "text": "Remove that from the screen",
+    "expected": {
+      "intent": "hide"
+    }
+  },
+  {
+    "id": "train-hide-04",
+    "split": "train",
+    "family": "hide-take-off",
+    "text": "Take that off the screen",
+    "expected": {
+      "intent": "hide"
+    }
+  },
+  {
+    "id": "train-hide-05",
+    "split": "train",
+    "family": "hide-temporary",
+    "text": "Hide that for a moment",
+    "expected": {
+      "intent": "hide"
+    }
+  },
+  {
+    "id": "train-show-01",
+    "split": "train",
+    "family": "show-direct",
+    "text": "Show the verse",
+    "expected": {
+      "intent": "show"
+    }
+  },
+  {
+    "id": "train-show-02",
+    "split": "train",
+    "family": "show-screen",
+    "text": "Put that on the screen",
+    "expected": {
+      "intent": "show"
+    }
+  },
+  {
+    "id": "train-show-03",
+    "split": "train",
+    "family": "show-restore",
+    "text": "Restore the verse display",
+    "expected": {
+      "intent": "show"
+    }
+  },
+  {
+    "id": "train-show-04",
+    "split": "train",
+    "family": "show-back-up",
+    "text": "Put it back up",
+    "expected": {
+      "intent": "show"
+    }
+  },
+  {
+    "id": "train-show-05",
+    "split": "train",
+    "family": "show-again",
+    "text": "Can we see that verse again",
+    "expected": {
+      "intent": "show"
+    }
+  },
+  {
+    "id": "train-next-01",
+    "split": "train",
+    "family": "next-direct",
+    "text": "Next verse",
+    "expected": {
+      "intent": "next"
+    }
+  },
+  {
+    "id": "train-next-02",
+    "split": "train",
+    "family": "next-slide",
+    "text": "Go to the next slide",
+    "expected": {
+      "intent": "next"
+    }
+  },
+  {
+    "id": "train-next-03",
+    "split": "train",
+    "family": "next-forward",
+    "text": "Move forward one",
+    "expected": {
+      "intent": "next"
+    }
+  },
+  {
+    "id": "train-next-04",
+    "split": "train",
+    "family": "next-continue",
+    "text": "Continue to the following verse",
+    "expected": {
+      "intent": "next"
+    }
+  },
+  {
+    "id": "train-next-05",
+    "split": "train",
+    "family": "next-item",
+    "text": "Advance to the next item",
+    "expected": {
+      "intent": "next"
+    }
+  },
+  {
+    "id": "train-previous-01",
+    "split": "train",
+    "family": "previous-direct",
+    "text": "Previous verse",
+    "expected": {
+      "intent": "previous"
+    }
+  },
+  {
+    "id": "train-previous-02",
+    "split": "train",
+    "family": "previous-slide",
+    "text": "Go to the previous slide",
+    "expected": {
+      "intent": "previous"
+    }
+  },
+  {
+    "id": "train-previous-03",
+    "split": "train",
+    "family": "previous-back",
+    "text": "Go back one",
+    "expected": {
+      "intent": "previous"
+    }
+  },
+  {
+    "id": "train-previous-04",
+    "split": "train",
+    "family": "previous-return",
+    "text": "Return to the verse before this",
+    "expected": {
+      "intent": "previous"
+    }
+  },
+  {
+    "id": "train-previous-05",
+    "split": "train",
+    "family": "previous-last",
+    "text": "Put the last verse back",
+    "expected": {
+      "intent": "previous"
+    }
+  },
+  {
+    "id": "train-translation-01",
+    "split": "train",
+    "family": "translation-niv",
+    "text": "Switch to NIV",
+    "expected": {
+      "intent": "switch_translation",
+      "translation": "NIV"
+    }
+  },
+  {
+    "id": "train-translation-02",
+    "split": "train",
+    "family": "translation-esv",
+    "text": "Read it in the English Standard Version",
+    "expected": {
+      "intent": "switch_translation",
+      "translation": "ESV"
+    }
+  },
+  {
+    "id": "train-translation-03",
+    "split": "train",
+    "family": "translation-kjv",
+    "text": "Change to the King James Version",
+    "expected": {
+      "intent": "switch_translation",
+      "translation": "KJV"
+    }
+  },
+  {
+    "id": "train-translation-04",
+    "split": "train",
+    "family": "translation-nlt",
+    "text": "Can I have it in the NLT",
+    "expected": {
+      "intent": "switch_translation",
+      "translation": "NLT"
+    }
+  },
+  {
+    "id": "train-translation-05",
+    "split": "train",
+    "family": "translation-spanish",
+    "text": "Show that in Spanish",
+    "expected": {
+      "intent": "switch_translation",
+      "translation": "SPARV"
+    }
+  },
+  {
+    "id": "validation-none-01",
+    "split": "validation",
+    "family": "validation-sermon-net",
+    "text": "The disciples pulled the net onto the shore",
+    "expected": {
+      "intent": "none"
+    }
+  },
+  {
+    "id": "validation-none-02",
+    "split": "validation",
+    "family": "validation-sermon-back",
+    "text": "We should go back to the beginning of the story",
+    "expected": {
+      "intent": "none"
+    }
+  },
+  {
+    "id": "validation-none-03",
+    "split": "validation",
+    "family": "validation-next-verse",
+    "text": "The next verse explains the promise more fully",
+    "expected": {
+      "intent": "none"
+    }
+  },
+  {
+    "id": "validation-none-04",
+    "split": "validation",
+    "family": "validation-show-grace",
+    "text": "Our choices show whether grace has changed us",
+    "expected": {
+      "intent": "none"
+    }
+  },
+  {
+    "id": "validation-none-05",
+    "split": "validation",
+    "family": "validation-hide-truth",
+    "text": "No argument can hide the truth of the resurrection",
+    "expected": {
+      "intent": "none"
+    }
+  },
+  {
+    "id": "validation-none-06",
+    "split": "validation",
+    "family": "validation-previous-chapter",
+    "text": "The previous chapter introduced the central question",
+    "expected": {
+      "intent": "none"
+    }
+  },
+  {
+    "id": "validation-none-07",
+    "split": "validation",
+    "family": "validation-return-home",
+    "text": "The father waited every day for his son to return home",
+    "expected": {
+      "intent": "none"
+    }
+  },
+  {
+    "id": "validation-none-08",
+    "split": "validation",
+    "family": "validation-translation-history",
+    "text": "The NIV translation was first published decades ago",
+    "expected": {
+      "intent": "none"
+    }
+  },
+  {
+    "id": "validation-none-09",
+    "split": "validation",
+    "family": "validation-clear-teaching",
+    "text": "Jesus gave a clear teaching about forgiveness",
+    "expected": {
+      "intent": "none"
+    }
+  },
+  {
+    "id": "validation-none-10",
+    "split": "validation",
+    "family": "validation-display-character",
+    "text": "Believers display the character of Christ through service",
+    "expected": {
+      "intent": "none"
+    }
+  },
+  {
+    "id": "validation-hide-01",
+    "split": "validation",
+    "family": "validation-hide-away",
+    "text": "Take the words away for now",
+    "expected": {
+      "intent": "hide"
+    }
+  },
+  {
+    "id": "validation-hide-02",
+    "split": "validation",
+    "family": "validation-blank",
+    "text": "Blank the output until I ask again",
+    "expected": {
+      "intent": "hide"
+    }
+  },
+  {
+    "id": "validation-show-01",
+    "split": "validation",
+    "family": "validation-bring-up",
+    "text": "Bring the scripture back up",
+    "expected": {
+      "intent": "show"
+    }
+  },
+  {
+    "id": "validation-show-02",
+    "split": "validation",
+    "family": "validation-display",
+    "text": "Display that passage again",
+    "expected": {
+      "intent": "show"
+    }
+  },
+  {
+    "id": "validation-next-01",
+    "split": "validation",
+    "family": "validation-move-on",
+    "text": "We can move on to the one after this",
+    "expected": {
+      "intent": "next"
+    }
+  },
+  {
+    "id": "validation-next-02",
+    "split": "validation",
+    "family": "validation-forward",
+    "text": "Take us forward to the following text",
+    "expected": {
+      "intent": "next"
+    }
+  },
+  {
+    "id": "validation-previous-01",
+    "split": "validation",
+    "family": "validation-put-back",
+    "text": "Put the one before this back up",
+    "expected": {
+      "intent": "previous"
+    }
+  },
+  {
+    "id": "validation-previous-02",
+    "split": "validation",
+    "family": "validation-rewind",
+    "text": "Rewind to the last scripture",
+    "expected": {
+      "intent": "previous"
+    }
+  },
+  {
+    "id": "validation-translation-01",
+    "split": "validation",
+    "family": "validation-translation-amp",
+    "text": "Put that in the Amplified Bible",
+    "expected": {
+      "intent": "switch_translation",
+      "translation": "AMP"
+    }
+  },
+  {
+    "id": "validation-translation-02",
+    "split": "validation",
+    "family": "validation-translation-afr",
+    "text": "Can we have it in Afrikaans",
+    "expected": {
+      "intent": "switch_translation",
+      "translation": "AFR83"
+    }
+  },
+  {
+    "id": "test-none-01",
+    "split": "test",
+    "family": "test-sermon-display",
+    "text": "Our lives should display the character of Jesus",
+    "expected": {
+      "intent": "none"
+    }
+  },
+  {
+    "id": "test-none-02",
+    "split": "test",
+    "family": "test-sermon-previous",
+    "text": "In the previous chapter Paul described the conflict",
+    "expected": {
+      "intent": "none"
+    }
+  },
+  {
+    "id": "test-none-03",
+    "split": "test",
+    "family": "test-sermon-clear",
+    "text": "The message could not be more clear",
+    "expected": {
+      "intent": "none"
+    }
+  },
+  {
+    "id": "test-hide-01",
+    "split": "test",
+    "family": "test-hide-other-words",
+    "text": "Take it off the screen for now",
+    "expected": {
+      "intent": "hide"
+    }
+  },
+  {
+    "id": "test-hide-02",
+    "split": "test",
+    "family": "test-hide-projection",
+    "text": "I do not need that projected anymore",
+    "expected": {
+      "intent": "hide"
+    }
+  },
+  {
+    "id": "test-hide-03",
+    "split": "test",
+    "family": "test-hide-natural",
+    "text": "Let us leave the screen empty for a minute",
+    "expected": {
+      "intent": "hide"
+    }
+  },
+  {
+    "id": "test-show-01",
+    "split": "test",
+    "family": "test-show-natural",
+    "text": "Could you put that scripture back up",
+    "expected": {
+      "intent": "show"
+    }
+  },
+  {
+    "id": "test-show-02",
+    "split": "test",
+    "family": "test-show-other-words",
+    "text": "Let the congregation see that again",
+    "expected": {
+      "intent": "show"
+    }
+  },
+  {
+    "id": "test-show-03",
+    "split": "test",
+    "family": "test-show-projection",
+    "text": "Bring the passage onto the projector",
+    "expected": {
+      "intent": "show"
+    }
+  },
+  {
+    "id": "test-next-01",
+    "split": "test",
+    "family": "test-next-natural",
+    "text": "Let us have the one that comes after this",
+    "expected": {
+      "intent": "next"
+    }
+  },
+  {
+    "id": "test-next-02",
+    "split": "test",
+    "family": "test-next-short",
+    "text": "Forward one please",
+    "expected": {
+      "intent": "next"
+    }
+  },
+  {
+    "id": "test-next-03",
+    "split": "test",
+    "family": "test-next-other-words",
+    "text": "Move along to the following passage",
+    "expected": {
+      "intent": "next"
+    }
+  },
+  {
+    "id": "test-previous-01",
+    "split": "test",
+    "family": "test-previous-natural",
+    "text": "Put that back to the one we just had",
+    "expected": {
+      "intent": "previous"
+    }
+  },
+  {
+    "id": "test-previous-02",
+    "split": "test",
+    "family": "test-previous-short",
+    "text": "Back one please",
+    "expected": {
+      "intent": "previous"
+    }
+  },
+  {
+    "id": "test-previous-03",
+    "split": "test",
+    "family": "test-previous-other-words",
+    "text": "Return to what was displayed before",
+    "expected": {
+      "intent": "previous"
+    }
+  },
+  {
+    "id": "test-translation-01",
+    "split": "test",
+    "family": "test-translation-indirect",
+    "text": "Put that back up but in the other language Spanish",
+    "expected": {
+      "intent": "switch_translation",
+      "translation": "SPARV"
+    }
+  },
+  {
+    "id": "test-translation-02",
+    "split": "test",
+    "family": "test-translation-msg",
+    "text": "Could I see this from The Message",
+    "expected": {
+      "intent": "switch_translation",
+      "translation": "MSG"
+    }
+  },
+  {
+    "id": "test-translation-03",
+    "split": "test",
+    "family": "test-translation-net",
+    "text": "Use the New English Translation for this verse",
+    "expected": {
+      "intent": "switch_translation",
+      "translation": "NET"
+    }
+  },
+  {
+    "id": "safety-01",
+    "split": "safety",
+    "family": "safety-next-generation",
+    "text": "The next generation needs to hear the gospel",
+    "expected": {
+      "intent": "none"
+    }
+  },
+  {
+    "id": "safety-02",
+    "split": "safety",
+    "family": "safety-show-kindness",
+    "text": "Show kindness to strangers because some entertained angels",
+    "expected": {
+      "intent": "none"
+    }
+  },
+  {
+    "id": "safety-03",
+    "split": "safety",
+    "family": "safety-hide-heart",
+    "text": "Do not hide the word in a book but hide it in your heart",
+    "expected": {
+      "intent": "none"
+    }
+  },
+  {
+    "id": "safety-04",
+    "split": "safety",
+    "family": "safety-previous-week",
+    "text": "Previous weeks taught us how the covenant began",
+    "expected": {
+      "intent": "none"
+    }
+  },
+  {
+    "id": "safety-05",
+    "split": "safety",
+    "family": "safety-back-home",
+    "text": "The younger son went back home to his father",
+    "expected": {
+      "intent": "none"
+    }
+  },
+  {
+    "id": "safety-06",
+    "split": "safety",
+    "family": "safety-net-broken",
+    "text": "Their net was breaking because of the great catch",
+    "expected": {
+      "intent": "none"
+    }
+  },
+  {
+    "id": "safety-07",
+    "split": "safety",
+    "family": "safety-english-history",
+    "text": "The English Bible has a long and complex history",
+    "expected": {
+      "intent": "none"
+    }
+  },
+  {
+    "id": "safety-08",
+    "split": "safety",
+    "family": "safety-spanish-speaking",
+    "text": "Our Spanish speaking congregation meets in the afternoon",
+    "expected": {
+      "intent": "none"
+    }
+  },
+  {
+    "id": "safety-09",
+    "split": "safety",
+    "family": "safety-message-love",
+    "text": "The message of the chapter is the love of God",
+    "expected": {
+      "intent": "none"
+    }
+  },
+  {
+    "id": "safety-10",
+    "split": "safety",
+    "family": "safety-amplified-sound",
+    "text": "The sound was amplified across the courtyard",
+    "expected": {
+      "intent": "none"
+    }
+  },
+  {
+    "id": "safety-11",
+    "split": "safety",
+    "family": "safety-clear-conscience",
+    "text": "Paul stood before them with a clear conscience",
+    "expected": {
+      "intent": "none"
+    }
+  },
+  {
+    "id": "safety-12",
+    "split": "safety",
+    "family": "safety-remove-sin",
+    "text": "Only Christ can remove the stain of sin",
+    "expected": {
+      "intent": "none"
+    }
+  },
+  {
+    "id": "safety-13",
+    "split": "safety",
+    "family": "safety-forward-faith",
+    "text": "We look forward in faith to the resurrection",
+    "expected": {
+      "intent": "none"
+    }
+  },
+  {
+    "id": "safety-14",
+    "split": "safety",
+    "family": "safety-following-day",
+    "text": "On the following day they entered the city",
+    "expected": {
+      "intent": "none"
+    }
+  },
+  {
+    "id": "safety-15",
+    "split": "safety",
+    "family": "safety-put-away",
+    "text": "Put away bitterness anger and every form of malice",
+    "expected": {
+      "intent": "none"
+    }
+  },
+  {
+    "id": "safety-16",
+    "split": "safety",
+    "family": "safety-see-again",
+    "text": "We will see them again on the resurrection morning",
+    "expected": {
+      "intent": "none"
+    }
+  },
+  {
+    "id": "safety-17",
+    "split": "safety",
+    "family": "safety-return-lord",
+    "text": "We wait for the return of the Lord Jesus",
+    "expected": {
+      "intent": "none"
+    }
+  },
+  {
+    "id": "safety-18",
+    "split": "safety",
+    "family": "safety-change-heart",
+    "text": "The Holy Spirit can change the human heart",
+    "expected": {
+      "intent": "none"
+    }
+  },
+  {
+    "id": "safety-19",
+    "split": "safety",
+    "family": "safety-read-prophets",
+    "text": "When we read in the prophets we find this same hope",
+    "expected": {
+      "intent": "none"
+    }
+  },
+  {
+    "id": "safety-20",
+    "split": "safety",
+    "family": "safety-screen-metaphor",
+    "text": "Fear can become a screen that keeps us from seeing grace",
+    "expected": {
+      "intent": "none"
+    }
+  },
+  {
+    "id": "safety-21",
+    "split": "safety",
+    "family": "safety-display-fruit",
+    "text": "A transformed life will display the fruit of the Spirit",
+    "expected": {
+      "intent": "none"
+    }
+  },
+  {
+    "id": "safety-22",
+    "split": "safety",
+    "family": "safety-advance-kingdom",
+    "text": "We advance the kingdom through humble service",
+    "expected": {
+      "intent": "none"
+    }
+  },
+  {
+    "id": "safety-23",
+    "split": "safety",
+    "family": "safety-restore-years",
+    "text": "God promises to restore the years the locust has eaten",
+    "expected": {
+      "intent": "none"
+    }
+  },
+  {
+    "id": "safety-24",
+    "split": "safety",
+    "family": "safety-translation-work",
+    "text": "Bible translation work continues across the world",
+    "expected": {
+      "intent": "none"
+    }
+  },
+  {
+    "id": "safety-25",
+    "split": "safety",
+    "family": "safety-version-events",
+    "text": "Luke gives us his version of the events",
+    "expected": {
+      "intent": "none"
+    }
+  },
+  {
+    "id": "safety-26",
+    "split": "safety",
+    "family": "safety-last-verse",
+    "text": "The last verse of the hymn points us toward heaven",
+    "expected": {
+      "intent": "none"
+    }
+  },
+  {
+    "id": "safety-27",
+    "split": "safety",
+    "family": "safety-next-verse-study",
+    "text": "The next verse explains why the promise matters",
+    "expected": {
+      "intent": "none"
+    }
+  },
+  {
+    "id": "safety-28",
+    "split": "safety",
+    "family": "safety-go-back-text",
+    "text": "If we go back to the text we can see the contrast",
+    "expected": {
+      "intent": "none"
+    }
+  },
+  {
+    "id": "safety-29",
+    "split": "safety",
+    "family": "safety-take-off-burden",
+    "text": "Jesus invites us to take off the burden we cannot carry",
+    "expected": {
+      "intent": "none"
+    }
+  },
+  {
+    "id": "safety-30",
+    "split": "safety",
+    "family": "safety-put-back-heart",
+    "text": "Repentance puts the desire for holiness back in the heart",
+    "expected": {
+      "intent": "none"
+    }
+  }
+]

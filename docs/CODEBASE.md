@@ -76,7 +76,7 @@ Core modules:
 | Detection actions | src/components/panels/detections-panel.tsx:144 | Shared preview/present/queue closures for detection types | Detection cards, latest bar, collection UI |
 | Direct scripture scope | src-tauri/crates/detection/src/direct/context.rs:3, src-tauri/crates/detection/src/direct/detector.rs:674 | Keeps the active book/chapter until another resolved citation replaces it and promotes explicit in-scope verse phrases as direct citations | Live STT scripture detection |
 | Verse ranking and calibration | src-tauri/crates/detection/src/semantic/detector.rs:128, src-tauri/crates/detection/src/bin/detection_accuracy.rs:577 | Keeps internal rank evidence separate from displayed match strength and evaluates production Auto selection | Live STT detection, frontend detection workflow, desktop CI |
-| Command-classifier experiment | src-tauri/crates/detection/src/command_eval.rs:1, src-tauri/crates/detection/src/bin/command_benchmark.rs:1 | Compares deterministic rules, a trained MiniLM linear head, and an optional FunctionGemma endpoint against isolated quality/safety partitions without executing commands | Developer benchmark and shadow replay only |
+| Command-classifier experiment | src-tauri/crates/detection/src/command_eval.rs:1, src-tauri/crates/detection/src/bin/command_benchmark.rs:1 | Compares deterministic rules with a trained MiniLM linear head against isolated quality/safety partitions without executing commands | Developer benchmark and shadow replay only |
 | Theme catalog page | src/components/broadcast/KineticThemesPage.tsx:132 | User-facing Themes workspace with static and kinetic columns | Workspace nav |
 | Quick search helper | src/lib/quick-search.ts:167 | Prefix-safe ghost suggestion suffix | Preview and Search quick inputs |
 
@@ -386,9 +386,15 @@ Build script imports the generated JSON into egw_books / egw_paragraphs
 
 ### Flow: offline command-classifier comparison
 ```text
-Authored cases are validated for unique IDs, closed labels, complete splits,
-and paraphrase-family isolation
+One hundred deterministic synthetic sermon transcripts are generated from 50
+partition-isolated speakers; one ordinary line and one rotating command from
+each transcript are sampled into the benchmark corpus
+  -> data/command-classification/generate-command-transcripts.mjs
+  -> data/command-classification/synthetic-command-transcripts.json
+Generated and authored cases are validated for unique IDs, closed labels,
+complete splits, and paraphrase-family isolation
   -> data/command-classification/command-cases.json
+  -> data/command-classification/command-cases.generated.json
   -> src-tauri/crates/detection/src/command_eval.rs:608
 The benchmark scores deterministic phrases and trains a small linear head over
 the existing MiniLM ONNX embeddings
@@ -396,16 +402,9 @@ the existing MiniLM ONNX embeddings
 MiniLM command predictions pass through a conservative text-shape gate so
 declarative sermon speech abstains before intent output
   -> src-tauri/crates/detection/src/command_eval.rs:326
-An optional loopback FunctionGemma endpoint receives the same evaluation cases;
-all outputs pass through the closed intent/translation schema
-  -> src-tauri/crates/detection/src/bin/command_benchmark.rs:429
-Shadow replay writes predictions and disagreements but has no Tauri command
+Shadow replay writes predictions but has no Tauri command
 registration or command-execution dependency
-  -> src-tauri/crates/detection/src/bin/command_benchmark.rs:804
-The optional setup keeps checksum-verified runtime/model assets under ignored
-`.tmp` storage and refuses gated-model download without `HF_TOKEN`
-  -> scripts/setup-functiongemma-benchmark.ps1:1
-  -> scripts/run-functiongemma-benchmark.ps1:1
+  -> src-tauri/crates/detection/src/bin/command_benchmark.rs
 ```
 
 ## 7 - Data model & persistence
@@ -504,18 +503,13 @@ cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 # Result after command-classifier experiment: passed.
 
 npm.cmd run benchmark:commands
-# Result after the command-shape gate: deterministic 16.7% test accuracy;
-# MiniLM linear head 66.7% accuracy, 68.9% macro-F1, 0/30 safety false
-# commands, and 16.48 ms p95 in the paired FunctionGemma run on the
-# 2026-07-26 seed corpus.
+# Result with the generated transcript training sample: deterministic 16.7%
+# test accuracy; MiniLM linear head 83.3% accuracy, 77.8% macro-F1, 0/30
+# safety false commands, and 9.27 ms p95.
 
-npm.cmd run benchmark:commands:gemma
-# Result after correcting the FunctionGemma native-call protocol: 38.9% test
-# accuracy, 36.6% macro-F1, 22/30 safety false commands, five failed responses,
-# and 1,027.88 ms p95. MiniLM remains the experiment recommendation.
-
-npm.cmd run test:functiongemma-experiment
-# Result: 3 tests passed for SFT export shape and the gated-model setup guard.
+npm.cmd run test:command-classifier
+# Result: 7 generator, partition-isolation, balance, and determinism tests
+# passed.
 
 bun run compare:embeddings
 # Result: 100% top-1 agreement, 99.375% top-10 overlap, maximum similarity
@@ -590,7 +584,7 @@ CI/CD & deployment: not fully mapped in this pass. See open questions.
 | Collected detections are intentionally session-only and capped at 50. | product behavior | healthy | src/stores/collected-detections-store.ts:25, src/stores/collected-detections-store.ts:85 |
 | Full-model accuracy is CI-gated, but the curated corpus is not a substitute for a held-out multi-church audio corpus. | detection quality | watch | src-tauri/crates/detection/src/bin/detection_accuracy.rs:1, .github/workflows/desktop-ci.yml:184 |
 | Runtime performance metrics begin when ranked candidates reach the frontend; true speech-to-result latency still requires timestamped provider audio fixtures. | detection quality | watch | src/lib/detection-profiler.ts:28 |
-| The command-classifier corpus is a small authored seed set; its gated MiniLM head has zero seed safety false commands but remains intentionally disconnected from command execution until tested on held-out multi-church transcripts. | command classification | watch | docs/functiongemma-command-benchmark.md:27, src-tauri/crates/detection/src/bin/command_benchmark.rs:1 |
+| The command-classifier training corpus now includes deterministic synthetic sermon transcripts, but synthetic text cannot represent real microphones, accents, speakers, congregations, or STT behavior; the gated MiniLM head remains intentionally disconnected from command execution until tested on held-out multi-church transcripts. | command classification | watch | docs/minilm-command-benchmark.md:1, src-tauri/crates/detection/src/bin/command_benchmark.rs:1 |
 | The installer still bundles the offline Vosk model and complete content database; moving either to first-run delivery remains gated on product, hosting, and signing decisions. | installer size | watch | docs/superpowers/plans/2026-07-26-installer-size-and-performance.md |
 
 Strengths: targeted stores and shared helpers make the current STT/detection/theme changes testable.
@@ -641,6 +635,6 @@ Top risks (ranked): 1. STT provider removal can leave stale docs or tests if his
 | 2026-07-25 | Kept book-inferred bare chapter/verse references visible for operator review but below auto-live confidence, preventing mutable last-reference context from outranking correct semantic matches. | 6, 10, 11, 15 |
 | 2026-07-26 | Hardened live EGW quotation detection with polarity checks, unambiguous title cues, session-scoped attribution state, and settings-aware auto-queue policy. | 6, 10, 11, 15 |
 | 2026-07-26 | Replaced bundled Bible f32 embeddings with a self-identifying, IDs-bound int8 format; retained f32 compatibility; added deterministic CI generation and paired quality/performance gates. | 6, 9-11, 15 |
-| 2026-07-26 | Added a non-executing command-classifier benchmark with isolated corpus partitions, deterministic and MiniLM baselines, optional checksum-verified FunctionGemma/llama.cpp evaluation, SFT export, and shadow replay. | 5, 6, 10, 11, 15 |
-| 2026-07-26 | Corrected the FunctionGemma benchmark's activation, native-call parsing, and response stop sequence; the controlled rerun rejected the stock Q8 model on accuracy, safety, and latency. | 10, 11, 15 |
+| 2026-07-26 | Added a non-executing command-classifier benchmark with isolated corpus partitions, deterministic and MiniLM baselines, and shadow replay. | 5, 6, 10, 11, 15 |
 | 2026-07-26 | Added a conservative command-shape gate before MiniLM intent output, removing all four seed safety false commands without reducing held-out accuracy. | 5, 6, 10, 11, 15 |
+| 2026-07-26 | Added 100 deterministic synthetic sermon transcripts with speaker-isolated training/validation sampling, improved the authored held-out MiniLM result to 83.3% accuracy and 77.8% macro-F1 with zero safety false commands, and removed the abandoned external-model prototype. | 5, 6, 10, 11, 15 |
