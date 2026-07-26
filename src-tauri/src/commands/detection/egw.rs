@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use rhema_bible::EgwBook;
 
@@ -26,6 +27,121 @@ fn normalize_reference_text(value: &str) -> String {
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+fn is_negation(word: &str) -> bool {
+    matches!(word, "no" | "not" | "nor" | "never" | "neither" | "without")
+}
+
+fn quote_polarity_tokens(text: &str) -> Vec<String> {
+    text.split(|ch: char| !ch.is_alphanumeric())
+        .map(str::to_lowercase)
+        .filter(|word| word.len() >= 4 || is_negation(word))
+        .collect()
+}
+
+fn negation_context_conflicts(source: &[String], other: &[String]) -> bool {
+    for (index, token) in source.iter().enumerate() {
+        if !is_negation(token) {
+            continue;
+        }
+        let anchor: Vec<&str> = source
+            .iter()
+            .skip(index + 1)
+            .filter(|word| !is_negation(word))
+            .take(2)
+            .map(String::as_str)
+            .collect();
+        if anchor.len() < 2 {
+            continue;
+        }
+
+        let mut found_anchor = false;
+        let mut found_negated_anchor = false;
+        for start in 0..other.len().saturating_sub(1) {
+            if other[start] == anchor[0] && other[start + 1] == anchor[1] {
+                found_anchor = true;
+                found_negated_anchor |= start > 0 && is_negation(other[start - 1].as_str());
+            }
+        }
+        if found_anchor && !found_negated_anchor {
+            return true;
+        }
+    }
+    false
+}
+
+fn quote_has_negation_conflict(window: &str, paragraph: &str) -> bool {
+    let spoken = quote_polarity_tokens(window);
+    let candidate = quote_polarity_tokens(paragraph);
+    negation_context_conflicts(&spoken, &candidate)
+        || negation_context_conflicts(&candidate, &spoken)
+}
+
+/// Longest run of consecutive content words shared, in order, by both texts.
+///
+/// Both sides are first reduced to lowercased tokens of >=4 letters, so short
+/// filler ("the", "of", "and") and STT hiccups cannot split an otherwise
+/// verbatim run, and the run counts substantive words only. Negation is checked
+/// separately so removing "not" cannot turn an opposite statement into quote
+/// evidence. This separates a paragraph being *read aloud* from a paragraph
+/// that merely shares a topic — the failure mode that made the previous
+/// BM25-only attempt unusable.
+fn longest_shared_content_run(window: &str, paragraph: &str) -> usize {
+    if quote_has_negation_conflict(window, paragraph) {
+        return 0;
+    }
+    let spoken: Vec<String> = rhema_detection::pipeline::content_words(window).collect();
+    let candidate: Vec<String> = rhema_detection::pipeline::content_words(paragraph).collect();
+    if spoken.is_empty() || candidate.is_empty() {
+        return 0;
+    }
+
+    let mut previous = vec![0usize; candidate.len() + 1];
+    let mut best = 0;
+    for spoken_word in &spoken {
+        let mut current = vec![0usize; candidate.len() + 1];
+        for (index, candidate_word) in candidate.iter().enumerate() {
+            if spoken_word == candidate_word {
+                current[index + 1] = previous[index] + 1;
+                best = best.max(current[index + 1]);
+            }
+        }
+        previous = current;
+    }
+    best
+}
+
+/// Shared-run length at which a paragraph is treated as spoken aloud.
+const EGW_QUOTE_RUN_FIRE: usize = 6;
+/// Shared-run length that, with attribution, is strong enough to auto-queue.
+const EGW_QUOTE_RUN_AUTO_QUEUE: usize = 8;
+/// Shared-run length that becomes an operator hint once attribution is heard.
+const EGW_QUOTE_RUN_CUED_HINT: usize = 4;
+const EGW_QUOTE_MAX_CONFIDENCE: f64 = 0.92;
+
+/// Map a shared-run length to `(confidence, auto_queued)`, or `None` to drop.
+///
+/// BM25 rank is deliberately absent: rank measures how well a paragraph
+/// answers a keyword query, not whether its words were spoken, and treating
+/// rank as confidence is what flooded the panel the first time this was tried.
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "run lengths are single-digit word counts"
+)]
+fn egw_quote_score(run: usize, cue_active: bool) -> Option<(f64, bool)> {
+    if run >= EGW_QUOTE_RUN_AUTO_QUEUE && cue_active {
+        return Some((EGW_QUOTE_MAX_CONFIDENCE, true));
+    }
+    if run >= EGW_QUOTE_RUN_FIRE {
+        let over = (run - EGW_QUOTE_RUN_FIRE).min(4) as f64;
+        return Some(((0.88 + 0.01 * over).min(EGW_QUOTE_MAX_CONFIDENCE), false));
+    }
+    if run >= EGW_QUOTE_RUN_CUED_HINT && cue_active {
+        let over = (run - EGW_QUOTE_RUN_CUED_HINT) as f64;
+        return Some((0.75 + 0.05 * over, false));
+    }
+    None
 }
 
 fn integer_token(token: &str) -> Option<i32> {
@@ -226,42 +342,145 @@ fn best_egw_alias_match<'a>(
     matches
 }
 
-/// Confidence assigned to EGW paragraphs matched by keyword (below explicit references).
-#[cfg(test)]
-const EGW_FTS_CONFIDENCE: f64 = 0.55;
+/// Spoken phrases that attribute what follows to Ellen G. White.
+///
+/// "white" alone is excluded on purpose: white robes, white as snow and white
+/// horses are common sermon imagery, and a bare colour word is not attribution.
+const EGW_CUE_PHRASES: [&str; 4] = [
+    "ellen white",
+    "ellen g white",
+    "sister white",
+    "spirit of prophecy",
+];
 
-/// Minimum word count before running EGW keyword search.
-#[cfg(test)]
-const EGW_FTS_MIN_WORDS: usize = 5;
+/// True when the window attributes its content to Ellen G. White, either by
+/// naming her or by naming one of the imported books.
+pub(crate) fn transcript_has_egw_cue(books: &[EgwBook], text: &str) -> bool {
+    let normalized = normalize_reference_text(text);
+    if normalized.is_empty() {
+        return false;
+    }
+    if EGW_CUE_PHRASES
+        .iter()
+        .any(|phrase| normalized.contains(phrase))
+    {
+        return true;
+    }
+    books.iter().any(|book| {
+        egw_aliases(book).into_iter().any(|alias| {
+            alias.split_whitespace().count() >= 2 && alias_match_end(&normalized, &alias).is_some()
+        })
+    })
+}
 
-/// Maximum EGW paragraphs surfaced per detection pass.
-#[cfg(test)]
-const EGW_FTS_LIMIT: usize = 2;
+/// How long attribution keeps lowering the run-length bar.
+const EGW_CUE_TTL_MS: u64 = 90_000;
 
-/// Detect EGW paragraphs by BM25 keyword search of the transcript window.
-#[cfg(test)]
-pub(crate) fn detect_egw_fts(state: &AppState, text: &str) -> Vec<DetectionResult> {
-    if text.split_whitespace().count() < EGW_FTS_MIN_WORDS {
+fn cue_is_live(now_ms: u64, cue_at_ms: u64) -> bool {
+    cue_at_ms > 0 && now_ms.saturating_sub(cue_at_ms) <= EGW_CUE_TTL_MS
+}
+
+/// Record a cue if this window carries one, and report whether attribution is
+/// currently in force. A quotation typically gets attributed once and then runs
+/// for several windows, so the cue outlives the window that carried it.
+pub(crate) fn note_and_check_egw_cue(
+    books: &[EgwBook],
+    text: &str,
+    now_ms: u64,
+    cue_at_ms: &AtomicU64,
+) -> bool {
+    if transcript_has_egw_cue(books, text) {
+        cue_at_ms.store(now_ms, Ordering::Relaxed);
+        return true;
+    }
+    cue_is_live(now_ms, cue_at_ms.load(Ordering::Relaxed))
+}
+
+/// STT confidence below this leaves the transcript too unreliable to present
+/// an EGW quote unattended. 0.0 means the provider reported no confidence.
+const EGW_LOW_STT_CONFIDENCE: f64 = 0.65;
+/// Both mirror the Bible semantic dampening in `run_semantic_detection`.
+const EGW_LOW_STT_RANK_SCALE: f64 = 0.85;
+const EGW_LOW_STT_CONFIDENCE_CAP: f64 = 0.89;
+
+/// Dampen EGW quote results when the STT confidence for the window was low.
+///
+/// Mirrors the Bible semantic dampening, and additionally clears `auto_queued`.
+///
+/// Bible semantic results need no such clause because they can never carry the
+/// flag: `DetectionMerger::merge` only marks `auto_queued` for
+/// `DetectionSource::DirectReference`. EGW quotes are the one semantic source
+/// that sets it directly, from run length, without passing through that
+/// eligibility rule — so capping confidence alone would leave a hit reading
+/// 0.89 that still presents itself with no operator click.
+pub(crate) fn dampen_egw_for_low_stt_confidence(
+    results: &mut [DetectionResult],
+    stt_confidence: f64,
+) {
+    if stt_confidence <= 0.0 || stt_confidence >= EGW_LOW_STT_CONFIDENCE {
+        return;
+    }
+    for result in results {
+        result.rank_score *= EGW_LOW_STT_RANK_SCALE;
+        result.confidence = result.confidence.min(EGW_LOW_STT_CONFIDENCE_CAP);
+        result.auto_queued = false;
+    }
+}
+
+/// Minimum spoken words before a quote search is worth running.
+const EGW_QUOTE_MIN_WORDS: usize = 5;
+/// BM25 nominates this many candidates; run-length verification decides.
+const EGW_QUOTE_CANDIDATES: usize = 1;
+
+/// Detect an EGW paragraph being read aloud in the transcript window.
+///
+/// BM25 nominates; `longest_shared_content_run` verifies. Every candidate is
+/// logged with its run length and cue state — including rejections — so field
+/// calibration needs no rebuild.
+pub(crate) fn detect_egw_quotes(
+    state: &AppState,
+    text: &str,
+    cue_active: bool,
+) -> Vec<DetectionResult> {
+    if text.split_whitespace().count() < EGW_QUOTE_MIN_WORDS {
         return Vec::new();
     }
     let Some(db) = state.bible_db.as_ref() else {
         return Vec::new();
     };
 
-    match db.search_egw_bm25(text, EGW_FTS_LIMIT) {
-        Ok(paragraphs) => paragraphs
-            .into_iter()
-            .map(|paragraph| {
-                let mut result = egw_to_result(paragraph, EGW_FTS_CONFIDENCE, text);
-                result.source = "semantic".to_string();
-                result
-            })
-            .collect(),
+    let paragraphs = match db.search_egw_bm25(text, EGW_QUOTE_CANDIDATES) {
+        Ok(paragraphs) => paragraphs,
         Err(error) => {
-            log::warn!("[DET-EGW] FTS search failed: {error}");
-            Vec::new()
+            log::warn!("[DET-EGW-QUOTE] BM25 search failed: {error}");
+            return Vec::new();
         }
-    }
+    };
+
+    paragraphs
+        .into_iter()
+        .filter_map(|paragraph| {
+            let run = longest_shared_content_run(text, &paragraph.text);
+            let scored = egw_quote_score(run, cue_active);
+            log::debug!(
+                "[DET-EGW-QUOTE] candidate {} p.{} par.{} run={run} cue={cue_active} verdict={}",
+                paragraph.book_title,
+                paragraph.page,
+                paragraph.page_paragraph,
+                match scored {
+                    Some((confidence, auto_queued)) =>
+                        format!("{:.0}% auto_q={auto_queued}", confidence * 100.0),
+                    None => "drop".to_string(),
+                }
+            );
+            let (confidence, auto_queued) = scored?;
+            let mut result = egw_to_result(paragraph, confidence, text);
+            result.source = "semantic".to_string();
+            result.rank_score = confidence;
+            result.auto_queued = auto_queued;
+            Some(result)
+        })
+        .collect()
 }
 
 /// Detect explicit Ellen G. White paragraph references like
@@ -323,19 +542,25 @@ pub(crate) fn apply_egw_auto_queue(
     results: &mut [DetectionResult],
     merger: &mut rhema_detection::DetectionMerger,
 ) {
-    let direct_indices: Vec<usize> = results
+    // Direct references always enter the configured policy. Semantic quotes
+    // enter only after run length prequalifies them; the merger can still revoke
+    // unattended presentation for Manual mode, threshold, or cooldown.
+    let eligible_indices: Vec<usize> = results
         .iter()
         .enumerate()
         .filter_map(|(index, result)| {
-            (result.content_type == "egw" && result.source == "direct").then_some(index)
+            (result.content_type == "egw"
+                && (result.source == "direct"
+                    || (result.source == "semantic" && result.auto_queued)))
+                .then_some(index)
         })
         .collect();
 
-    if direct_indices.is_empty() {
+    if eligible_indices.is_empty() {
         return;
     }
 
-    let candidates: Vec<rhema_detection::Detection> = direct_indices
+    let candidates: Vec<rhema_detection::Detection> = eligible_indices
         .iter()
         .map(|index| {
             let result = &results[*index];
@@ -373,11 +598,389 @@ pub(crate) fn apply_egw_auto_queue(
         })
         .collect();
 
-    for index in direct_indices {
+    for index in eligible_indices {
         let result = &mut results[index];
         result.auto_queued = auto_by_ref
             .get(&(result.book_number, result.chapter, result.verse))
             .copied()
             .unwrap_or(false);
+    }
+}
+
+#[cfg(test)]
+mod low_stt_dampening_tests {
+    use super::{dampen_egw_for_low_stt_confidence, egw_to_result};
+    use crate::commands::detection::DetectionResult;
+    use rhema_bible::EgwParagraph;
+
+    fn auto_queued_hit() -> DetectionResult {
+        let paragraph = EgwParagraph {
+            id: 3,
+            book_number: 2,
+            book_title: "The Desire of Ages".to_string(),
+            chapter: 15,
+            chapter_title: "The Shepherd And His Flock".to_string(),
+            paragraph: 4,
+            page: 480,
+            page_paragraph: 1,
+            text: "The shepherd does not remain in the fold.".to_string(),
+        };
+        let mut result = egw_to_result(paragraph, 0.92, "the shepherd does not remain in the fold");
+        result.source = "semantic".to_string();
+        result.rank_score = 0.92;
+        result.auto_queued = true;
+        result
+    }
+
+    #[test]
+    fn low_confidence_caps_scores_and_revokes_auto_queue() {
+        let mut results = vec![auto_queued_hit()];
+
+        dampen_egw_for_low_stt_confidence(&mut results, 0.5);
+
+        assert!((results[0].confidence - 0.89).abs() < 1e-9);
+        assert!((results[0].rank_score - 0.92 * 0.85).abs() < 1e-9);
+        assert!(
+            !results[0].auto_queued,
+            "a garbled window must not present unattended"
+        );
+    }
+
+    #[test]
+    fn unreported_confidence_leaves_the_hit_alone() {
+        // 0.0 means the provider gave no confidence, not "no confidence".
+        let mut results = vec![auto_queued_hit()];
+
+        dampen_egw_for_low_stt_confidence(&mut results, 0.0);
+
+        assert!((results[0].confidence - 0.92).abs() < 1e-9);
+        assert!((results[0].rank_score - 0.92).abs() < 1e-9);
+        assert!(results[0].auto_queued);
+    }
+
+    #[test]
+    fn threshold_boundary_matches_the_bible_block() {
+        let mut at_threshold = vec![auto_queued_hit()];
+        dampen_egw_for_low_stt_confidence(&mut at_threshold, 0.65);
+        assert!(at_threshold[0].auto_queued, "0.65 is not low confidence");
+
+        let mut just_below = vec![auto_queued_hit()];
+        dampen_egw_for_low_stt_confidence(&mut just_below, 0.649);
+        assert!(!just_below[0].auto_queued);
+    }
+
+    #[test]
+    fn high_confidence_leaves_the_hit_alone() {
+        let mut results = vec![auto_queued_hit()];
+
+        dampen_egw_for_low_stt_confidence(&mut results, 0.95);
+
+        assert!((results[0].confidence - 0.92).abs() < 1e-9);
+        assert!(results[0].auto_queued);
+    }
+
+    #[test]
+    fn the_cap_never_raises_a_weaker_hit() {
+        let mut results = vec![auto_queued_hit()];
+        results[0].confidence = 0.78;
+        results[0].rank_score = 0.78;
+        results[0].auto_queued = false;
+
+        dampen_egw_for_low_stt_confidence(&mut results, 0.5);
+
+        assert!(
+            (results[0].confidence - 0.78).abs() < 1e-9,
+            "cap is a ceiling, not an assignment"
+        );
+        assert!((results[0].rank_score - 0.78 * 0.85).abs() < 1e-9);
+    }
+}
+
+#[cfg(test)]
+mod auto_queue_policy_tests {
+    use super::{apply_egw_auto_queue, egw_to_result};
+    use rhema_bible::EgwParagraph;
+    use rhema_detection::DetectionMerger;
+
+    fn prequalified_semantic_quote() -> super::DetectionResult {
+        let paragraph = EgwParagraph {
+            id: 3,
+            book_number: 2,
+            book_title: "The Desire of Ages".to_string(),
+            chapter: 15,
+            chapter_title: "The Shepherd And His Flock".to_string(),
+            paragraph: 4,
+            page: 480,
+            page_paragraph: 1,
+            text: "The shepherd does not remain in the fold.".to_string(),
+        };
+        let mut result = egw_to_result(paragraph, 0.92, "quoted text");
+        result.source = "semantic".to_string();
+        result.auto_queued = true;
+        result
+    }
+
+    #[test]
+    fn manual_mode_revokes_semantic_quote_auto_queue() {
+        let mut results = vec![prequalified_semantic_quote()];
+        let mut merger = DetectionMerger::new();
+        merger.set_auto_queue_threshold(f64::INFINITY);
+
+        apply_egw_auto_queue(&mut results, &mut merger);
+
+        assert!(
+            !results[0].auto_queued,
+            "manual mode must revoke quote prequalification"
+        );
+    }
+
+    #[test]
+    fn auto_mode_keeps_a_semantic_quote_above_threshold_eligible() {
+        let mut results = vec![prequalified_semantic_quote()];
+        let mut merger = DetectionMerger::new();
+        merger.set_auto_queue_threshold(0.90);
+
+        apply_egw_auto_queue(&mut results, &mut merger);
+
+        assert!(results[0].auto_queued);
+    }
+}
+
+#[cfg(test)]
+mod cue_ttl_tests {
+    use super::{cue_is_live, EGW_CUE_TTL_MS};
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    #[test]
+    fn cue_is_live_within_the_window() {
+        assert!(cue_is_live(1_000, 1_000));
+        assert!(cue_is_live(1_000 + EGW_CUE_TTL_MS, 1_000));
+    }
+
+    #[test]
+    fn cue_expires_after_the_window() {
+        assert!(!cue_is_live(1_001 + EGW_CUE_TTL_MS, 1_000));
+    }
+
+    #[test]
+    fn never_cued_is_never_live() {
+        assert!(!cue_is_live(500_000, 0));
+    }
+
+    #[test]
+    fn clock_going_backwards_does_not_panic_or_extend() {
+        // Saturating arithmetic: an earlier `now` reads as still inside the window
+        // rather than underflowing.
+        assert!(cue_is_live(500, 1_000));
+    }
+
+    #[test]
+    fn cue_state_is_isolated_between_sessions() {
+        let previous_session = AtomicU64::new(1_000);
+        let next_session = AtomicU64::new(0);
+
+        assert!(cue_is_live(1_001, previous_session.load(Ordering::Relaxed)));
+        assert!(!cue_is_live(1_001, next_session.load(Ordering::Relaxed)));
+    }
+}
+
+#[cfg(test)]
+mod quote_score_tests {
+    use super::egw_quote_score;
+
+    #[test]
+    fn long_run_with_cue_fires_and_auto_queues() {
+        let (confidence, auto_queued) = egw_quote_score(8, true).expect("should score");
+        assert!((confidence - 0.92).abs() < f64::EPSILON);
+        assert!(auto_queued);
+    }
+
+    #[test]
+    fn long_run_without_cue_fires_but_never_auto_queues() {
+        let (confidence, auto_queued) = egw_quote_score(9, false).expect("should score");
+        assert!((0.88..=0.92).contains(&confidence));
+        assert!(!auto_queued);
+    }
+
+    #[test]
+    fn fire_band_starts_at_six_regardless_of_cue() {
+        for cue in [true, false] {
+            let (confidence, auto_queued) = egw_quote_score(6, cue).expect("should score");
+            assert!(confidence >= 0.88, "run 6 should fire, got {confidence}");
+            assert!(!auto_queued, "run 6 must not auto-queue");
+        }
+    }
+
+    #[test]
+    fn short_run_is_a_hint_only_when_cued() {
+        let (confidence, auto_queued) = egw_quote_score(4, true).expect("should score");
+        assert!((0.75..0.88).contains(&confidence));
+        assert!(!auto_queued);
+
+        assert_eq!(egw_quote_score(4, false), None);
+        assert_eq!(egw_quote_score(5, false), None);
+    }
+
+    #[test]
+    fn three_or_fewer_shared_words_is_always_dropped() {
+        for run in 0..=3 {
+            assert_eq!(egw_quote_score(run, true), None, "run {run} with cue");
+            assert_eq!(egw_quote_score(run, false), None, "run {run} without cue");
+        }
+    }
+}
+
+#[cfg(test)]
+mod cue_tests {
+    use super::transcript_has_egw_cue;
+    use rhema_bible::EgwBook;
+
+    fn books() -> Vec<EgwBook> {
+        vec![
+            EgwBook {
+                id: 1,
+                book_number: 1,
+                title: "Patriarchs and Prophets".to_string(),
+                abbreviation: "PP".to_string(),
+                chapter_count: 2,
+            },
+            EgwBook {
+                id: 2,
+                book_number: 2,
+                title: "The Desire of Ages".to_string(),
+                abbreviation: "DA".to_string(),
+                chapter_count: 1,
+            },
+            EgwBook {
+                id: 3,
+                book_number: 4,
+                title: "Education".to_string(),
+                abbreviation: "Ed".to_string(),
+                chapter_count: 1,
+            },
+        ]
+    }
+
+    #[test]
+    fn author_name_is_a_cue() {
+        assert!(transcript_has_egw_cue(
+            &books(),
+            "sister white says it plainly"
+        ));
+        assert!(transcript_has_egw_cue(
+            &books(),
+            "Ellen White wrote about this"
+        ));
+    }
+
+    #[test]
+    fn spirit_of_prophecy_is_a_cue() {
+        assert!(transcript_has_egw_cue(
+            &books(),
+            "the spirit of prophecy speaks to this point"
+        ));
+    }
+
+    #[test]
+    fn book_title_is_a_cue() {
+        assert!(transcript_has_egw_cue(
+            &books(),
+            "in the desire of ages we are told"
+        ));
+        assert!(transcript_has_egw_cue(
+            &books(),
+            "patriarchs and prophets describes it"
+        ));
+    }
+
+    #[test]
+    fn ordinary_sermon_prose_is_not_a_cue() {
+        assert!(!transcript_has_egw_cue(
+            &books(),
+            "there is rejoicing in heaven over one sinner who repents"
+        ));
+    }
+
+    #[test]
+    fn ambiguous_single_word_book_title_is_not_a_cue() {
+        assert!(!transcript_has_egw_cue(
+            &books(),
+            "Christian education matters to every family"
+        ));
+    }
+
+    #[test]
+    fn white_alone_is_not_a_cue() {
+        // "white robes", "white as snow" are common sermon imagery.
+        assert!(!transcript_has_egw_cue(
+            &books(),
+            "their robes were white as snow"
+        ));
+    }
+}
+
+#[cfg(test)]
+mod quote_run_tests {
+    use super::longest_shared_content_run;
+
+    #[test]
+    fn verbatim_phrase_runs_the_full_content_length() {
+        // Content words (>=4 letters): history great conflict between christ satan = 6
+        let spoken = "the history of the great conflict between christ and satan";
+        let paragraph =
+            "the history of the great conflict between christ and satan began in heaven";
+        assert_eq!(longest_shared_content_run(spoken, paragraph), 6);
+    }
+
+    #[test]
+    fn short_words_do_not_break_a_run() {
+        // "of"/"the" are dropped before the run is measured, so they cannot split it.
+        let spoken = "history of great conflict";
+        let paragraph = "history the great conflict";
+        assert_eq!(longest_shared_content_run(spoken, paragraph), 3);
+    }
+
+    #[test]
+    fn out_of_order_shared_words_do_not_count_as_a_run() {
+        let spoken = "conflict great history";
+        let paragraph = "history great conflict";
+        assert_eq!(longest_shared_content_run(spoken, paragraph), 1);
+    }
+
+    #[test]
+    fn disjoint_vocabulary_has_no_run() {
+        let spoken = "quantum mechanics lecture";
+        let paragraph = "history great conflict";
+        assert_eq!(longest_shared_content_run(spoken, paragraph), 0);
+    }
+
+    #[test]
+    fn mid_window_interruption_breaks_the_run_instead_of_splicing() {
+        // Scaffolding spoken mid-quote must break the run. Callers must pass the
+        // raw transcript: on scaffolding-stripped text the two fragments splice
+        // into one 8-word run and reach the auto-queue band, on a quote that was
+        // never spoken contiguously.
+        let paragraph = "The shepherd does not remain in the fold waiting for the wandering sheep to return of itself, but he goes forth into the wilderness.";
+        let interrupted =
+            "the shepherd does not remain in the fold verse 12 waiting for the wandering sheep to return";
+        let spliced =
+            "the shepherd does not remain in the fold waiting for the wandering sheep to return";
+
+        assert_eq!(longest_shared_content_run(interrupted, paragraph), 4);
+        assert_eq!(longest_shared_content_run(spliced, paragraph), 8);
+    }
+
+    #[test]
+    fn empty_inputs_have_no_run() {
+        assert_eq!(longest_shared_content_run("", "history great conflict"), 0);
+        assert_eq!(longest_shared_content_run("history great conflict", ""), 0);
+    }
+
+    #[test]
+    fn opposite_polarity_is_not_quote_evidence() {
+        let paragraph = "The shepherd does not remain in the fold waiting for the wandering sheep to return of itself, but he goes forth into the wilderness.";
+        let opposite = "The shepherd does remain in the fold waiting for the wandering sheep to return of itself, but he goes forth into the wilderness.";
+
+        assert_eq!(longest_shared_content_run(opposite, paragraph), 0);
     }
 }

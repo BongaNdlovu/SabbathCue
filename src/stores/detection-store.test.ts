@@ -689,6 +689,89 @@ describe("detection store", () => {
     expect(detections[0].confidence).toBe(0.99)
   })
 
+  function makeEgwSemantic(
+    overrides: Partial<DetectionResult> = {}
+  ): DetectionResult {
+    return makeDetection({
+      content_type: "egw",
+      source: "semantic",
+      verse_ref: "The Desire of Ages p.480 par.1",
+      book_name: "The Desire of Ages",
+      book_number: 2,
+      chapter: 480,
+      verse: 1,
+      confidence: 0.9,
+      auto_queued: false,
+      ...overrides,
+    })
+  }
+
+  it("never lets an EGW hit displace a verse from the recent box", () => {
+    const store = useDetectionStore.getState()
+    for (let index = 0; index < 5; index += 1) {
+      now = new Date("2026-05-19T00:00:00Z").getTime() + index * 1000
+      store.addDetection(
+        makeDetection({
+          verse_ref: `John 3:${index + 1}`,
+          chapter: 3,
+          verse: index + 1,
+        })
+      )
+    }
+
+    now = new Date("2026-05-19T00:01:00Z").getTime()
+    store.addDetection(makeEgwSemantic())
+
+    const detections = useDetectionStore.getState().detections
+    expect(detections).toHaveLength(5)
+    expect(detections.some((d) => d.content_type === "egw")).toBe(false)
+  })
+
+  it("keeps at most one EGW card and sorts it after every verse", () => {
+    const store = useDetectionStore.getState()
+    store.addDetection(makeDetection({ verse_ref: "John 3:16" }))
+
+    now = new Date("2026-05-19T00:00:01Z").getTime()
+    store.addDetection(makeEgwSemantic())
+    now = new Date("2026-05-19T00:00:02Z").getTime()
+    store.addDetection(
+      makeEgwSemantic({
+        verse_ref: "The Desire of Ages p.481 par.2",
+        chapter: 481,
+        verse: 2,
+        confidence: 0.92,
+      })
+    )
+
+    const detections = useDetectionStore.getState().detections
+    const egw = detections.filter((d) => d.content_type === "egw")
+    expect(egw).toHaveLength(1)
+    expect(egw[0].chapter).toBe(481)
+    expect(detections[detections.length - 1].content_type).toBe("egw")
+  })
+
+  it("holds EGW to its own floor when the Bible slider is lowered", () => {
+    useSettingsStore.setState({
+      semanticDetectionEnabled: true,
+      semanticConfidenceThreshold: 0.7,
+    })
+    const store = useDetectionStore.getState()
+
+    store.addDetection(makeEgwSemantic({ confidence: 0.72 }))
+    expect(useDetectionStore.getState().detections).toHaveLength(0)
+
+    now = new Date("2026-05-19T00:00:01Z").getTime()
+    store.addDetection(
+      makeDetection({
+        source: "semantic",
+        confidence: 0.72,
+        verse_ref: "John 3:17",
+        verse: 17,
+      })
+    )
+    expect(useDetectionStore.getState().detections).toHaveLength(1)
+  })
+
   it("hides semantic hits below the app threshold but keeps direct and EGW below the floor", () => {
     const store = useDetectionStore.getState()
 

@@ -61,16 +61,24 @@ function sourcePriority(detection: DetectionResultWithMeta): number {
   return detection.source === "direct" ? 1 : 0
 }
 
+// EGW quotes are scored on their own scale (shared-phrase length, not verse
+// cosine), so they carry their own floor. An operator lowering the Bible slider
+// for verse recall must not simultaneously open the EGW gate.
+const EGW_SEMANTIC_MIN_CONFIDENCE = 0.75
+
 function isHiddenBySemanticSettings(detection: DetectionResult): boolean {
   if (detection.source !== "semantic") return false
 
   const { semanticDetectionEnabled, semanticConfidenceThreshold } =
     useSettingsStore.getState()
+  if (!semanticDetectionEnabled) return true
 
-  return (
-    !semanticDetectionEnabled ||
-    detection.confidence < semanticConfidenceThreshold
-  )
+  const floor =
+    detection.content_type === "egw"
+      ? Math.max(semanticConfidenceThreshold, EGW_SEMANTIC_MIN_CONFIDENCE)
+      : semanticConfidenceThreshold
+
+  return detection.confidence < floor
 }
 
 function isBibleDetection(detection: DetectionResult): boolean {
@@ -154,13 +162,27 @@ export function buildHeldReferenceCandidates(
 // "Recent detections" retains the most-recent items so a freshly spoken
 // detection (e.g. a 94% Ellen White paragraph) is never crowded out of the box
 // by stale higher-confidence Bible hits. Survivors are then ordered for display.
+function isEgwSemantic(detection: DetectionResult): boolean {
+  return detection.content_type === "egw" && detection.source === "semantic"
+}
+
 function capForDisplay(
   list: DetectionResultWithMeta[],
   now: number
 ): DetectionResultWithMeta[] {
-  const kept = [...list]
-    .sort((a, b) => (b.received_at ?? 0) - (a.received_at ?? 0))
+  const byRecency = [...list].sort(
+    (a, b) => (b.received_at ?? 0) - (a.received_at ?? 0)
+  )
+  // Verses claim slots first; a quote suggestion only ever uses a leftover.
+  const verses = byRecency
+    .filter((detection) => !isEgwSemantic(detection))
     .slice(0, MAX_RECENT_DETECTIONS)
+  const egw =
+    verses.length < MAX_RECENT_DETECTIONS
+      ? byRecency.filter(isEgwSemantic).slice(0, 1)
+      : []
+
+  const kept = [...verses, ...egw]
   kept.sort((a, b) => compareDetections(a, b, now))
   return kept
 }
@@ -170,6 +192,9 @@ function compareDetections(
   b: DetectionResultWithMeta,
   now: number
 ): number {
+  const egwDiff = Number(isEgwSemantic(a)) - Number(isEgwSemantic(b))
+  if (egwDiff !== 0) return egwDiff
+
   const sourceDiff = sourcePriority(b) - sourcePriority(a)
   if (sourceDiff !== 0) return sourceDiff
 

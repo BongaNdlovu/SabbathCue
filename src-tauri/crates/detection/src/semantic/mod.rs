@@ -4,6 +4,7 @@ pub mod detector;
 pub mod embedder;
 pub mod ensemble;
 pub mod index;
+pub mod quantize;
 pub mod synonyms;
 
 #[cfg(feature = "onnx")]

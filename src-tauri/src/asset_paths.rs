@@ -9,8 +9,10 @@ const SOFFICE_FIXED_CANDIDATES: &[&str] = &[
     r"C:\Program Files\LibreOffice\program\soffice.exe",
     r"C:\Program Files (x86)\LibreOffice\program\soffice.exe",
 ];
-pub const PREFERRED_EMBEDDINGS_FILENAME: &str = "public-minilm-l6-v2.bin";
-pub const PREFERRED_EMBEDDING_IDS_FILENAME: &str = "public-minilm-l6-v2-ids.bin";
+pub const PREFERRED_EMBEDDINGS_FILENAME: &str = "public-minilm-l6-v2-q8.bin";
+pub const PREFERRED_EMBEDDING_IDS_FILENAME: &str = "public-minilm-l6-v2-q8-ids.bin";
+const F32_EMBEDDINGS_FILENAME: &str = "public-minilm-l6-v2.bin";
+const F32_EMBEDDING_IDS_FILENAME: &str = "public-minilm-l6-v2-ids.bin";
 const LEGACY_EMBEDDINGS_FILENAME: &str = "kjv-minilm-l6-v2.bin";
 const LEGACY_EMBEDDING_IDS_FILENAME: &str = "kjv-minilm-l6-v2-ids.bin";
 #[cfg(test)]
@@ -48,17 +50,6 @@ pub fn simplify_windows_path(path: PathBuf) -> PathBuf {
 
 fn first_existing(paths: impl IntoIterator<Item = PathBuf>) -> Option<PathBuf> {
     paths.into_iter().find(|p| p.exists())
-}
-
-fn named_asset_candidates(roots: &[PathBuf], subdir: &str, filenames: &[&str]) -> Vec<PathBuf> {
-    filenames
-        .iter()
-        .flat_map(|filename| {
-            roots
-                .iter()
-                .map(move |root| root.join(subdir).join(filename))
-        })
-        .collect()
 }
 
 fn is_minilm_asset(path: &Path) -> bool {
@@ -372,11 +363,19 @@ pub fn semantic_embedding_candidates(app: &AppHandle) -> Vec<(PathBuf, PathBuf)>
     .flatten()
     .collect();
 
+    semantic_embedding_candidates_for_roots(&roots)
+        .into_iter()
+        .filter(|(embeddings, ids)| embeddings.exists() && ids.exists())
+        .collect()
+}
+
+fn semantic_embedding_candidates_for_roots(roots: &[PathBuf]) -> Vec<(PathBuf, PathBuf)> {
     let pairs = [
         (
             PREFERRED_EMBEDDINGS_FILENAME,
             PREFERRED_EMBEDDING_IDS_FILENAME,
         ),
+        (F32_EMBEDDINGS_FILENAME, F32_EMBEDDING_IDS_FILENAME),
         (LEGACY_EMBEDDINGS_FILENAME, LEGACY_EMBEDDING_IDS_FILENAME),
     ];
 
@@ -390,55 +389,37 @@ pub fn semantic_embedding_candidates(app: &AppHandle) -> Vec<(PathBuf, PathBuf)>
                 )
             })
         })
-        .filter(|(embeddings, ids)| embeddings.exists() && ids.exists())
         .collect()
 }
 
 pub fn embeddings_path(app: &AppHandle) -> PathBuf {
-    let roots: Vec<PathBuf> = [
-        app_data_dir(app).ok(),
-        app.path().resource_dir().ok(),
-        Some(dev_root()),
-    ]
-    .into_iter()
-    .flatten()
-    .collect();
-    first_existing(named_asset_candidates(
-        &roots,
-        "embeddings",
-        &[PREFERRED_EMBEDDINGS_FILENAME, LEGACY_EMBEDDINGS_FILENAME],
-    ))
-    .unwrap_or_else(|| {
-        app_data_dir(app)
-            .unwrap_or_else(|_| dev_root())
-            .join("embeddings")
-            .join(PREFERRED_EMBEDDINGS_FILENAME)
-    })
+    semantic_embedding_candidates(app)
+        .into_iter()
+        .next()
+        .map_or_else(
+            || {
+                app_data_dir(app)
+                    .unwrap_or_else(|_| dev_root())
+                    .join("embeddings")
+                    .join(PREFERRED_EMBEDDINGS_FILENAME)
+            },
+            |(embeddings, _)| embeddings,
+        )
 }
 
 pub fn embedding_ids_path(app: &AppHandle) -> PathBuf {
-    let roots: Vec<PathBuf> = [
-        app_data_dir(app).ok(),
-        app.path().resource_dir().ok(),
-        Some(dev_root()),
-    ]
-    .into_iter()
-    .flatten()
-    .collect();
-    first_existing(named_asset_candidates(
-        &roots,
-        "embeddings",
-        &[
-            PREFERRED_EMBEDDING_IDS_FILENAME,
-            LEGACY_EMBEDDING_IDS_FILENAME,
-        ],
-    ))
-    .unwrap_or_else(|| {
-        app_data_dir(app)
-            .unwrap_or_else(|_| dev_root())
-            .join("embeddings")
-            .join(PREFERRED_EMBEDDING_IDS_FILENAME)
-    })
+    semantic_embedding_candidates(app)
+        .into_iter()
+        .next()
+        .map_or_else(
+            || {
+                app_data_dir(app)
+                    .unwrap_or_else(|_| dev_root())
+                    .join("embeddings")
+                    .join(PREFERRED_EMBEDDING_IDS_FILENAME)
+            },
+            |(_, ids)| ids,
+        )
 }
 
 #[cfg(test)]
@@ -585,27 +566,51 @@ mod tests {
     }
 
     #[test]
-    fn named_asset_candidates_prefer_public_semantic_assets_before_legacy_assets() {
+    fn semantic_candidates_prefer_paired_q8_then_f32_then_legacy_assets() {
         let root_a = PathBuf::from("a");
         let root_b = PathBuf::from("b");
 
-        let candidates = named_asset_candidates(
-            &[root_a.clone(), root_b.clone()],
-            "embeddings",
-            &[PREFERRED_EMBEDDINGS_FILENAME, LEGACY_EMBEDDINGS_FILENAME],
-        );
+        let candidates = semantic_embedding_candidates_for_roots(&[root_a.clone(), root_b.clone()]);
 
         assert_eq!(
             candidates,
             vec![
-                root_a
-                    .join("embeddings")
-                    .join(PREFERRED_EMBEDDINGS_FILENAME),
-                root_b
-                    .join("embeddings")
-                    .join(PREFERRED_EMBEDDINGS_FILENAME),
-                root_a.join("embeddings").join(LEGACY_EMBEDDINGS_FILENAME),
-                root_b.join("embeddings").join(LEGACY_EMBEDDINGS_FILENAME),
+                (
+                    root_a
+                        .join("embeddings")
+                        .join(PREFERRED_EMBEDDINGS_FILENAME),
+                    root_a
+                        .join("embeddings")
+                        .join(PREFERRED_EMBEDDING_IDS_FILENAME),
+                ),
+                (
+                    root_b
+                        .join("embeddings")
+                        .join(PREFERRED_EMBEDDINGS_FILENAME),
+                    root_b
+                        .join("embeddings")
+                        .join(PREFERRED_EMBEDDING_IDS_FILENAME),
+                ),
+                (
+                    root_a.join("embeddings").join(F32_EMBEDDINGS_FILENAME),
+                    root_a.join("embeddings").join(F32_EMBEDDING_IDS_FILENAME),
+                ),
+                (
+                    root_b.join("embeddings").join(F32_EMBEDDINGS_FILENAME),
+                    root_b.join("embeddings").join(F32_EMBEDDING_IDS_FILENAME),
+                ),
+                (
+                    root_a.join("embeddings").join(LEGACY_EMBEDDINGS_FILENAME),
+                    root_a
+                        .join("embeddings")
+                        .join(LEGACY_EMBEDDING_IDS_FILENAME),
+                ),
+                (
+                    root_b.join("embeddings").join(LEGACY_EMBEDDINGS_FILENAME),
+                    root_b
+                        .join("embeddings")
+                        .join(LEGACY_EMBEDDING_IDS_FILENAME),
+                ),
             ]
         );
     }

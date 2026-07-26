@@ -167,6 +167,7 @@ jobs:
           bun run download:model
           bun run export:verses
           bun run precompute:embeddings
+          bun run quantize:embeddings
 
       - name: Bun audit
         run: bun audit --audit-level=moderate
