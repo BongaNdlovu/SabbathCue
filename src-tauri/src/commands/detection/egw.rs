@@ -315,42 +315,60 @@ pub(crate) fn transcript_has_egw_cue(books: &[EgwBook], text: &str) -> bool {
     !best_egw_alias_match(&normalized, books).is_empty()
 }
 
-/// Confidence assigned to EGW paragraphs matched by keyword (below explicit references).
-#[cfg(test)]
-const EGW_FTS_CONFIDENCE: f64 = 0.55;
+/// Minimum spoken words before a quote search is worth running.
+const EGW_QUOTE_MIN_WORDS: usize = 5;
+/// BM25 nominates this many candidates; run-length verification decides.
+const EGW_QUOTE_CANDIDATES: usize = 1;
 
-/// Minimum word count before running EGW keyword search.
-#[cfg(test)]
-const EGW_FTS_MIN_WORDS: usize = 5;
-
-/// Maximum EGW paragraphs surfaced per detection pass.
-#[cfg(test)]
-const EGW_FTS_LIMIT: usize = 2;
-
-/// Detect EGW paragraphs by BM25 keyword search of the transcript window.
-#[cfg(test)]
-pub(crate) fn detect_egw_fts(state: &AppState, text: &str) -> Vec<DetectionResult> {
-    if text.split_whitespace().count() < EGW_FTS_MIN_WORDS {
+/// Detect an EGW paragraph being read aloud in the transcript window.
+///
+/// BM25 nominates; `longest_shared_content_run` verifies. Every candidate is
+/// logged with its run length and cue state — including rejections — so field
+/// calibration needs no rebuild.
+pub(crate) fn detect_egw_quotes(
+    state: &AppState,
+    text: &str,
+    cue_active: bool,
+) -> Vec<DetectionResult> {
+    if text.split_whitespace().count() < EGW_QUOTE_MIN_WORDS {
         return Vec::new();
     }
     let Some(db) = state.bible_db.as_ref() else {
         return Vec::new();
     };
 
-    match db.search_egw_bm25(text, EGW_FTS_LIMIT) {
-        Ok(paragraphs) => paragraphs
-            .into_iter()
-            .map(|paragraph| {
-                let mut result = egw_to_result(paragraph, EGW_FTS_CONFIDENCE, text);
-                result.source = "semantic".to_string();
-                result
-            })
-            .collect(),
+    let paragraphs = match db.search_egw_bm25(text, EGW_QUOTE_CANDIDATES) {
+        Ok(paragraphs) => paragraphs,
         Err(error) => {
-            log::warn!("[DET-EGW] FTS search failed: {error}");
-            Vec::new()
+            log::warn!("[DET-EGW-QUOTE] BM25 search failed: {error}");
+            return Vec::new();
         }
-    }
+    };
+
+    paragraphs
+        .into_iter()
+        .filter_map(|paragraph| {
+            let run = longest_shared_content_run(text, &paragraph.text);
+            let scored = egw_quote_score(run, cue_active);
+            log::debug!(
+                "[DET-EGW-QUOTE] candidate {} p.{} par.{} run={run} cue={cue_active} verdict={}",
+                paragraph.book_title,
+                paragraph.page,
+                paragraph.page_paragraph,
+                match scored {
+                    Some((confidence, auto_queued)) =>
+                        format!("{:.0}% auto_q={auto_queued}", confidence * 100.0),
+                    None => "drop".to_string(),
+                }
+            );
+            let (confidence, auto_queued) = scored?;
+            let mut result = egw_to_result(paragraph, confidence, text);
+            result.source = "semantic".to_string();
+            result.rank_score = confidence;
+            result.auto_queued = auto_queued;
+            Some(result)
+        })
+        .collect()
 }
 
 /// Detect explicit Ellen G. White paragraph references like

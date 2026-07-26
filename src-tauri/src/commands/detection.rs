@@ -22,7 +22,7 @@ mod semantic_search;
 mod settings;
 
 #[cfg(test)]
-pub(crate) use egw::detect_egw_fts;
+pub(crate) use egw::detect_egw_quotes;
 pub(crate) use egw::{apply_egw_auto_queue, detect_egw_references};
 pub use result::{to_result, DetectionResult};
 use semantic_search::{run_semantic_search, SemanticSearchResult};
@@ -422,9 +422,17 @@ mod tests {
              INSERT INTO egw_books (book_number, title, abbreviation, chapter_count) VALUES
                (1, 'Patriarchs and Prophets', 'PP', 2),
                (2, 'The Desire of Ages', 'DA', 1);
+             -- Rows 1-2: short paragraphs for explicit page/paragraph reference tests.
+             -- Rows 3-5: longer SYNTHETIC paragraphs in EGW's register. Row 3 is the
+             -- quote-detection positive control; rows 4-5 are adversarial negatives,
+             -- written to sit close to the closing-sermon fixture's themes so that
+             -- topical similarity alone would surface them. Not real EGW text.
              INSERT INTO egw_paragraphs (book_id, book_number, book_title, chapter, chapter_title, paragraph, page, page_paragraph, text) VALUES
                (1, 1, 'Patriarchs and Prophets', 1, 'Why Was Sin Permitted?', 2, 29, 2, 'The history of the great conflict.'),
-               (2, 2, 'The Desire of Ages', 14, 'We Have Found the Messias', 3, 73, 3, 'Jesus had bidden Peter and his companions follow Him.');
+               (2, 2, 'The Desire of Ages', 14, 'We Have Found the Messias', 3, 73, 3, 'Jesus had bidden Peter and his companions follow Him.'),
+               (2, 2, 'The Desire of Ages', 15, 'The Shepherd And His Flock', 4, 480, 1, 'The shepherd does not remain in the fold waiting for the wandering sheep to return of itself, but he goes forth into the wilderness and searches until the lost is found, and he returns rejoicing with the burden upon his shoulders.'),
+               (2, 2, 'The Desire of Ages', 15, 'The Shepherd And His Flock', 5, 481, 2, 'There is joy among the angels of heaven whenever a single wandering soul turns from the paths of sin, and the multitudes of the redeemed are never so precious to the Saviour as the one who was lost.'),
+               (1, 1, 'Patriarchs and Prophets', 2, 'The Harvest', 6, 122, 4, 'Every act of service rendered in humility is recorded, and the report of the labourer is weighed not by the numbers gathered but by the faithfulness of the heart that laboured.');
              CREATE VIRTUAL TABLE egw_paragraphs_fts USING fts5(text, content='egw_paragraphs', content_rowid='id', tokenize='unicode61');
              INSERT INTO egw_paragraphs_fts(rowid, text) SELECT id, text FROM egw_paragraphs;",
         )
@@ -709,21 +717,65 @@ mod tests {
     }
 
     #[test]
-    fn detect_egw_fts_matches_paragraph_by_keywords() {
+    fn detect_egw_quotes_fires_on_verbatim_reading_with_attribution() {
         let fixture = fixture_state(1);
+        // 12 consecutive content words lifted from DA p.480 par.1.
+        let spoken = "the shepherd does not remain in the fold waiting for the wandering sheep to return of itself but he goes forth into the wilderness";
 
-        let results = detect_egw_fts(
-            &fixture.state,
-            "tonight we consider the great conflict and its history",
-        );
+        let results = detect_egw_quotes(&fixture.state, spoken, true);
 
-        assert!(!results.is_empty());
+        assert_eq!(results.len(), 1, "expected exactly one EGW quote");
         assert_eq!(results[0].content_type, "egw");
         assert_eq!(results[0].source, "semantic");
-        assert_eq!(
-            results[0].egw_paragraph.as_ref().map(|p| p.paragraph),
-            Some(2)
+        assert_eq!(results[0].chapter, 480);
+        assert_eq!(results[0].verse, 1);
+        assert!(results[0].auto_queued, "verbatim + cue should auto-queue");
+    }
+
+    #[test]
+    fn detect_egw_quotes_fires_without_cue_but_does_not_auto_queue() {
+        let fixture = fixture_state(1);
+        let spoken = "the shepherd does not remain in the fold waiting for the wandering sheep to return of itself but he goes forth into the wilderness";
+
+        let results = detect_egw_quotes(&fixture.state, spoken, false);
+
+        assert_eq!(results.len(), 1);
+        assert!(
+            !results[0].auto_queued,
+            "no attribution means no auto-queue"
         );
+        assert!(results[0].confidence >= 0.88);
+    }
+
+    #[test]
+    fn detect_egw_quotes_rejects_thematic_overlap() {
+        let fixture = fixture_state(1);
+        // Same subject as DA p.481 par.2, none of its phrasing.
+        let spoken = "when even one person is saved there is rejoicing in heaven tonight";
+
+        assert!(
+            detect_egw_quotes(&fixture.state, spoken, false).is_empty(),
+            "topical similarity alone must not fire"
+        );
+        assert!(
+            detect_egw_quotes(&fixture.state, spoken, true).is_empty(),
+            "a cue must not rescue a candidate with no shared phrasing"
+        );
+    }
+
+    #[test]
+    fn detect_egw_quotes_ignores_windows_below_the_word_floor() {
+        let fixture = fixture_state(1);
+        assert!(detect_egw_quotes(&fixture.state, "the shepherd goes", true).is_empty());
+    }
+
+    #[test]
+    fn detect_egw_quotes_returns_at_most_one_paragraph() {
+        let fixture = fixture_state(1);
+        // Wording drawn from two different fixture paragraphs at once.
+        let spoken = "the shepherd does not remain in the fold waiting for the wandering sheep and there is joy among the angels of heaven whenever a single wandering soul turns";
+
+        assert!(detect_egw_quotes(&fixture.state, spoken, true).len() <= 1);
     }
 
     #[test]
