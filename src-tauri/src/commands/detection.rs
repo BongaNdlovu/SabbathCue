@@ -770,6 +770,54 @@ mod tests {
     }
 
     #[test]
+    fn real_sermon_produces_no_egw_quote_detections() {
+        let fixture = fixture_state(1);
+        let raw = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../data/detection-fixtures/sermon-closing-2026-07.json"),
+        )
+        .expect("read sermon fixture");
+        let cases: serde_json::Value = serde_json::from_str(&raw).expect("parse sermon fixture");
+        let entries = cases.as_array().expect("fixture is an array");
+        assert!(entries.len() > 50, "fixture should be a full sermon");
+
+        let db = fixture.state.bible_db.as_ref().expect("fixture db");
+        let mut nominated = 0;
+        let mut false_positives = Vec::new();
+        for entry in entries {
+            let Some(text) = entry.get("text").and_then(serde_json::Value::as_str) else {
+                continue;
+            };
+            nominated += db.search_egw_bm25(text, 1).expect("bm25 search").len();
+            // Worst case: pretend attribution is live for every window.
+            for cue_active in [false, true] {
+                for result in detect_egw_quotes(&fixture.state, text, cue_active) {
+                    false_positives.push(format!(
+                        "cue={cue_active} {} ({:.0}%) <- {text}",
+                        result.verse_ref,
+                        result.confidence * 100.0
+                    ));
+                }
+            }
+        }
+
+        // Non-vacuity: BM25 must actually reach into the EGW paragraphs on this
+        // sermon, or the assertion below would pass without verifying anything.
+        // Measured at 20 nominations across 56 eligible windows — that is the
+        // flood the old flat-confidence path emitted.
+        assert!(
+            nominated >= 10,
+            "BM25 nominated only {nominated} candidates; the negative control is vacuous"
+        );
+
+        assert!(
+            false_positives.is_empty(),
+            "EGW quote detection fired on a sermon containing no EGW quotation:\n{}",
+            false_positives.join("\n")
+        );
+    }
+
+    #[test]
     fn detect_egw_quotes_returns_at_most_one_paragraph() {
         let fixture = fixture_state(1);
         // Wording drawn from two different fixture paragraphs at once.
