@@ -178,6 +178,10 @@ jobs:
           bun run download:model
           bun run export:verses
           bun run precompute:embeddings
+          bun run quantize:embeddings
+
+      - name: Compare f32 and q8 vector retrieval
+        run: bun run compare:embeddings
 
       - name: Check workspace
         working-directory: src-tauri
@@ -188,10 +192,10 @@ jobs:
         run: cargo test --workspace
 
       - name: Detection accuracy gate at production threshold
-        run: cargo run --manifest-path src-tauri/Cargo.toml -p rhema-detection --features precompute-bin --release --bin detection_accuracy -- --threshold 0.90 --min-precision 0.98 --min-recall 0.70
+        run: cargo run --manifest-path src-tauri/Cargo.toml -p rhema-detection --features precompute-bin --release --bin detection_accuracy -- --threshold 0.90 --embeddings embeddings/public-minilm-l6-v2-q8.bin --ids embeddings/public-minilm-l6-v2-q8-ids.bin --min-precision 0.988 --min-recall 0.80
 
       - name: Detection calibration probe at 85 percent
-        run: cargo run --manifest-path src-tauri/Cargo.toml -p rhema-detection --features precompute-bin --release --bin detection_accuracy -- --threshold 0.85
+        run: cargo run --manifest-path src-tauri/Cargo.toml -p rhema-detection --features precompute-bin --release --bin detection_accuracy -- --threshold 0.85 --embeddings embeddings/public-minilm-l6-v2-q8.bin --ids embeddings/public-minilm-l6-v2-q8-ids.bin
 
       - name: Clippy
         working-directory: src-tauri

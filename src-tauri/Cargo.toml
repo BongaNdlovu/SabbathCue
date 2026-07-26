@@ -91,3 +91,4 @@ tauri-plugin-process = "2"
 [profile.release]
 lto = "thin"
 codegen-units = 1
+strip = "symbols"

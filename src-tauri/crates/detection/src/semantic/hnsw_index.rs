@@ -8,7 +8,7 @@
 //! This module is only compiled when the `vector-search` feature is enabled.
 
 #[cfg(feature = "vector-search")]
-use std::io::Read;
+use std::io::{Read, Seek};
 #[cfg(feature = "vector-search")]
 use std::path::Path;
 
@@ -26,14 +26,20 @@ use crate::error::DetectionError;
 /// vectors and query vectors are L2-normalised, the dot product equals
 /// cosine similarity.
 #[cfg(feature = "vector-search")]
+#[derive(Debug)]
 pub struct HnswVectorIndex {
-    /// Flattened embedding matrix: `embeddings[i * dim .. (i+1) * dim]`
-    /// is the vector for verse `verse_ids[i]`.
-    embeddings: Vec<f32>,
+    vectors: Vectors,
     /// Verse (or row) identifiers, one per stored vector.
     verse_ids: Vec<i64>,
     /// Dimensionality of each embedding vector.
     dimension: usize,
+}
+
+#[cfg(feature = "vector-search")]
+#[derive(Debug)]
+enum Vectors {
+    F32(Vec<f32>),
+    Q8 { data: Vec<i8>, scales: Vec<f32> },
 }
 
 #[cfg(feature = "vector-search")]
@@ -82,12 +88,42 @@ impl HnswVectorIndex {
                 })
             })?;
 
-        if byte_len % std::mem::size_of::<f32>() != 0 {
+        let prefix_len = byte_len.min(super::quantize::Q8_HEADER_LEN);
+        let mut header_buf = [0u8; super::quantize::Q8_HEADER_LEN];
+        file.read_exact(&mut header_buf[..prefix_len])
+            .map_err(|e| {
+                DetectionError::Internal(format!(
+                    "read embeddings header {}: {e}",
+                    embeddings_path.display()
+                ))
+            })?;
+        let q8_header = super::quantize::decode_header(&header_buf[..prefix_len])
+            .map_err(|e| DetectionError::Internal(format!("invalid q8 embeddings: {e}")))?;
+
+        if let Some(header) = q8_header {
+            return Self::load_q8(&mut file, embeddings_path, ids_path, dim, byte_len, header);
+        }
+        Self::load_f32(&mut file, embeddings_path, ids_path, dim, byte_len)
+    }
+
+    fn load_f32(
+        file: &mut std::fs::File,
+        embeddings_path: &Path,
+        ids_path: &Path,
+        dim: usize,
+        byte_len: usize,
+    ) -> Result<Self, DetectionError> {
+        file.rewind().map_err(|e| {
+            DetectionError::Internal(format!(
+                "rewind embeddings {}: {e}",
+                embeddings_path.display()
+            ))
+        })?;
+        if !byte_len.is_multiple_of(std::mem::size_of::<f32>()) {
             return Err(DetectionError::Internal(
                 "embeddings file size is not a multiple of 4".into(),
             ));
         }
-
         let float_count = byte_len / std::mem::size_of::<f32>();
         if !float_count.is_multiple_of(dim) {
             return Err(DetectionError::Internal(format!(
@@ -105,37 +141,93 @@ impl HnswVectorIndex {
                 ))
             })?;
 
-        // --- Read IDs ---
-        let ids_bytes = std::fs::read(ids_path).map_err(|e| {
-            DetectionError::Internal(format!("read ids {}: {e}", ids_path.display()))
-        })?;
+        let index = Self::finish_load(Vectors::F32(embeddings), ids_path, dim, num_vectors, None)?;
+        log::info!("HnswVectorIndex loaded: {num_vectors} vectors, dim={dim}");
+        Ok(index)
+    }
 
-        if ids_bytes.len() % std::mem::size_of::<i64>() != 0 {
-            return Err(DetectionError::Internal(
-                "ids file size is not a multiple of 8".into(),
-            ));
-        }
-
-        let verse_ids: Vec<i64> = ids_bytes
-            .chunks_exact(std::mem::size_of::<i64>())
-            .map(|chunk| i64::from_le_bytes(chunk.try_into().expect("chunk length is 8")))
-            .collect();
-
-        if verse_ids.len() != num_vectors {
+    fn load_q8(
+        file: &mut std::fs::File,
+        embeddings_path: &Path,
+        ids_path: &Path,
+        dim: usize,
+        byte_len: usize,
+        header: super::quantize::Q8Header,
+    ) -> Result<Self, DetectionError> {
+        if header.dim != dim {
             return Err(DetectionError::Internal(format!(
-                "vector count mismatch: {} embeddings vs {} ids",
-                num_vectors,
-                verse_ids.len()
+                "quantized embeddings dim {} != expected dim {dim}",
+                header.dim
+            )));
+        }
+        let scale_byte_len = header
+            .num_vectors
+            .checked_mul(std::mem::size_of::<f32>())
+            .ok_or_else(|| {
+                DetectionError::Internal("quantized scale length overflows usize".into())
+            })?;
+        let data_byte_len = header.num_vectors.checked_mul(dim).ok_or_else(|| {
+            DetectionError::Internal("quantized vector length overflows usize".into())
+        })?;
+        let expected_byte_len = super::quantize::Q8_HEADER_LEN
+            .checked_add(scale_byte_len)
+            .and_then(|length| length.checked_add(data_byte_len))
+            .ok_or_else(|| {
+                DetectionError::Internal("quantized total length overflows usize".into())
+            })?;
+        if byte_len != expected_byte_len {
+            return Err(DetectionError::Internal(format!(
+                "quantized embeddings length {byte_len} != expected {expected_byte_len}"
             )));
         }
 
-        log::info!("HnswVectorIndex loaded: {num_vectors} vectors, dim={dim}");
+        let mut scale_bytes = vec![0u8; scale_byte_len];
+        file.read_exact(&mut scale_bytes).map_err(|e| {
+            DetectionError::Internal(format!("read q8 scales {}: {e}", embeddings_path.display()))
+        })?;
+        let scales = Self::decode_scales(&scale_bytes)?;
+        let mut data = vec![0i8; data_byte_len];
+        file.read_exact(bytemuck::cast_slice_mut(&mut data))
+            .map_err(|e| {
+                DetectionError::Internal(format!(
+                    "read q8 vectors {}: {e}",
+                    embeddings_path.display()
+                ))
+            })?;
 
-        Ok(Self {
-            embeddings,
-            verse_ids,
-            dimension: dim,
-        })
+        let index = Self::finish_load(
+            Vectors::Q8 { data, scales },
+            ids_path,
+            dim,
+            header.num_vectors,
+            Some(header.ids_sha256),
+        )?;
+        log::info!(
+            "HnswVectorIndex loaded (int8): {} vectors, dim={dim}",
+            header.num_vectors
+        );
+        Ok(index)
+    }
+
+    fn decode_scales(bytes: &[u8]) -> Result<Vec<f32>, DetectionError> {
+        bytes
+            .chunks_exact(std::mem::size_of::<f32>())
+            .enumerate()
+            .map(|(index, bytes)| {
+                let scale = f32::from_le_bytes(
+                    bytes
+                        .try_into()
+                        .expect("chunks_exact guarantees four scale bytes"),
+                );
+                if scale.is_finite() && scale >= 0.0 {
+                    Ok(scale)
+                } else {
+                    Err(DetectionError::Internal(format!(
+                        "quantized embeddings scale {index} is invalid"
+                    )))
+                }
+            })
+            .collect()
     }
 
     /// Build an index directly from in-memory data.
@@ -170,7 +262,50 @@ impl HnswVectorIndex {
         let flat: Vec<f32> = embeddings.into_iter().flatten().collect();
 
         Ok(Self {
-            embeddings: flat,
+            vectors: Vectors::F32(flat),
+            verse_ids,
+            dimension: dim,
+        })
+    }
+
+    fn finish_load(
+        vectors: Vectors,
+        ids_path: &Path,
+        dim: usize,
+        num_vectors: usize,
+        expected_ids_sha256: Option<[u8; 32]>,
+    ) -> Result<Self, DetectionError> {
+        let ids_bytes = std::fs::read(ids_path).map_err(|e| {
+            DetectionError::Internal(format!("read ids {}: {e}", ids_path.display()))
+        })?;
+        if expected_ids_sha256
+            .is_some_and(|expected| super::quantize::sha256(&ids_bytes) != expected)
+        {
+            return Err(DetectionError::Internal(format!(
+                "quantized embeddings IDs digest does not match {}",
+                ids_path.display()
+            )));
+        }
+        if ids_bytes.len() % std::mem::size_of::<i64>() != 0 {
+            return Err(DetectionError::Internal(
+                "ids file size is not a multiple of 8".into(),
+            ));
+        }
+
+        let verse_ids: Vec<i64> = ids_bytes
+            .chunks_exact(std::mem::size_of::<i64>())
+            .map(|chunk| i64::from_le_bytes(chunk.try_into().expect("chunk length is 8")))
+            .collect();
+        if verse_ids.len() != num_vectors {
+            return Err(DetectionError::Internal(format!(
+                "vector count mismatch: {} embeddings vs {} ids",
+                num_vectors,
+                verse_ids.len()
+            )));
+        }
+
+        Ok(Self {
+            vectors,
             verse_ids,
             dimension: dim,
         })
@@ -200,12 +335,18 @@ impl VectorIndex for HnswVectorIndex {
 
         // Dot product (= cosine similarity for L2-normalised vectors) against
         // every stored vector, split across cores.
-        let mut scores: Vec<(usize, f32)> = self
-            .embeddings
-            .par_chunks_exact(self.dimension)
-            .enumerate()
-            .map(|(index, stored)| (index, dot(query, stored)))
-            .collect();
+        let mut scores: Vec<(usize, f32)> = match &self.vectors {
+            Vectors::F32(embeddings) => embeddings
+                .par_chunks_exact(self.dimension)
+                .enumerate()
+                .map(|(index, stored)| (index, dot(query, stored)))
+                .collect(),
+            Vectors::Q8 { data, scales } => data
+                .par_chunks_exact(self.dimension)
+                .enumerate()
+                .map(|(index, stored)| (index, dot_q8(query, stored, scales[index])))
+                .collect(),
+        };
 
         // Only k results are returned, so select them in O(n) rather than
         // sorting all n, then order just the survivors.
@@ -261,6 +402,29 @@ fn dot(query: &[f32], stored: &[f32]) -> f32 {
     lanes.iter().sum::<f32>() + tail
 }
 
+#[cfg(feature = "vector-search")]
+#[inline]
+fn dot_q8(query: &[f32], stored: &[i8], scale: f32) -> f32 {
+    let mut lanes = [0f32; DOT_LANES];
+    let mut query_chunks = query.chunks_exact(DOT_LANES);
+    let mut stored_chunks = stored.chunks_exact(DOT_LANES);
+
+    for (query_chunk, stored_chunk) in query_chunks.by_ref().zip(stored_chunks.by_ref()) {
+        for ((lane, query_component), stored_component) in
+            lanes.iter_mut().zip(query_chunk).zip(stored_chunk)
+        {
+            *lane += *query_component * f32::from(*stored_component);
+        }
+    }
+    let tail: f32 = query_chunks
+        .remainder()
+        .iter()
+        .zip(stored_chunks.remainder())
+        .map(|(query_component, stored_component)| *query_component * f32::from(*stored_component))
+        .sum();
+    (lanes.iter().sum::<f32>() + tail) * scale
+}
+
 /// Rank by descending similarity, breaking ties by index so the top-k order is
 /// deterministic — the previous full unstable sort left tied scores in an
 /// arbitrary order.
@@ -273,12 +437,45 @@ fn rank(a: &(usize, f32), b: &(usize, f32)) -> std::cmp::Ordering {
 
 #[cfg(all(test, feature = "vector-search"))]
 mod tests {
+    use std::io::Write;
+
     use super::*;
 
     fn make_unit_vec(dim: usize, hot: usize) -> Vec<f32> {
         let mut v = vec![0.0f32; dim];
         v[hot] = 1.0;
         v
+    }
+
+    fn write_ids(path: &Path, ids: &[i64]) -> Vec<u8> {
+        let bytes: Vec<u8> = ids.iter().flat_map(|id| id.to_le_bytes()).collect();
+        std::fs::write(path, &bytes).expect("write ids");
+        bytes
+    }
+
+    fn write_q8(path: &Path, vectors: &[Vec<f32>], ids_bytes: &[u8], dim: usize) {
+        let mut file = std::fs::File::create(path).expect("create q8");
+        file.write_all(
+            &super::super::quantize::encode_header(
+                dim,
+                vectors.len(),
+                super::super::quantize::sha256(ids_bytes),
+            )
+            .expect("encode header"),
+        )
+        .expect("write header");
+
+        let quantized: Vec<(Vec<i8>, f32)> = vectors
+            .iter()
+            .map(|vector| super::super::quantize::quantize_vector(vector).expect("finite vector"))
+            .collect();
+        for (_, scale) in &quantized {
+            file.write_all(&scale.to_le_bytes()).expect("write scale");
+        }
+        for (data, _) in &quantized {
+            file.write_all(bytemuck::cast_slice(data))
+                .expect("write vector");
+        }
     }
 
     #[test]
@@ -369,9 +566,12 @@ mod tests {
     /// `k` larger than the corpus must clamp, not panic on the partial select.
     #[test]
     fn k_larger_than_corpus_returns_everything() {
-        let index =
-            HnswVectorIndex::from_vecs(vec![make_unit_vec(4, 0), make_unit_vec(4, 1)], vec![1, 2], 4)
-                .unwrap();
+        let index = HnswVectorIndex::from_vecs(
+            vec![make_unit_vec(4, 0), make_unit_vec(4, 1)],
+            vec![1, 2],
+            4,
+        )
+        .unwrap();
         let results = index.search(&make_unit_vec(4, 0), 50).unwrap();
         assert_eq!(results.len(), 2);
         assert_eq!(results[0].verse_id, 1);
@@ -382,5 +582,91 @@ mod tests {
         let index = HnswVectorIndex::from_vecs(vec![vec![1.0, 0.0]], vec![1], 2).unwrap();
         let err = index.search(&[1.0, 0.0, 0.0], 1);
         assert!(err.is_err());
+    }
+
+    #[test]
+    fn quantized_file_matches_f32_ranking() {
+        let dim = 8;
+        let vectors = vec![
+            vec![1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            vec![0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            vec![0.6, 0.8, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        ];
+        let ids = vec![10, 20, 30];
+        let dir = tempfile::tempdir().expect("temp dir");
+        let embeddings_path = dir.path().join("q8.bin");
+        let ids_path = dir.path().join("q8-ids.bin");
+        let ids_bytes = write_ids(&ids_path, &ids);
+        write_q8(&embeddings_path, &vectors, &ids_bytes, dim);
+
+        let quantized = HnswVectorIndex::load(&embeddings_path, &ids_path, dim).expect("load q8");
+        let f32_index = HnswVectorIndex::from_vecs(vectors, ids, dim).expect("build f32 index");
+        let query = [0.6, 0.8, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+        let q8_ids: Vec<i64> = quantized
+            .search(&query, 3)
+            .expect("q8 search")
+            .into_iter()
+            .map(|result| result.verse_id)
+            .collect();
+        let f32_ids: Vec<i64> = f32_index
+            .search(&query, 3)
+            .expect("f32 search")
+            .into_iter()
+            .map(|result| result.verse_id)
+            .collect();
+
+        assert_eq!(q8_ids, f32_ids);
+    }
+
+    #[test]
+    fn quantized_file_rejects_mismatched_ids_digest() {
+        let dim = 4;
+        let vectors = vec![make_unit_vec(dim, 0)];
+        let dir = tempfile::tempdir().expect("temp dir");
+        let embeddings_path = dir.path().join("q8.bin");
+        let ids_path = dir.path().join("q8-ids.bin");
+        let original_ids = 10i64.to_le_bytes();
+        write_q8(&embeddings_path, &vectors, &original_ids, dim);
+        std::fs::write(&ids_path, 99i64.to_le_bytes()).expect("write changed ids");
+
+        let error =
+            HnswVectorIndex::load(&embeddings_path, &ids_path, dim).expect_err("digest mismatch");
+
+        assert!(error.to_string().contains("IDs digest"));
+    }
+
+    #[test]
+    fn quantized_file_rejects_unsupported_version_without_legacy_fallback() {
+        let dim = 4;
+        let vectors = vec![make_unit_vec(dim, 0)];
+        let dir = tempfile::tempdir().expect("temp dir");
+        let embeddings_path = dir.path().join("q8.bin");
+        let ids_path = dir.path().join("q8-ids.bin");
+        let ids_bytes = write_ids(&ids_path, &[10]);
+        write_q8(&embeddings_path, &vectors, &ids_bytes, dim);
+        let mut bytes = std::fs::read(&embeddings_path).expect("read q8");
+        bytes[4..8].copy_from_slice(&99u32.to_le_bytes());
+        std::fs::write(&embeddings_path, bytes).expect("write unsupported version");
+
+        let error = HnswVectorIndex::load(&embeddings_path, &ids_path, dim)
+            .expect_err("unsupported q8 version");
+
+        assert!(error.to_string().contains("unsupported"));
+    }
+
+    #[test]
+    fn legacy_f32_file_still_loads() {
+        let dim = 4;
+        let dir = tempfile::tempdir().expect("temp dir");
+        let embeddings_path = dir.path().join("legacy.bin");
+        let ids_path = dir.path().join("legacy-ids.bin");
+        let embeddings: Vec<f32> = make_unit_vec(dim, 2);
+        std::fs::write(&embeddings_path, bytemuck::cast_slice(&embeddings))
+            .expect("write embeddings");
+        write_ids(&ids_path, &[42]);
+
+        let index = HnswVectorIndex::load(&embeddings_path, &ids_path, dim).expect("load legacy");
+
+        assert_eq!(index.len(), 1);
     }
 }

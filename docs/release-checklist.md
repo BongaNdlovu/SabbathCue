@@ -23,6 +23,8 @@ Run these from the repo root unless noted:
 - [ ] `bun run download:model`
 - [ ] `bun run export:verses`
 - [ ] `bun run precompute:embeddings`
+- [ ] `bun run quantize:embeddings`
+- [ ] `bun run compare:embeddings`
 - [ ] `bun run typecheck`
 - [ ] `bun run test -- --run`
 - [ ] `bun run build`

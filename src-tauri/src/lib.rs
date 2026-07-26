@@ -65,7 +65,7 @@ fn semantic_index_sanity_check(
 /// Load the ONNX embedder and the pre-computed verse index into the shared
 /// pipeline.
 ///
-/// Runs off the setup hook: the model plus a ~91 MB embedding file take long
+/// Runs off the setup hook: the model plus the embedding index take long
 /// enough that doing this inline delays the event loop, and nothing needs it
 /// to start — the pipeline serves direct detection from its stub semantic
 /// detector until this swaps in the real one.
@@ -162,8 +162,10 @@ fn load_semantic_assets(app: &tauri::AppHandle) {
         return;
     };
 
-    let semantic_corpus = if embeddings_path.file_name().and_then(|name| name.to_str())
-        == Some(asset_paths::PREFERRED_EMBEDDINGS_FILENAME)
+    let semantic_corpus = if embeddings_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.starts_with("public-minilm-l6-v2"))
     {
         "public-domain multi-vector corpus"
     } else {
@@ -198,16 +200,18 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .manage(Mutex::new(state::AppState::new()))
-        .manage(Mutex::new(rhema_detection::DetectionPipeline::with_cooldown(
-            detection_cooldown.clone(),
-        )))
+        .manage(Mutex::new(
+            rhema_detection::DetectionPipeline::with_cooldown(detection_cooldown.clone()),
+        ))
         .manage(Mutex::new(rhema_broadcast::ndi::NdiRuntime::default()))
         .manage(Mutex::new(rhema_detection::DirectDetector::new()))
         .manage(Mutex::new(rhema_detection::DetectionMerger::with_cooldown(
             detection_cooldown,
         )))
         .manage(Mutex::new(rhema_detection::ReadingMode::new()))
-        .manage(Mutex::new(commands::egw_semantic::EgwSemanticState::default()))
+        .manage(Mutex::new(
+            commands::egw_semantic::EgwSemanticState::default(),
+        ))
         .manage(Mutex::new(commands::remote::OscRuntime::new()))
         .manage(Mutex::new(commands::remote::HttpRuntime::new()))
         .invoke_handler(tauri::generate_handler![
@@ -350,7 +354,10 @@ pub fn run() {
                         log::info!("Bible database loaded from {}", db_path.display());
                     }
                     Err(error) => {
-                        log::error!("Failed to open Bible database at {}: {error}", db_path.display());
+                        log::error!(
+                            "Failed to open Bible database at {}: {error}",
+                            db_path.display()
+                        );
                     }
                 }
             } else {

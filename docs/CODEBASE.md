@@ -248,6 +248,23 @@ non-gating 85% calibration probe to expose the lower threshold's tradeoffs
   -> .github/workflows/desktop-ci.yml:184
 ```
 
+### Flow: quantized semantic embedding assets
+```text
+CI converts the canonical f32 corpus before comparison and bundling
+  -> package.json
+  -> .github/workflows/desktop-ci.yml
+  -> .github/workflows/release-desktop.yml
+The SCQ8 header binds dimension, vector count, version, and IDs digest
+  -> src-tauri/crates/detection/src/semantic/quantize.rs
+Runtime resolution prefers q8, then retains f32 and legacy filename fallbacks
+  -> src-tauri/src/asset_paths.rs
+The loader fails closed for invalid SCQ8 and searches q8 without expanding the
+complete corpus back to f32
+  -> src-tauri/crates/detection/src/semantic/hnsw_index.rs
+Explicit f32/q8 inputs gate ranking agreement, drift, load, and search latency
+  -> src-tauri/crates/detection/src/bin/embedding_comparison.rs
+```
+
 ### Flow: direct sermon-passage continuation
 ```text
 A fully resolved spoken reference establishes the active book/chapter
@@ -440,6 +457,10 @@ npm.cmd run test:unit
 # Result after implementation: 131 files passed, 941 tests passed, 1 skipped.
 # Result after church organization signup/profile implementation: 134 files passed, 964 tests passed, 1 skipped.
 # Result after approved-computer activation hardening: 136 files passed, 981 tests passed, 1 skipped.
+# Result after int8 embedding implementation: 1,150 local tests passed and 1
+# skipped across 177 files when excluding the unrelated live Paddle sandbox
+# test. The full run had the same local results; that one live check could not
+# reach Paddle from the restricted workspace network.
 
 npm.cmd run lint
 # Result before edits: passed with existing complexity warning in data/lib/egw-pdf-importer.ts.
@@ -450,6 +471,14 @@ npm.cmd run lint
 cargo test --workspace
 # Result before edits: passed.
 # Result after implementation: passed.
+# Result after int8 embedding implementation: passed with all features.
+
+cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+# Result after int8 embedding implementation: passed.
+
+bun run compare:embeddings
+# Result: 100% top-1 agreement, 99.375% top-10 overlap, maximum similarity
+# drift 0.001503; q8 load/search were faster than f32 in the paired run.
 
 npx.cmd vitest run src/lib/quick-search.test.ts -t getGhostSuggestionSuffix
 # Result before helper implementation: failed with TypeError: getGhostSuggestionSuffix is not a function.
@@ -481,6 +510,11 @@ npm.cmd run test:db
 npm.cmd run tauri:build:local
 # Result: passed; produced SabbathCuePersonal.exe and
 # SabbathCue Personal_0.1.7_x64-setup.exe.
+# Result after int8 embedding implementation: application build passed; the
+# packaging step was resumed with `npx.cmd tauri bundle --bundles nsis` after
+# the command window expired. Produced SabbathCue Personal_0.1.9_x64-setup.exe
+# at 228,661,577 bytes (218.07 MiB), 62.25 MiB / 22.21% smaller than the
+# previous local Personal installer.
 
 git diff --check
 # Result after implementation: passed; Git reported line-ending notices only.
@@ -515,6 +549,7 @@ CI/CD & deployment: not fully mapped in this pass. See open questions.
 | Collected detections are intentionally session-only and capped at 50. | product behavior | healthy | src/stores/collected-detections-store.ts:25, src/stores/collected-detections-store.ts:85 |
 | Full-model accuracy is CI-gated, but the curated corpus is not a substitute for a held-out multi-church audio corpus. | detection quality | watch | src-tauri/crates/detection/src/bin/detection_accuracy.rs:1, .github/workflows/desktop-ci.yml:184 |
 | Runtime performance metrics begin when ranked candidates reach the frontend; true speech-to-result latency still requires timestamped provider audio fixtures. | detection quality | watch | src/lib/detection-profiler.ts:28 |
+| The installer still bundles the offline Vosk model and complete content database; moving either to first-run delivery remains gated on product, hosting, and signing decisions. | installer size | watch | docs/superpowers/plans/2026-07-26-installer-size-and-performance.md |
 
 Strengths: targeted stores and shared helpers make the current STT/detection/theme changes testable.
 
@@ -563,3 +598,4 @@ Top risks (ranked): 1. STT provider removal can leave stale docs or tests if his
 | 2026-07-24 | Made direct sermon passage scope dwell-based, promoted explicit in-scope bare verses as citations, and blocked the prose collision `same` → `James`. | 5, 6, 15 |
 | 2026-07-25 | Kept book-inferred bare chapter/verse references visible for operator review but below auto-live confidence, preventing mutable last-reference context from outranking correct semantic matches. | 6, 10, 11, 15 |
 | 2026-07-26 | Hardened live EGW quotation detection with polarity checks, unambiguous title cues, session-scoped attribution state, and settings-aware auto-queue policy. | 6, 10, 11, 15 |
+| 2026-07-26 | Replaced bundled Bible f32 embeddings with a self-identifying, IDs-bound int8 format; retained f32 compatibility; added deterministic CI generation and paired quality/performance gates. | 6, 9-11, 15 |
