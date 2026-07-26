@@ -36,13 +36,18 @@ The verified 2026-07-26 seed-corpus run produced:
 | Runner | Test accuracy | Test macro-F1 | Safety false commands | p95 |
 |---|---:|---:|---:|---:|
 | Deterministic | 16.7% | 4.8% | 0 / 30 | under 0.01 ms |
-| MiniLM linear head | 66.7% | 68.9% | 4 / 30 | 8.95 ms |
+| MiniLM linear head | 66.7% | 68.9% | 4 / 30 | 9.31 ms |
+| FunctionGemma 270M Q8 | 38.9% | 36.6% | 22 / 30 | 1,027.88 ms |
 
 This MiniLM result demonstrates the speed and near-zero artifact-cost case, but
 four safety false commands means this seed head must not execute commands.
-FunctionGemma remains unmeasured until the gated model is available locally.
+After correcting the FunctionGemma activation message, native-call parsing, and
+response stop sequence, the model still missed the adoption gate: it produced
+five failed responses, fired on 22 ordinary sermon phrases, and remained over
+one second at p95. The Q8 artifact measured 291,557,792 bytes and the worker used
+about 375 MiB. Neither classifier is connected to command execution.
 Receipt: `src-tauri/target/command-benchmark-report.json` from
-`npm.cmd run benchmark:commands` (machine-local ignored output).
+`npm.cmd run benchmark:commands:gemma` (machine-local ignored output).
 
 ## Run the MiniLM baseline
 
@@ -98,7 +103,8 @@ npm.cmd run benchmark:commands:gemma
 
 `scripts/setup-functiongemma-benchmark.ps1` downloads the official Windows
 CPU llama.cpp runtime and Q8 FunctionGemma artifact into ignored `.tmp`
-storage, verifies their published SHA-256 hashes, and refuses to continue
+storage, verifies their published SHA-256 hashes, retries failed or
+incomplete downloads with automatic cleanup, and refuses to continue
 without an authenticated token. `scripts/run-functiongemma-benchmark.ps1`
 starts a hidden loopback-only server with two inference threads and a
 512-token context, waits for readiness, runs the same corpus, measures model

@@ -509,10 +509,11 @@ fn gemma_payload(model: &str, text: &str) -> serde_json::Value {
         "model": model,
         "temperature": 0,
         "max_tokens": 48,
+        "stop": ["<start_function_response>"],
         "messages": [
             {
-                "role": "system",
-                "content": "Classify only explicit operator commands. Ordinary sermon speech must produce no tool call. Never infer or emit a Bible reference."
+                "role": "developer",
+                "content": "You are a model that can do function calling with the following functions"
             },
             {"role": "user", "content": text}
         ],
@@ -581,6 +582,11 @@ fn parse_gemma_response(raw: &str) -> Result<CommandPrediction, String> {
         .message;
 
     if message.tool_calls.is_empty() {
+        if let Some(content) = message.content.as_deref() {
+            if let Some(prediction) = parse_native_functiongemma_call(content)? {
+                return Ok(prediction);
+            }
+        }
         return Ok(CommandPrediction {
             label: CommandLabel::intent(CommandIntent::None),
             confidence: 1.0,
@@ -623,6 +629,70 @@ fn parse_gemma_response(raw: &str) -> Result<CommandPrediction, String> {
         confidence: 1.0,
         raw: Some(raw.to_string()),
     })
+}
+
+fn parse_native_functiongemma_call(
+    content: &str,
+) -> Result<Option<CommandPrediction>, String> {
+    const START: &str = "<start_function_call>";
+    const END: &str = "<end_function_call>";
+
+    let content = content.trim();
+    if !content.contains(START) {
+        return Ok(None);
+    }
+    if content.matches(START).count() != 1
+        || content.matches(END).count() != 1
+        || !content.starts_with(START)
+        || !content.ends_with(END)
+    {
+        return Err("expected exactly one complete native FunctionGemma call".into());
+    }
+
+    let call = content
+        .strip_prefix(START)
+        .and_then(|value| value.strip_suffix(END))
+        .and_then(|value| value.strip_prefix("call:"))
+        .ok_or_else(|| "invalid native FunctionGemma call envelope".to_string())?;
+    let (name, serialized_arguments) = call
+        .split_once('{')
+        .ok_or_else(|| "native FunctionGemma call is missing arguments".to_string())?;
+    let arguments = serialized_arguments
+        .strip_suffix('}')
+        .ok_or_else(|| "native FunctionGemma arguments are not closed".to_string())?;
+
+    let label = match name {
+        "hide_output" if arguments.is_empty() => CommandLabel::intent(CommandIntent::Hide),
+        "show_output" if arguments.is_empty() => CommandLabel::intent(CommandIntent::Show),
+        "next_item" if arguments.is_empty() => CommandLabel::intent(CommandIntent::Next),
+        "previous_item" if arguments.is_empty() => {
+            CommandLabel::intent(CommandIntent::Previous)
+        }
+        "switch_translation" => {
+            const PREFIX: &str = "translation:<escape>";
+            let translation = arguments
+                .strip_prefix(PREFIX)
+                .and_then(|value| value.strip_suffix("<escape>"))
+                .ok_or_else(|| {
+                    "native switch_translation has invalid arguments".to_string()
+                })?;
+            CommandLabel::translation(translation)
+        }
+        "hide_output" | "show_output" | "next_item" | "previous_item" => {
+            return Err(format!("native tool call has invalid arguments: {arguments}"));
+        }
+        other => return Err(format!("unknown native tool call: {other}")),
+    };
+    if !label.is_valid() {
+        return Err(format!(
+            "native tool call has invalid arguments: {arguments}"
+        ));
+    }
+    Ok(Some(CommandPrediction {
+        label,
+        confidence: 1.0,
+        raw: Some(content.to_string()),
+    }))
 }
 
 fn collect_disagreements(
@@ -906,6 +976,38 @@ mod tests {
         let prediction = parse_gemma_response(response).unwrap();
 
         assert_eq!(prediction.label.intent, CommandIntent::None);
+    }
+
+    #[test]
+    fn gemma_response_accepts_native_functiongemma_call_in_content() {
+        let response = r#"{
+          "choices": [{
+            "message": {
+              "content": "<start_function_call>call:hide_output{}<end_function_call>"
+            }
+          }]
+        }"#;
+
+        let prediction = parse_gemma_response(response).unwrap();
+
+        assert_eq!(prediction.label.intent, CommandIntent::Hide);
+    }
+
+    #[test]
+    fn gemma_payload_uses_functiongemma_activation_and_stop_sequence() {
+        let payload = gemma_payload("functiongemma", "Hide the screen");
+
+        assert_eq!(
+            payload["messages"][0],
+            serde_json::json!({
+                "role": "developer",
+                "content": "You are a model that can do function calling with the following functions"
+            })
+        );
+        assert_eq!(
+            payload["stop"],
+            serde_json::json!(["<start_function_response>"])
+        );
     }
 
     #[test]

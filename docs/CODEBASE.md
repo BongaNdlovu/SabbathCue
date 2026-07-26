@@ -505,6 +505,11 @@ npm.cmd run benchmark:commands
 # MiniLM linear head 66.7% accuracy, 68.9% macro-F1, 4/30 safety false
 # commands, and 8.95 ms p95 on the 2026-07-26 seed corpus.
 
+npm.cmd run benchmark:commands:gemma
+# Result after correcting the FunctionGemma native-call protocol: 38.9% test
+# accuracy, 36.6% macro-F1, 22/30 safety false commands, five failed responses,
+# and 1,027.88 ms p95. MiniLM remains the experiment recommendation.
+
 npm.cmd run test:functiongemma-experiment
 # Result: 3 tests passed for SFT export shape and the gated-model setup guard.
 
@@ -633,3 +638,4 @@ Top risks (ranked): 1. STT provider removal can leave stale docs or tests if his
 | 2026-07-26 | Hardened live EGW quotation detection with polarity checks, unambiguous title cues, session-scoped attribution state, and settings-aware auto-queue policy. | 6, 10, 11, 15 |
 | 2026-07-26 | Replaced bundled Bible f32 embeddings with a self-identifying, IDs-bound int8 format; retained f32 compatibility; added deterministic CI generation and paired quality/performance gates. | 6, 9-11, 15 |
 | 2026-07-26 | Added a non-executing command-classifier benchmark with isolated corpus partitions, deterministic and MiniLM baselines, optional checksum-verified FunctionGemma/llama.cpp evaluation, SFT export, and shadow replay. | 5, 6, 10, 11, 15 |
+| 2026-07-26 | Corrected the FunctionGemma benchmark's activation, native-call parsing, and response stop sequence; the controlled rerun rejected the stock Q8 model on accuracy, safety, and latency. | 10, 11, 15 |
