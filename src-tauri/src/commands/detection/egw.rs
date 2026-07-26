@@ -28,6 +28,36 @@ fn normalize_reference_text(value: &str) -> String {
         .join(" ")
 }
 
+/// Longest run of consecutive content words shared, in order, by both texts.
+///
+/// Both sides are first reduced to lowercased tokens of >=4 letters, so short
+/// filler ("the", "of", "and") and STT hiccups cannot split an otherwise
+/// verbatim run, and the run counts substantive words only. This is the
+/// evidence that separates a paragraph being *read aloud* from a paragraph
+/// that merely shares a topic — the failure mode that made the previous
+/// BM25-only attempt unusable.
+fn longest_shared_content_run(window: &str, paragraph: &str) -> usize {
+    let spoken: Vec<String> = rhema_detection::pipeline::content_words(window).collect();
+    let candidate: Vec<String> = rhema_detection::pipeline::content_words(paragraph).collect();
+    if spoken.is_empty() || candidate.is_empty() {
+        return 0;
+    }
+
+    let mut previous = vec![0usize; candidate.len() + 1];
+    let mut best = 0;
+    for spoken_word in &spoken {
+        let mut current = vec![0usize; candidate.len() + 1];
+        for (index, candidate_word) in candidate.iter().enumerate() {
+            if spoken_word == candidate_word {
+                current[index + 1] = previous[index] + 1;
+                best = best.max(current[index + 1]);
+            }
+        }
+        previous = current;
+    }
+    best
+}
+
 fn integer_token(token: &str) -> Option<i32> {
     if token.chars().all(|ch| ch.is_ascii_digit()) {
         return token.parse::<i32>().ok().filter(|value| *value > 0);
@@ -379,5 +409,46 @@ pub(crate) fn apply_egw_auto_queue(
             .get(&(result.book_number, result.chapter, result.verse))
             .copied()
             .unwrap_or(false);
+    }
+}
+
+#[cfg(test)]
+mod quote_run_tests {
+    use super::longest_shared_content_run;
+
+    #[test]
+    fn verbatim_phrase_runs_the_full_content_length() {
+        // Content words (>=4 letters): history great conflict between christ satan = 6
+        let spoken = "the history of the great conflict between christ and satan";
+        let paragraph = "the history of the great conflict between christ and satan began in heaven";
+        assert_eq!(longest_shared_content_run(spoken, paragraph), 6);
+    }
+
+    #[test]
+    fn short_words_do_not_break_a_run() {
+        // "of"/"the" are dropped before the run is measured, so they cannot split it.
+        let spoken = "history of great conflict";
+        let paragraph = "history the great conflict";
+        assert_eq!(longest_shared_content_run(spoken, paragraph), 3);
+    }
+
+    #[test]
+    fn out_of_order_shared_words_do_not_count_as_a_run() {
+        let spoken = "conflict great history";
+        let paragraph = "history great conflict";
+        assert_eq!(longest_shared_content_run(spoken, paragraph), 1);
+    }
+
+    #[test]
+    fn disjoint_vocabulary_has_no_run() {
+        let spoken = "quantum mechanics lecture";
+        let paragraph = "history great conflict";
+        assert_eq!(longest_shared_content_run(spoken, paragraph), 0);
+    }
+
+    #[test]
+    fn empty_inputs_have_no_run() {
+        assert_eq!(longest_shared_content_run("", "history great conflict"), 0);
+        assert_eq!(longest_shared_content_run("history great conflict", ""), 0);
     }
 }

@@ -318,7 +318,7 @@ fn quote_overlap_confidence(fragment: &str, verse_text: &str) -> Option<f64> {
     Some((0.52 + 0.68 * fraction).min(QUOTE_OVERLAP_MAX_CONFIDENCE))
 }
 
-fn content_words(text: &str) -> impl Iterator<Item = String> + '_ {
+pub fn content_words(text: &str) -> impl Iterator<Item = String> + '_ {
     text.split(|c: char| !c.is_alphanumeric())
         .filter(|word| word.len() >= QUOTE_OVERLAP_MIN_WORD_LEN)
         .map(str::to_lowercase)
