@@ -337,6 +337,34 @@ pub(crate) fn note_and_check_egw_cue(books: &[EgwBook], text: &str, now_ms: u64)
     cue_is_live(now_ms, EGW_CUE_AT_MS.load(Ordering::Relaxed))
 }
 
+/// STT confidence below this leaves the transcript too unreliable to present
+/// an EGW quote unattended. 0.0 means the provider reported no confidence.
+const EGW_LOW_STT_CONFIDENCE: f64 = 0.65;
+/// Both mirror the Bible semantic dampening in `run_semantic_detection`.
+const EGW_LOW_STT_RANK_SCALE: f64 = 0.85;
+const EGW_LOW_STT_CONFIDENCE_CAP: f64 = 0.89;
+
+/// Dampen EGW quote results when the STT confidence for the window was low.
+///
+/// Mirrors the Bible semantic dampening, and additionally clears `auto_queued`.
+/// Bible results do not need that: their downstream gate is confidence itself.
+/// For EGW, `auto_queued` is the projector-facing decision, computed from run
+/// length rather than confidence, so capping confidence alone would leave a hit
+/// reading 0.89 that still presents itself with no operator click.
+pub(crate) fn dampen_egw_for_low_stt_confidence(
+    results: &mut [DetectionResult],
+    stt_confidence: f64,
+) {
+    if stt_confidence <= 0.0 || stt_confidence >= EGW_LOW_STT_CONFIDENCE {
+        return;
+    }
+    for result in results {
+        result.rank_score *= EGW_LOW_STT_RANK_SCALE;
+        result.confidence = result.confidence.min(EGW_LOW_STT_CONFIDENCE_CAP);
+        result.auto_queued = false;
+    }
+}
+
 /// Minimum spoken words before a quote search is worth running.
 const EGW_QUOTE_MIN_WORDS: usize = 5;
 /// BM25 nominates this many candidates; run-length verification decides.
@@ -508,6 +536,95 @@ pub(crate) fn apply_egw_auto_queue(
             .get(&(result.book_number, result.chapter, result.verse))
             .copied()
             .unwrap_or(false);
+    }
+}
+
+#[cfg(test)]
+mod low_stt_dampening_tests {
+    use super::{dampen_egw_for_low_stt_confidence, egw_to_result};
+    use crate::commands::detection::DetectionResult;
+    use rhema_bible::EgwParagraph;
+
+    fn auto_queued_hit() -> DetectionResult {
+        let paragraph = EgwParagraph {
+            id: 3,
+            book_number: 2,
+            book_title: "The Desire of Ages".to_string(),
+            chapter: 15,
+            chapter_title: "The Shepherd And His Flock".to_string(),
+            paragraph: 4,
+            page: 480,
+            page_paragraph: 1,
+            text: "The shepherd does not remain in the fold.".to_string(),
+        };
+        let mut result = egw_to_result(paragraph, 0.92, "the shepherd does not remain in the fold");
+        result.source = "semantic".to_string();
+        result.rank_score = 0.92;
+        result.auto_queued = true;
+        result
+    }
+
+    #[test]
+    fn low_confidence_caps_scores_and_revokes_auto_queue() {
+        let mut results = vec![auto_queued_hit()];
+
+        dampen_egw_for_low_stt_confidence(&mut results, 0.5);
+
+        assert!((results[0].confidence - 0.89).abs() < 1e-9);
+        assert!((results[0].rank_score - 0.92 * 0.85).abs() < 1e-9);
+        assert!(
+            !results[0].auto_queued,
+            "a garbled window must not present unattended"
+        );
+    }
+
+    #[test]
+    fn unreported_confidence_leaves_the_hit_alone() {
+        // 0.0 means the provider gave no confidence, not "no confidence".
+        let mut results = vec![auto_queued_hit()];
+
+        dampen_egw_for_low_stt_confidence(&mut results, 0.0);
+
+        assert!((results[0].confidence - 0.92).abs() < 1e-9);
+        assert!((results[0].rank_score - 0.92).abs() < 1e-9);
+        assert!(results[0].auto_queued);
+    }
+
+    #[test]
+    fn threshold_boundary_matches_the_bible_block() {
+        let mut at_threshold = vec![auto_queued_hit()];
+        dampen_egw_for_low_stt_confidence(&mut at_threshold, 0.65);
+        assert!(at_threshold[0].auto_queued, "0.65 is not low confidence");
+
+        let mut just_below = vec![auto_queued_hit()];
+        dampen_egw_for_low_stt_confidence(&mut just_below, 0.649);
+        assert!(!just_below[0].auto_queued);
+    }
+
+    #[test]
+    fn high_confidence_leaves_the_hit_alone() {
+        let mut results = vec![auto_queued_hit()];
+
+        dampen_egw_for_low_stt_confidence(&mut results, 0.95);
+
+        assert!((results[0].confidence - 0.92).abs() < 1e-9);
+        assert!(results[0].auto_queued);
+    }
+
+    #[test]
+    fn the_cap_never_raises_a_weaker_hit() {
+        let mut results = vec![auto_queued_hit()];
+        results[0].confidence = 0.78;
+        results[0].rank_score = 0.78;
+        results[0].auto_queued = false;
+
+        dampen_egw_for_low_stt_confidence(&mut results, 0.5);
+
+        assert!(
+            (results[0].confidence - 0.78).abs() < 1e-9,
+            "cap is a ceiling, not an assignment"
+        );
+        assert!((results[0].rank_score - 0.78 * 0.85).abs() < 1e-9);
     }
 }
 

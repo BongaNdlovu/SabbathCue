@@ -518,7 +518,7 @@ pub(crate) fn run_semantic_detection(
         }
     }
 
-    let egw_quotes = if let Ok(app_state) = app_managed.lock() {
+    let mut egw_quotes = if let Ok(app_state) = app_managed.lock() {
         let books = app_state
             .bible_db
             .as_ref()
@@ -546,6 +546,13 @@ pub(crate) fn run_semantic_detection(
         log::warn!("[DET-EGW-QUOTE] AppState busy; skipping EGW quote pass");
         Vec::new()
     };
+    // Same low-STT-confidence dampening the Bible results got above. It runs
+    // here rather than in that loop because these results do not exist yet at
+    // that point, and because EGW additionally loses `auto_queued`.
+    crate::commands::detection::dampen_egw_for_low_stt_confidence(
+        &mut egw_quotes,
+        stt_confidence,
+    );
     results.extend(egw_quotes);
 
     if results.is_empty() {

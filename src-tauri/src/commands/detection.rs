@@ -22,7 +22,8 @@ mod semantic_search;
 mod settings;
 
 pub(crate) use egw::{
-    apply_egw_auto_queue, detect_egw_quotes, detect_egw_references, note_and_check_egw_cue,
+    apply_egw_auto_queue, dampen_egw_for_low_stt_confidence, detect_egw_quotes,
+    detect_egw_references, note_and_check_egw_cue,
 };
 pub use result::{to_result, DetectionResult};
 use semantic_search::{run_semantic_search, SemanticSearchResult};
