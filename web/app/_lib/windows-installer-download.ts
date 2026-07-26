@@ -2,16 +2,16 @@
 export const R2_PUBLIC_BASE_URL =
   "https://pub-f00266e4b83341dea437c0114752f536.r2.dev" as const;
 
-export const WINDOWS_INSTALLER_VERSION = "0.1.7" as const;
+export const WINDOWS_INSTALLER_VERSION = "0.1.9" as const;
 
 export const WINDOWS_INSTALLER_R2_OBJECT_KEY =
-  "SabbathCue_0.1.7_x64-setup.exe" as const;
+  "SabbathCue 0.1.9_x64-setup.exe" as const;
 
 /** Filename users see when saving the installer (not the R2 object name). */
 export const WINDOWS_INSTALLER_SAVE_AS = "SabbathCue-Setup.exe" as const;
 
-/** Measured via R2 HEAD on 2026-07-17. */
-export const WINDOWS_INSTALLER_EXPECTED_BYTES = 293918341;
+/** Measured via R2 HEAD on 2026-07-26. */
+export const WINDOWS_INSTALLER_EXPECTED_BYTES = 274726435;
 
 export const WINDOWS_INSTALLER_MIN_BYTES = 200 * 1024 * 1024;
 

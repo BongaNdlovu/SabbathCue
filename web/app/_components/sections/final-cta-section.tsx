@@ -38,7 +38,7 @@ export function FinalCtaSection({ stars }: { stars: number }) {
             </Button>
           </div>
           <p className="text-[15px] leading-6 text-muted-foreground">
-            Latest Windows installer: v0.1.7, updated July 8, 2026
+            Latest Windows installer: v0.1.9, updated July 26, 2026
           </p>
         </Reveal>
       </Container>
