@@ -36,11 +36,14 @@ The verified 2026-07-26 seed-corpus run produced:
 | Runner | Test accuracy | Test macro-F1 | Safety false commands | p95 |
 |---|---:|---:|---:|---:|
 | Deterministic | 16.7% | 4.8% | 0 / 30 | under 0.01 ms |
-| MiniLM linear head | 66.7% | 68.9% | 4 / 30 | 9.31 ms |
-| FunctionGemma 270M Q8 | 38.9% | 36.6% | 22 / 30 | 1,027.88 ms |
+| MiniLM linear head + command-shape gate | 66.7% | 68.9% | 0 / 30 | 16.48 ms |
+| FunctionGemma 270M Q8 | 38.9% | 36.6% | 22 / 30 | 1,175.09 ms |
 
-This MiniLM result demonstrates the speed and near-zero artifact-cost case, but
-four safety false commands means this seed head must not execute commands.
+The MiniLM path now abstains before intent output when an utterance is not
+shaped like an explicit operator request. This removed all four seed-corpus
+safety false commands without changing held-out test accuracy or macro-F1.
+The authored corpus remains too small for production command execution; the
+gate and classifier are still benchmark/shadow-only.
 After correcting the FunctionGemma activation message, native-call parsing, and
 response stop sequence, the model still missed the adoption gate: it produced
 five failed responses, fired on 22 ordinary sermon phrases, and remained over

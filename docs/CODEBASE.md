@@ -393,6 +393,9 @@ and paraphrase-family isolation
 The benchmark scores deterministic phrases and trains a small linear head over
 the existing MiniLM ONNX embeddings
   -> src-tauri/crates/detection/src/bin/command_benchmark.rs:113
+MiniLM command predictions pass through a conservative text-shape gate so
+declarative sermon speech abstains before intent output
+  -> src-tauri/crates/detection/src/command_eval.rs:326
 An optional loopback FunctionGemma endpoint receives the same evaluation cases;
 all outputs pass through the closed intent/translation schema
   -> src-tauri/crates/detection/src/bin/command_benchmark.rs:429
@@ -501,9 +504,10 @@ cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 # Result after command-classifier experiment: passed.
 
 npm.cmd run benchmark:commands
-# Result: deterministic 16.7% test accuracy / 0 safety false commands;
-# MiniLM linear head 66.7% accuracy, 68.9% macro-F1, 4/30 safety false
-# commands, and 8.95 ms p95 on the 2026-07-26 seed corpus.
+# Result after the command-shape gate: deterministic 16.7% test accuracy;
+# MiniLM linear head 66.7% accuracy, 68.9% macro-F1, 0/30 safety false
+# commands, and 16.48 ms p95 in the paired FunctionGemma run on the
+# 2026-07-26 seed corpus.
 
 npm.cmd run benchmark:commands:gemma
 # Result after correcting the FunctionGemma native-call protocol: 38.9% test
@@ -586,7 +590,7 @@ CI/CD & deployment: not fully mapped in this pass. See open questions.
 | Collected detections are intentionally session-only and capped at 50. | product behavior | healthy | src/stores/collected-detections-store.ts:25, src/stores/collected-detections-store.ts:85 |
 | Full-model accuracy is CI-gated, but the curated corpus is not a substitute for a held-out multi-church audio corpus. | detection quality | watch | src-tauri/crates/detection/src/bin/detection_accuracy.rs:1, .github/workflows/desktop-ci.yml:184 |
 | Runtime performance metrics begin when ranked candidates reach the frontend; true speech-to-result latency still requires timestamped provider audio fixtures. | detection quality | watch | src/lib/detection-profiler.ts:28 |
-| The command-classifier corpus is a small authored seed set; its MiniLM head has four safety false commands and is intentionally not connected to command execution. | command classification | watch | docs/functiongemma-command-benchmark.md:27, src-tauri/crates/detection/src/bin/command_benchmark.rs:1 |
+| The command-classifier corpus is a small authored seed set; its gated MiniLM head has zero seed safety false commands but remains intentionally disconnected from command execution until tested on held-out multi-church transcripts. | command classification | watch | docs/functiongemma-command-benchmark.md:27, src-tauri/crates/detection/src/bin/command_benchmark.rs:1 |
 | The installer still bundles the offline Vosk model and complete content database; moving either to first-run delivery remains gated on product, hosting, and signing decisions. | installer size | watch | docs/superpowers/plans/2026-07-26-installer-size-and-performance.md |
 
 Strengths: targeted stores and shared helpers make the current STT/detection/theme changes testable.
@@ -639,3 +643,4 @@ Top risks (ranked): 1. STT provider removal can leave stale docs or tests if his
 | 2026-07-26 | Replaced bundled Bible f32 embeddings with a self-identifying, IDs-bound int8 format; retained f32 compatibility; added deterministic CI generation and paired quality/performance gates. | 6, 9-11, 15 |
 | 2026-07-26 | Added a non-executing command-classifier benchmark with isolated corpus partitions, deterministic and MiniLM baselines, optional checksum-verified FunctionGemma/llama.cpp evaluation, SFT export, and shadow replay. | 5, 6, 10, 11, 15 |
 | 2026-07-26 | Corrected the FunctionGemma benchmark's activation, native-call parsing, and response stop sequence; the controlled rerun rejected the stock Q8 model on accuracy, safety, and latency. | 10, 11, 15 |
+| 2026-07-26 | Added a conservative command-shape gate before MiniLM intent output, removing all four seed safety false commands without reducing held-out accuracy. | 5, 6, 10, 11, 15 |

@@ -330,6 +330,10 @@ impl LinearCommandHead {
         text: &str,
     ) -> Result<CommandPrediction, DetectionError> {
         let mut prediction = self.predict_embedding(embedding)?;
+        if prediction.label.intent != CommandIntent::None && !is_command_shaped(text) {
+            prediction.label = CommandLabel::intent(CommandIntent::None);
+            return Ok(prediction);
+        }
         if prediction.label.intent == CommandIntent::SwitchTranslation {
             prediction.label.translation =
                 translation_in_text(&normalize(text)).map(str::to_string);
@@ -680,6 +684,90 @@ fn contains_phrase(text: &str, phrases: &[&str]) -> bool {
     phrases.iter().any(|phrase| text.contains(phrase))
 }
 
+fn is_command_shaped(text: &str) -> bool {
+    let normalized = normalize(text);
+    if normalized.starts_with("do not ") {
+        return false;
+    }
+    if normalized.starts_with("i do not need ") {
+        return contains_phrase(
+            &normalized,
+            &["projected", "projection", "screen", "output", "display"],
+        );
+    }
+    if matches!(
+        normalized.as_str(),
+        "hide" | "show" | "next" | "previous" | "forward" | "back"
+    ) {
+        return true;
+    }
+
+    let body = [
+        "please ",
+        "could you ",
+        "would you ",
+        "can you ",
+        "could i ",
+        "can i ",
+        "can we ",
+        "let us ",
+        "let the congregation ",
+    ]
+    .iter()
+    .find_map(|prefix| normalized.strip_prefix(prefix))
+    .unwrap_or(&normalized);
+    let has_presentation_target = contains_phrase(
+        body,
+        &[
+            " verse",
+            " scripture",
+            " passage",
+            " screen",
+            " output",
+            " display",
+            " projector",
+            " projected",
+            " projection",
+            " words",
+            " text",
+            " slide",
+            " item",
+            " that",
+            " this",
+            " it ",
+            " it",
+            " one",
+        ],
+    );
+    let has_navigation_target = has_presentation_target
+        || contains_phrase(body, &[" forward", " back", " before", " after", " following"]);
+
+    if [
+        "hide ", "show ", "clear ", "blank ", "take ", "remove ", "put ", "restore ",
+        "display ", "bring ", "see ", "leave ", "have ",
+    ]
+    .iter()
+    .any(|start| body.starts_with(start))
+        && has_presentation_target
+    {
+        return true;
+    }
+    if [
+        "next ", "previous ", "forward ", "back ", "go ", "move ", "continue ", "advance ",
+        "return ", "rewind ",
+    ]
+    .iter()
+    .any(|start| body.starts_with(start))
+        && has_navigation_target
+    {
+        return true;
+    }
+    ["switch ", "change ", "read ", "use "]
+        .iter()
+        .any(|start| body.starts_with(start))
+        && translation_in_text(body).is_some()
+}
+
 fn is_navigation_command(text: &str, phrases: &[&str]) -> bool {
     const COMMAND_STARTS: &[&str] = &[
         "next ",
@@ -809,6 +897,74 @@ mod tests {
         let prediction = head.predict_text(&KeywordEmbedder, "hide").unwrap();
 
         assert_eq!(prediction.label.intent, CommandIntent::Hide);
+    }
+
+    #[test]
+    fn linear_head_abstains_for_declarative_sermon_speech() {
+        let head = LinearCommandHead {
+            dimension: 1,
+            weights: vec![vec![0.0]; CommandIntent::ALL.len()],
+            bias: vec![0.0, 10.0, 0.0, 0.0, 0.0, 0.0],
+            command_threshold: 0.3,
+        };
+
+        let prediction = head
+            .predict_embedding_for_text(&[0.0], "The younger son went back home")
+            .unwrap();
+
+        assert_eq!(prediction.label.intent, CommandIntent::None);
+    }
+
+    #[test]
+    fn linear_head_keeps_explicit_operator_command() {
+        let head = LinearCommandHead {
+            dimension: 1,
+            weights: vec![vec![0.0]; CommandIntent::ALL.len()],
+            bias: vec![0.0, 10.0, 0.0, 0.0, 0.0, 0.0],
+            command_threshold: 0.3,
+        };
+
+        let prediction = head
+            .predict_embedding_for_text(&[0.0], "Please hide the screen")
+            .unwrap();
+
+        assert_eq!(prediction.label.intent, CommandIntent::Hide);
+    }
+
+    fn authored_command_cases() -> Vec<CommandCase> {
+        serde_json::from_str(include_str!(
+            "../../../../data/command-classification/command-cases.json"
+        ))
+        .unwrap()
+    }
+
+    #[test]
+    fn command_shape_gate_accepts_every_held_out_command() {
+        for case in authored_command_cases().iter().filter(|case| {
+            case.split == DatasetSplit::Test && case.expected.intent != CommandIntent::None
+        }) {
+            assert!(
+                is_command_shaped(&case.text),
+                "command-shape gate rejected {}: {}",
+                case.id,
+                case.text
+            );
+        }
+    }
+
+    #[test]
+    fn command_shape_gate_rejects_every_safety_utterance() {
+        for case in authored_command_cases()
+            .iter()
+            .filter(|case| case.split == DatasetSplit::Safety)
+        {
+            assert!(
+                !is_command_shaped(&case.text),
+                "command-shape gate accepted {}: {}",
+                case.id,
+                case.text
+            );
+        }
     }
 
     #[test]
