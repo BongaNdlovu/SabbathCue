@@ -14,7 +14,7 @@ const RUN_NETWORK_TESTS = process.env.RUN_NETWORK_TESTS === "1";
 describe("windows-installer-download", () => {
   it("builds the encoded Cloudflare R2 URL for the current object key", () => {
     expect(buildR2PublicUrl(WINDOWS_INSTALLER_R2_OBJECT_KEY)).toBe(
-      "https://pub-f00266e4b83341dea437c0114752f536.r2.dev/SabbathCue%200.1.9_x64-setup.exe"
+      "https://pub-f00266e4b83341dea437c0114752f536.r2.dev/SabbathCue%20Personal_0.1.9_x64-setup.exe"
     );
   });
 
@@ -22,7 +22,7 @@ describe("windows-installer-download", () => {
     const config = getWindowsInstallerDownloadConfig();
     expect(config.version).toBe("0.1.9");
     expect(config.saveAsFilename).toBe("SabbathCue-Setup.exe");
-    expect(config.objectKey).toBe("SabbathCue 0.1.9_x64-setup.exe");
+    expect(config.objectKey).toBe("SabbathCue Personal_0.1.9_x64-setup.exe");
     expect(config.url).toContain("pub-f00266e4b83341dea437c0114752f536.r2.dev");
     expect(config.url).toContain("0.1.9");
   });
@@ -50,7 +50,9 @@ describe("windows-installer-download", () => {
       if (result.ok) {
         expect(result.bytes).toBeGreaterThanOrEqual(200 * 1024 * 1024);
         expect(result.bytes).toBe(WINDOWS_INSTALLER_EXPECTED_BYTES);
-        expect(result.contentType).toContain("application/octet-stream");
+        expect(result.contentType).toMatch(
+          /application\/(x-msdownload|octet-stream)/
+        );
       }
     },
     30000
