@@ -77,12 +77,19 @@ jobs:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           VITE_ACTIVATION_LEASE_PUBLIC_KEY: ${{ secrets.VITE_ACTIVATION_LEASE_PUBLIC_KEY }}
+          VITE_PADDLE_CLIENT_TOKEN: ${{ secrets.VITE_PADDLE_CLIENT_TOKEN }}
+          VITE_PADDLE_ENV: ${{ secrets.VITE_PADDLE_ENV }}
+          VITE_PADDLE_PRICE_PRO_MONTH: ${{ secrets.VITE_PADDLE_PRICE_PRO_MONTH }}
+          VITE_PADDLE_PRICE_PRO_YEAR: ${{ secrets.VITE_PADDLE_PRICE_PRO_YEAR }}
         run: |
           $missing = @()
           foreach ($name in @(
             "VITE_SUPABASE_URL",
             "VITE_SUPABASE_ANON_KEY",
-            "VITE_ACTIVATION_LEASE_PUBLIC_KEY"
+            "VITE_ACTIVATION_LEASE_PUBLIC_KEY",
+            "VITE_PADDLE_CLIENT_TOKEN",
+            "VITE_PADDLE_ENV",
+            "VITE_PADDLE_PRICE_PRO_MONTH"
           )) {
             if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
               $missing += $name
@@ -232,6 +239,10 @@ jobs:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           VITE_ACTIVATION_LEASE_PUBLIC_KEY: ${{ secrets.VITE_ACTIVATION_LEASE_PUBLIC_KEY }}
+          VITE_PADDLE_CLIENT_TOKEN: ${{ secrets.VITE_PADDLE_CLIENT_TOKEN }}
+          VITE_PADDLE_ENV: ${{ secrets.VITE_PADDLE_ENV }}
+          VITE_PADDLE_PRICE_PRO_MONTH: ${{ secrets.VITE_PADDLE_PRICE_PRO_MONTH }}
+          VITE_PADDLE_PRICE_PRO_YEAR: ${{ secrets.VITE_PADDLE_PRICE_PRO_YEAR }}
         run: bun run tauri:build:release
 
       - name: Generate latest.json for updater
