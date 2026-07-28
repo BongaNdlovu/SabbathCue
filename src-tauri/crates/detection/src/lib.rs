@@ -29,7 +29,9 @@ pub use direct::detector::{is_voice_command_utterance, DirectDetector};
 pub use error::*;
 pub use merger::{AutoQueueCooldown, DetectionMerger, MergedDetection};
 pub use pipeline::DetectionPipeline;
-pub use reading_mode::{ChapterChange, ReadingAdvance, ReadingMode};
+pub use reading_mode::{
+    is_complete_verse_navigation_command, ChapterChange, ReadingAdvance, ReadingMode,
+};
 pub use semantic::detector::SemanticDetector;
 pub use sentence_buffer::SentenceBuffer;
 pub use types::*;

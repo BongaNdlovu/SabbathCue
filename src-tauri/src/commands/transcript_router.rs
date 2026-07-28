@@ -25,6 +25,14 @@ pub struct TranscriptRouteInput<'a> {
 pub struct TranscriptRouter {
     last_partial: Option<String>,
     recent_finals: VecDeque<String>,
+    /// A verse-navigation command was already dispatched from a partial of the
+    /// in-flight utterance; the matching final must not dispatch it again.
+    command_dispatched_on_partial: bool,
+    /// Whether any partial arrived since the last final — distinguishes a
+    /// genuine repeated utterance from a provider re-sending the same final.
+    saw_partial_since_final: bool,
+    /// Normalized text of the immediately preceding final (any kind).
+    last_final: Option<String>,
 }
 
 impl TranscriptRouter {
@@ -57,6 +65,7 @@ impl TranscriptRouter {
         }
 
         if matches!(input.kind, TranscriptEventKind::Partial) {
+            self.saw_partial_since_final = true;
             if self.last_partial.as_deref() == Some(normalized.as_str()) {
                 return TranscriptRoute {
                     emit_transcript: false,
@@ -69,17 +78,45 @@ impl TranscriptRouter {
             // immediately, for any provider, so the verse surfaces before the
             // endpointing pause. (Was deepgram-only.)
             let complete_reference = looks_like_complete_reference(cleaned);
+            // Same fast-path for verse-navigation commands ("next verse"),
+            // dispatched at most once per utterance; the matching final is
+            // consumed instead of advancing a second time.
+            let complete_command = !complete_reference
+                && rhema_detection::is_complete_verse_navigation_command(cleaned);
+            let dispatch_command = complete_command && !self.command_dispatched_on_partial;
+            self.command_dispatched_on_partial = complete_command;
             return TranscriptRoute {
                 emit_transcript: true,
-                authoritative_detection: complete_reference.then(|| cleaned.to_string()),
+                authoritative_detection: (complete_reference || dispatch_command)
+                    .then(|| cleaned.to_string()),
                 suppress_reason: None,
             };
         }
 
         self.last_partial = None;
+        let command_pending = std::mem::take(&mut self.command_dispatched_on_partial);
+        let saw_partial = std::mem::take(&mut self.saw_partial_since_final);
+
+        if rhema_detection::is_complete_verse_navigation_command(cleaned) {
+            // Command finals bypass the 12-deep text dedupe: each spoken
+            // repeat must advance again. A provider re-send (identical final,
+            // no partials in between) is still dropped.
+            if !command_pending && !saw_partial && self.last_final.as_deref() == Some(&normalized) {
+                return suppressed("duplicate_final");
+            }
+            self.last_final = Some(normalized);
+            return TranscriptRoute {
+                emit_transcript: true,
+                authoritative_detection: (!command_pending).then(|| cleaned.to_string()),
+                suppress_reason: command_pending
+                    .then(|| "command_dispatched_on_partial".to_string()),
+            };
+        }
+
         if self.recent_finals.iter().any(|prev| prev == &normalized) {
             return suppressed("duplicate_final");
         }
+        self.last_final = Some(normalized.clone());
         self.recent_finals.push_back(normalized);
         while self.recent_finals.len() > 12 {
             self.recent_finals.pop_front();
@@ -505,6 +542,118 @@ mod tests {
             duplicate.suppress_reason.as_deref(),
             Some("duplicate_final")
         );
+    }
+
+    #[test]
+    fn partial_verse_navigation_command_dispatches_immediately() {
+        let mut router = TranscriptRouter::default();
+        let route = router.route(input(
+            TranscriptEventKind::Partial,
+            "Let's go to the next verse",
+        ));
+
+        assert!(route.emit_transcript);
+        assert_eq!(
+            route.authoritative_detection.as_deref(),
+            Some("Let's go to the next verse")
+        );
+    }
+
+    #[test]
+    fn growing_partial_dispatches_navigation_command_once() {
+        let mut router = TranscriptRouter::default();
+
+        let building = router.route(input(TranscriptEventKind::Partial, "let's go to the"));
+        assert!(building.authoritative_detection.is_none());
+
+        let command = router.route(input(
+            TranscriptEventKind::Partial,
+            "let's go to the next verse",
+        ));
+        assert!(command.authoritative_detection.is_some());
+
+        let grown = router.route(input(
+            TranscriptEventKind::Partial,
+            "let's go to the next verse please",
+        ));
+        assert!(
+            grown.authoritative_detection.is_none(),
+            "same utterance must not dispatch the command twice"
+        );
+    }
+
+    #[test]
+    fn final_matching_dispatched_partial_command_is_consumed() {
+        let mut router = TranscriptRouter::default();
+        router.route(input(
+            TranscriptEventKind::Partial,
+            "let's go to the next verse",
+        ));
+
+        let fin = router.route(input(
+            TranscriptEventKind::Final,
+            "Let's go to the next verse.",
+        ));
+
+        assert!(fin.emit_transcript, "final must still reach the transcript");
+        assert!(
+            fin.authoritative_detection.is_none(),
+            "final must not re-dispatch a command already handled on the partial"
+        );
+    }
+
+    #[test]
+    fn repeated_navigation_command_utterances_each_dispatch() {
+        let mut router = TranscriptRouter::default();
+
+        for cycle in 0..3 {
+            let partial = router.route(input(
+                TranscriptEventKind::Partial,
+                "Let's go to the next verse",
+            ));
+            assert_eq!(
+                partial.authoritative_detection.as_deref(),
+                Some("Let's go to the next verse"),
+                "cycle {cycle}: repeat command must dispatch on its partial"
+            );
+
+            let fin = router.route(input(
+                TranscriptEventKind::Final,
+                "Let's go to the next verse.",
+            ));
+            assert!(fin.emit_transcript, "cycle {cycle}");
+            assert!(fin.authoritative_detection.is_none(), "cycle {cycle}");
+        }
+    }
+
+    #[test]
+    fn final_only_navigation_command_repeats_are_not_text_deduped() {
+        let mut router = TranscriptRouter::default();
+
+        let first = router.route(input(TranscriptEventKind::Final, "Next verse."));
+        assert!(first.authoritative_detection.is_some());
+
+        // A partial from the next utterance separates the two finals.
+        let _ = router.route(input(TranscriptEventKind::Partial, "next"));
+
+        let second = router.route(input(TranscriptEventKind::Final, "Next verse."));
+        assert!(
+            second.authoritative_detection.is_some(),
+            "a repeated spoken command is a new utterance, not a duplicate"
+        );
+    }
+
+    #[test]
+    fn resent_identical_command_final_without_partials_is_suppressed() {
+        let mut router = TranscriptRouter::default();
+
+        let first = router.route(input(TranscriptEventKind::Final, "Next verse."));
+        assert!(first.authoritative_detection.is_some());
+
+        // Same final again with no partial in between = provider re-send.
+        let resent = router.route(input(TranscriptEventKind::Final, "Next verse."));
+        assert_eq!(resent.suppress_reason.as_deref(), Some("duplicate_final"));
+        assert!(resent.authoritative_detection.is_none());
     }
 
     #[test]

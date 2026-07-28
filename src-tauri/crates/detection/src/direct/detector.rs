@@ -694,7 +694,7 @@ struct IncompleteRef {
 /// for a verse completion (e.g., "verse 16"). If no completion arrives,
 /// the chapter-only reference is emitted defaulting to verse 1.
 /// Phrases that indicate the user wants to go back to a previous verse.
-const PREVIOUS_VERSE_PHRASES: &[&str] = &[
+pub(crate) const PREVIOUS_VERSE_PHRASES: &[&str] = &[
     "previous verse",
     "last verse",
     "that verse again",

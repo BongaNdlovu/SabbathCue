@@ -727,6 +727,28 @@ fn is_previous_verse_command(command: &str) -> bool {
     .any(|phrase| contains_command_phrase(command, phrase))
 }
 
+/// True when a transcript already reads as a complete verse-navigation
+/// command ("let's go to the next verse", "go back to the previous verse"),
+/// so the STT router can dispatch it on a *partial* transcript instead of
+/// waiting out the endpointing pause before the final.
+///
+/// Deliberately stricter than [`crate::is_voice_command_utterance`]: the
+/// utterance must contain the word "verse", so bare directionals ("next",
+/// "go back") — common prefixes of ordinary speech — never fire early.
+/// Chapter navigation stays on the final path for the same reason.
+pub fn is_complete_verse_navigation_command(text: &str) -> bool {
+    let normalized = crate::direct::parser::strip_english_filler_words(&normalize_command_text(text));
+    let trimmed = normalized.as_str();
+    if !trimmed.contains("verse") {
+        return false;
+    }
+    is_next_verse_command(trimmed)
+        || is_previous_verse_command(trimmed)
+        || crate::direct::detector::PREVIOUS_VERSE_PHRASES
+            .iter()
+            .any(|phrase| contains_command_phrase(trimmed, phrase))
+}
+
 /// Extract a verse number from text containing "verse N" anywhere.
 ///
 /// Matches phrases like "let's go to verse five", "give me verse 4",
@@ -943,6 +965,36 @@ fn word_overlap(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn complete_verse_navigation_command_matches_next_and_previous_phrases() {
+        assert!(is_complete_verse_navigation_command(
+            "Let's go to the next verse"
+        ));
+        assert!(is_complete_verse_navigation_command("next verse"));
+        assert!(is_complete_verse_navigation_command(
+            "Go back to the previous verse."
+        ));
+        assert!(is_complete_verse_navigation_command("previous verse please"));
+        assert!(is_complete_verse_navigation_command("last verse again"));
+    }
+
+    #[test]
+    fn complete_verse_navigation_command_rejects_prose_references_and_bare_directionals() {
+        // Narration about a verse is not a command.
+        assert!(!is_complete_verse_navigation_command(
+            "the next verse explains the same idea"
+        ));
+        // References belong to the reference fast-path, not the command path.
+        assert!(!is_complete_verse_navigation_command(
+            "genesis chapter 3 verse 15"
+        ));
+        // Bare directionals stay final-only: as partials they are prefixes of
+        // ordinary speech ("next Sunday...", "go back with me to...").
+        assert!(!is_complete_verse_navigation_command("next"));
+        assert!(!is_complete_verse_navigation_command("go back"));
+        assert!(!is_complete_verse_navigation_command("next chapter"));
+    }
 
     fn sample_verses() -> Vec<(i32, String)> {
         vec![
