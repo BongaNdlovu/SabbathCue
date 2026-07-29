@@ -19,6 +19,11 @@ const FTS5_CONFIDENCE_DECAY: f64 = 0.04;
 const FTS5_EXCELLENT_MATCH_RANK: f64 = -24.0;
 const FTS5_EXCELLENT_MATCH_CONFIDENCE: f64 = 0.92;
 
+/// Strong multi-term OR matches may surface for operator review, but broad
+/// evidence alone never earns live confidence.
+const FTS5_STRONG_BROAD_HINT_RANK: f64 = -13.0;
+const FTS5_STRONG_BROAD_HINT_CONFIDENCE: f64 = 0.70;
+
 /// FTS5 results below this confidence are not included.
 const FTS5_MIN_CONFIDENCE: f64 = 0.50;
 
@@ -47,7 +52,10 @@ const LIVE_SEMANTIC_CAP: usize = 5;
 const QUOTE_OVERLAP_MIN_FRACTION: f64 = 0.28;
 const QUOTE_OVERLAP_MIN_MATCHED: usize = 4;
 const QUOTE_OVERLAP_MIN_VERSE_WORDS: usize = 4;
-const QUOTE_OVERLAP_MAX_CONFIDENCE: f64 = 0.92;
+const QUOTE_OVERLAP_FIRE_FRACTION: f64 = 0.56;
+const QUOTE_OVERLAP_FIRE_CONFIDENCE: f64 = 0.90;
+const QUOTE_OVERLAP_MAX_CONFIDENCE: f64 = 0.98;
+const EXACT_QUOTE_MIN_WORDS: usize = 5;
 /// Words shorter than this are too common (the, and, thy, God) to count as
 /// quote evidence either way.
 const QUOTE_OVERLAP_MIN_WORD_LEN: usize = 4;
@@ -197,6 +205,7 @@ impl DetectionPipeline {
             .iter()
             .map(detection_verse_key)
             .collect();
+        let exact_phrase_keys = exact_quote_keys(text, fts_results);
 
         for (rank, fts) in fts_results.iter().enumerate() {
             // Quote-overlap verification: a candidate whose verse text is
@@ -205,10 +214,14 @@ impl DetectionPipeline {
             // Garbled STT breaks phrase/AND tiers, so genuine near-verbatim
             // quotes routinely arrive as keyword-band OR hits.
             let overlap_confidence = quote_overlap_confidence(text, &fts.text);
+            let exact_phrase_confidence = exact_quote_confidence(&exact_phrase_keys, fts);
             let rank_confidence = fts_confidence(rank, fts.rank, fts.is_broad_match);
             let confidence = cap_pastoral_prayer_address_confidence(
                 text,
-                overlap_confidence.map_or(rank_confidence, |overlap| overlap.max(rank_confidence)),
+                overlap_confidence
+                    .into_iter()
+                    .chain(exact_phrase_confidence)
+                    .fold(rank_confidence, f64::max),
             );
             log::debug!(
                 "[DET-SEMANTIC] FTS5 candidate idx={rank} bm25={:.3} {} {}:{} conf={:.0}% overlap={:?}",
@@ -222,7 +235,10 @@ impl DetectionPipeline {
             if confidence < FTS5_MIN_CONFIDENCE {
                 continue;
             }
-            if fts.rank > FTS5_LIVE_RANK_FLOOR && overlap_confidence.is_none() {
+            if fts.rank > FTS5_LIVE_RANK_FLOOR
+                && overlap_confidence.is_none()
+                && exact_phrase_confidence.is_none()
+            {
                 continue;
             }
             let key = (fts.book_number, fts.chapter, fts.verse);
@@ -314,8 +330,57 @@ fn quote_overlap_confidence(fragment: &str, verse_text: &str) -> Option<f64> {
     if fraction < QUOTE_OVERLAP_MIN_FRACTION {
         return None;
     }
-    // 0.28 → ~0.71 (barely-visible hint), 0.56 → ~0.90 (fire), capped 0.92.
-    Some((0.52 + 0.68 * fraction).min(QUOTE_OVERLAP_MAX_CONFIDENCE))
+    // A barely qualifying overlap is a review hint; 0.56 reaches live
+    // confidence. Above that boundary, retain overlap quality up to 0.98 so
+    // the most complete quotation wins deterministic ranking.
+    if fraction <= QUOTE_OVERLAP_FIRE_FRACTION {
+        return Some(0.52 + 0.68 * fraction);
+    }
+    let high_overlap =
+        (fraction - QUOTE_OVERLAP_FIRE_FRACTION) / (1.0 - QUOTE_OVERLAP_FIRE_FRACTION);
+    Some(
+        QUOTE_OVERLAP_FIRE_CONFIDENCE
+            + (QUOTE_OVERLAP_MAX_CONFIDENCE - QUOTE_OVERLAP_FIRE_CONFIDENCE) * high_overlap,
+    )
+}
+
+fn is_exact_quote_fragment(fragment: &str, verse_text: &str) -> bool {
+    let fragment_words = normalized_words(fragment);
+    if fragment_words.len() < EXACT_QUOTE_MIN_WORDS {
+        return false;
+    }
+    let verse_words = normalized_words(verse_text);
+    verse_words
+        .windows(fragment_words.len())
+        .any(|window| window == fragment_words)
+}
+
+fn exact_quote_keys(fragment: &str, fts_results: &[Bm25Result]) -> HashSet<(i32, i32, i32)> {
+    fts_results
+        .iter()
+        .filter(|fts| is_exact_quote_fragment(fragment, &fts.text))
+        .map(|fts| (fts.book_number, fts.chapter, fts.verse))
+        .collect()
+}
+
+fn exact_quote_confidence(
+    exact_phrase_keys: &HashSet<(i32, i32, i32)>,
+    fts: &Bm25Result,
+) -> Option<f64> {
+    exact_phrase_keys
+        .contains(&(fts.book_number, fts.chapter, fts.verse))
+        .then_some(if exact_phrase_keys.len() == 1 {
+            FTS5_EXCELLENT_MATCH_CONFIDENCE
+        } else {
+            0.89
+        })
+}
+
+fn normalized_words(text: &str) -> Vec<String> {
+    text.split(|character: char| !character.is_alphanumeric())
+        .filter(|word| !word.is_empty())
+        .map(str::to_lowercase)
+        .collect()
 }
 
 pub fn content_words(text: &str) -> impl Iterator<Item = String> + '_ {
@@ -329,6 +394,8 @@ fn fts_confidence(rank: usize, bm25_rank: f64, is_broad_match: bool) -> f64 {
     let rank_confidence = FTS5_RANK0_CONFIDENCE - (rank as f64 * FTS5_CONFIDENCE_DECAY);
     if bm25_rank <= FTS5_EXCELLENT_MATCH_RANK && !is_broad_match {
         rank_confidence.max(FTS5_EXCELLENT_MATCH_CONFIDENCE)
+    } else if bm25_rank <= FTS5_STRONG_BROAD_HINT_RANK && is_broad_match {
+        rank_confidence.max(FTS5_STRONG_BROAD_HINT_CONFIDENCE)
     } else {
         // Keyword-band matches keep their honest rank-derived confidence instead
         // of being floored up to a fixed "strong" score. Otherwise scattered
@@ -935,6 +1002,41 @@ mod tests {
     }
 
     #[test]
+    fn quote_overlap_prefers_full_thessalonians_verse_over_shared_opening() {
+        let fragment = "But I would not have you to be ignorant, brethren, concerning them \
+                        which are asleep, that ye sorrow not even as others which have no hope.";
+        let thessalonians = "But I would not have you to be ignorant, brethren, concerning them \
+                            which are asleep, that ye sorrow not, even as others which have no hope.";
+        let corinthians =
+            "Now concerning spiritual gifts, brethren, I would not have you ignorant.";
+
+        let expected = quote_overlap_confidence(fragment, thessalonians).unwrap();
+        let distractor = quote_overlap_confidence(fragment, corinthians).unwrap();
+
+        assert!(
+            expected > distractor,
+            "full verse overlap {expected} must outrank shared opening {distractor}"
+        );
+    }
+
+    #[test]
+    fn quote_overlap_prefers_complete_john_316_over_embedded_john_315() {
+        let fragment = "For God so loved the world that he gave his only begotten son, so that \
+                        whosoever believeth in him should not perish, but have everlasting life.";
+        let john_316 = "For God so loved the world, that he gave his only begotten Son, that \
+                        whosoever believeth in him should not perish, but have everlasting life.";
+        let john_315 = "That whosoever believeth in him should not perish, but have eternal life.";
+
+        let expected = quote_overlap_confidence(fragment, john_316).unwrap();
+        let distractor = quote_overlap_confidence(fragment, john_315).unwrap();
+
+        assert!(
+            expected > distractor,
+            "complete verse overlap {expected} must outrank embedded verse {distractor}"
+        );
+    }
+
+    #[test]
     fn partial_quote_surfaces_as_hint_below_fire_threshold() {
         // Psalm 23:5 half-quoted and garbled ("absence of my enemies"):
         // enough overlap to show the operator a candidate, not enough to air.
@@ -1087,6 +1189,123 @@ mod tests {
         assert!(
             default_hits.is_empty(),
             "default semantic threshold suppresses keyword-band FTS flood"
+        );
+    }
+
+    #[test]
+    fn unique_short_exact_quote_reaches_live_confidence() {
+        let mut pipeline = DetectionPipeline::new();
+        let fts_results = vec![Bm25Result {
+            book_number: 43,
+            book_name: "John".to_string(),
+            chapter: 14,
+            verse: 6,
+            rank: -14.938,
+            is_broad_match: false,
+            text: "Jesus saith unto him, I am the way, the truth, and the life: no man cometh unto the Father, but by me.".to_string(),
+        }];
+
+        let results =
+            pipeline.process_hybrid_with_fts("I am the way the truth and the life", &fts_results);
+        let john = results
+            .iter()
+            .find(|result| result.detection.verse_ref.book_number == 43)
+            .expect("a unique exact quotation must remain visible");
+
+        assert!(
+            john.detection.confidence >= 0.90,
+            "a unique exact quotation must reach live confidence: {john:?}"
+        );
+    }
+
+    #[test]
+    fn unique_exact_quote_survives_the_keyword_rank_floor() {
+        let mut pipeline = DetectionPipeline::new();
+        let fts_results = vec![Bm25Result {
+            book_number: 19,
+            book_name: "Psalms".to_string(),
+            chapter: 46,
+            verse: 10,
+            rank: -12.104,
+            is_broad_match: false,
+            text: "Be still, and know that I am God: I will be exalted among the heathen, I will be exalted in the earth.".to_string(),
+        }];
+
+        let results =
+            pipeline.process_hybrid_with_fts("Be still and know that I am God", &fts_results);
+
+        assert!(
+            results.iter().any(|result| {
+                result.detection.verse_ref.book_number == 19
+                    && result.detection.verse_ref.chapter == 46
+                    && result.detection.verse_ref.verse_start == 10
+                    && result.detection.confidence >= 0.90
+            }),
+            "exact contiguous evidence must supersede the keyword-only rank floor: {results:?}"
+        );
+    }
+
+    #[test]
+    fn exact_phrase_shared_by_multiple_verses_stays_below_live_confidence() {
+        let mut pipeline = DetectionPipeline::new();
+        let fts_results = vec![
+            Bm25Result {
+                book_number: 43,
+                book_name: "John".to_string(),
+                chapter: 14,
+                verse: 1,
+                rank: -18.209,
+                is_broad_match: false,
+                text: "Let not your heart be troubled: ye believe in God, believe also in me."
+                    .to_string(),
+            },
+            Bm25Result {
+                book_number: 43,
+                book_name: "John".to_string(),
+                chapter: 14,
+                verse: 27,
+                rank: -14.976,
+                is_broad_match: false,
+                text: "Peace I leave with you, my peace I give unto you: not as the world giveth, give I unto you. Let not your heart be troubled, neither let it be afraid.".to_string(),
+            },
+        ];
+
+        let results =
+            pipeline.process_hybrid_with_fts("Let not your heart be troubled", &fts_results);
+
+        assert!(
+            results
+                .iter()
+                .all(|result| result.detection.confidence < 0.90),
+            "an exact phrase shared by multiple verses needs operator review: {results:?}"
+        );
+    }
+
+    #[test]
+    fn strong_broad_paraphrase_surfaces_only_as_review_hint() {
+        let mut pipeline = DetectionPipeline::new();
+        let fts_results = vec![Bm25Result {
+            book_number: 42,
+            book_name: "Luke".to_string(),
+            chapter: 10,
+            verse: 2,
+            rank: -20.460,
+            is_broad_match: true,
+            text: "Then he said to them, The harvest is indeed plentiful, but the laborers are few. Pray therefore to the Lord of the harvest, that he may send out laborers into his harvest.".to_string(),
+        }];
+
+        let results = pipeline.process_hybrid_with_fts(
+            "Is the harvest ready? What is the problem? The laborers. The harvest is all around us.",
+            &fts_results,
+        );
+        let luke = results
+            .iter()
+            .find(|result| result.detection.verse_ref.book_number == 42)
+            .expect("a strong broad match must remain visible for operator review");
+
+        assert!(
+            (0.70..0.90).contains(&luke.detection.confidence),
+            "a broad paraphrase is a review hint, not a live fire: {luke:?}"
         );
     }
 }

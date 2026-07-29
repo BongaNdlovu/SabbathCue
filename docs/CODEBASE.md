@@ -1,5 +1,5 @@
 # Codebase Map - SabbathCue
-Created: 2026-07-12 - Last verified: 2026-07-26 - Confidence: Medium
+Created: 2026-07-12 - Last verified: 2026-07-29 - Confidence: Medium
 
 ## 0 - Snapshot
 | Field | Value |
@@ -75,7 +75,7 @@ Core modules:
 | Collected detections store | src/stores/collected-detections-store.ts:48 | Session-scoped reuse list of presented/queued detections | Detections panel |
 | Detection actions | src/components/panels/detections-panel.tsx:144 | Shared preview/present/queue closures for detection types | Detection cards, latest bar, collection UI |
 | Direct scripture scope | src-tauri/crates/detection/src/direct/context.rs:3, src-tauri/crates/detection/src/direct/detector.rs:674 | Keeps the active book/chapter until another resolved citation replaces it and promotes explicit in-scope verse phrases as direct citations | Live STT scripture detection |
-| Verse ranking and calibration | src-tauri/crates/detection/src/semantic/detector.rs:128, src-tauri/crates/detection/src/bin/detection_accuracy.rs:577 | Keeps internal rank evidence separate from displayed match strength and evaluates production Auto selection | Live STT detection, frontend detection workflow, desktop CI |
+| Verse ranking and calibration | src-tauri/crates/detection/src/semantic/detector.rs:128, src-tauri/crates/detection/src/pipeline.rs:173, src-tauri/crates/detection/src/bin/detection_accuracy.rs:607 | Keeps rank evidence separate from displayed match strength, distinguishes unique exact quotes from ambiguous shared phrases, surfaces strong broad matches only for review, and evaluates policy-aware Auto selection | Live STT detection, frontend detection workflow, desktop CI |
 | Command-classifier experiment | src-tauri/crates/detection/src/command_eval.rs:1, src-tauri/crates/detection/src/bin/command_benchmark.rs:1 | Compares deterministic rules with a trained MiniLM linear head against isolated quality/safety partitions without executing commands | Developer benchmark and shadow replay only |
 | Theme catalog page | src/components/broadcast/KineticThemesPage.tsx:132 | User-facing Themes workspace with static and kinetic columns | Workspace nav |
 | Quick search helper | src/lib/quick-search.ts:167 | Prefix-safe ghost suggestion suffix | Preview and Search quick inputs |
@@ -235,6 +235,16 @@ Partial/final STT events enqueue semantic jobs with provider confidence
 Hybrid vector/FTS detection preserves ensemble evidence as rank_score
   -> src-tauri/crates/detection/src/semantic/detector.rs:128
   -> src-tauri/crates/detection/src/types.rs:37
+Unique contiguous quotations can reach live confidence, shared exact phrases stay
+below live, and strong broad FTS paraphrases stop at the operator-review boundary
+  -> src-tauri/crates/detection/src/pipeline.rs:173
+  -> src-tauri/crates/detection/src/pipeline.rs:346
+High-overlap quote confidence retains lexical-completeness differences above the
+live boundary so a full verse outranks a shorter embedded quotation
+  -> src-tauri/crates/detection/src/pipeline.rs:313
+Direct references are checked against canonical chapter and verse bounds, and
+previous-verse navigation requires short or explicitly commanded speech
+  -> src-tauri/crates/detection/src/direct/detector.rs:276
 Low-confidence STT keeps suggestions visible but caps them below Auto-live
   -> src-tauri/src/commands/stt/live_session.rs:508
 Frontend prefers direct hits; semantic hits below 95% require repeated confirmation
@@ -269,13 +279,16 @@ Explicit f32/q8 inputs gate ranking agreement, drift, load, and search latency
 ### Flow: direct sermon-passage continuation
 ```text
 A fully resolved spoken reference establishes the active book/chapter
-  -> src-tauri/crates/detection/src/direct/detector.rs:1092
+  -> src-tauri/crates/detection/src/direct/detector.rs:1196
 The active passage has no wall-clock expiry; another resolved citation displaces it
   -> src-tauri/crates/detection/src/direct/context.rs:26
 An explicit later "verse N" or "chapter N verse M" fills missing fields from that scope
-  -> src-tauri/crates/detection/src/direct/detector.rs:1223
+  -> src-tauri/crates/detection/src/direct/detector.rs:1356
+A different explicitly named book anywhere in the fragment preempts stale pending
+continuation context before its chapter/verse is parsed
+  -> src-tauri/crates/detection/src/direct/detector.rs:971
 The resolved phrase remains a DirectReference and clears the 90% Live threshold
-  -> src-tauri/crates/detection/src/direct/detector.rs:674
+  -> src-tauri/crates/detection/src/direct/detector.rs:1436
 Common prose words that collide with fuzzy book names are rejected before parsing
   -> src-tauri/crates/detection/src/direct/fuzzy.rs:50
 ```
@@ -582,7 +595,7 @@ CI/CD & deployment: not fully mapped in this pass. See open questions.
 | Removed Gladia remains as a compatibility error branch and settings migration only. | maintainability | watch | src-tauri/src/commands/stt/provider.rs:95, src/stores/settings-store.ts:105 |
 | Theme workspace id remains `kinetic-themes` while label is "Themes" to avoid persisted-state migration. | maintainability | watch | src/components/broadcast/KineticThemesPage.tsx:170, src/lib/dashboard-workspace-nav.ts:69 |
 | Collected detections are intentionally session-only and capped at 50. | product behavior | healthy | src/stores/collected-detections-store.ts:25, src/stores/collected-detections-store.ts:85 |
-| Full-model accuracy is CI-gated, but the curated corpus is not a substitute for a held-out multi-church audio corpus. | detection quality | watch | src-tauri/crates/detection/src/bin/detection_accuracy.rs:1, .github/workflows/desktop-ci.yml:184 |
+| Full-model accuracy is CI-gated with explicit fire, review-hint, safe-abstention, and silent expectations, but the curated corpus is not a substitute for a held-out multi-church audio corpus. | detection quality | watch | src-tauri/crates/detection/src/bin/detection_accuracy.rs:1, .github/workflows/desktop-ci.yml:184 |
 | Runtime performance metrics begin when ranked candidates reach the frontend; true speech-to-result latency still requires timestamped provider audio fixtures. | detection quality | watch | src/lib/detection-profiler.ts:28 |
 | The command-classifier training corpus now includes deterministic synthetic sermon transcripts, but synthetic text cannot represent real microphones, accents, speakers, congregations, or STT behavior; the gated MiniLM head remains intentionally disconnected from command execution until tested on held-out multi-church transcripts. | command classification | watch | docs/minilm-command-benchmark.md:1, src-tauri/crates/detection/src/bin/command_benchmark.rs:1 |
 | The installer still bundles the offline Vosk model and complete content database; moving either to first-run delivery remains gated on product, hosting, and signing decisions. | installer size | watch | docs/superpowers/plans/2026-07-26-installer-size-and-performance.md |
@@ -638,3 +651,5 @@ Top risks (ranked): 1. STT provider removal can leave stale docs or tests if his
 | 2026-07-26 | Added a non-executing command-classifier benchmark with isolated corpus partitions, deterministic and MiniLM baselines, and shadow replay. | 5, 6, 10, 11, 15 |
 | 2026-07-26 | Added a conservative command-shape gate before MiniLM intent output, removing all four seed safety false commands without reducing held-out accuracy. | 5, 6, 10, 11, 15 |
 | 2026-07-26 | Added 100 deterministic synthetic sermon transcripts with speaker-isolated training/validation sampling, improved the authored held-out MiniLM result to 83.3% accuracy and 77.8% macro-F1 with zero safety false commands, and removed the abandoned external-model prototype. | 5, 6, 10, 11, 15 |
+| 2026-07-29 | Made unique short exact quotations live-eligible, kept shared exact phrases and strong broad paraphrases review-only, and made the 204-case benchmark distinguish fire, hint, safe abstention, and silence. | 5, 6, 10, 11, 15 |
+| 2026-07-29 | Preserved high-overlap quote quality for deterministic verse ranking, made explicitly named books preempt stale pending context, and expanded the permanent Auto Live corpus with a 30-case blessed-hope sermon. | 6, 10, 11, 15 |

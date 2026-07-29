@@ -91,7 +91,7 @@
   {
     "language": "en",
     "category": "sovereignty-direct",
-    "mode": "fire",
+    "mode": "hint",
     "text": "In Daniel chapter one, by the way, now I want us to look at this text. Can you just throw this text on the screen, if you don't mind?",
     "expected": "Daniel 1:1"
   },
@@ -189,16 +189,16 @@
   {
     "language": "en",
     "category": "sovereignty-quote",
-    "mode": "hint",
+    "mode": "fire",
     "text": "You, his son, Belshazzar, you have not humbled your heart, even though you knew all that. The God in whose hand are your life breath and all your ways you have not glorified.",
-    "expectedAny": ["Daniel 5:22", "Daniel 5:23"]
+    "expectedAny": ["Daniel 5:23", "Daniel 5:22"]
   },
   {
     "language": "en",
     "category": "sovereignty-hint",
     "mode": "hint",
     "text": "He says young people, do everything you want to do. Take it all in. But remember that you must give an account to God for everything you do.",
-    "expected": "Ecclesiastes 11:9"
+    "expectedAny": ["Ecclesiastes 11:9", "Romans 14:12", "Hebrews 4:13"]
   },
   {
     "language": "en",
@@ -218,5 +218,745 @@
     "category": "sovereignty-noise",
     "mode": "silent",
     "text": "It's Father's Day tomorrow. These fathers have made choices. The kids were here this morning giving them presents. Thanking them for their presents."
+  },
+
+  {
+    "language": "en",
+    "category": "great-controversy-direct",
+    "mode": "fire",
+    "text": "If you have your Bibles, you must have read together when we were reading Revelation 12, 7 to 12. Revelation 12, 7 to 12.",
+    "expected": "Revelation 12:7-12"
+  },
+  {
+    "language": "en",
+    "category": "great-controversy-direct",
+    "mode": "fire",
+    "text": "Romans 8 28, it says, and we know that for those who love God, all things, including the great controversy, work together for good.",
+    "expected": "Romans 8:28"
+  },
+  {
+    "language": "en",
+    "category": "great-controversy-direct",
+    "mode": "fire",
+    "text": "In other words Revelation 12,7 is before before even Genesis 1 even before the creation of Adam and Eve.",
+    "expected": "Revelation 12:7"
+  },
+  {
+    "language": "en",
+    "category": "great-controversy-direct",
+    "mode": "fire",
+    "text": "But then we see the devil now chasing the church as we read in Revelation 12, 11 and the Bible says they overcame him.",
+    "expected": "Revelation 12:11"
+  },
+  {
+    "language": "en",
+    "category": "great-controversy-direct",
+    "mode": "fire",
+    "text": "In Daniel 7, 24, we read he defied, he defied the most high. He had a problem with the most high.",
+    "expected": "Daniel 7:24"
+  },
+  {
+    "language": "en",
+    "category": "great-controversy-direct",
+    "mode": "fire",
+    "text": "And then in Revelation 12, 17, he makes war with the remnant that keeps God's commandments.",
+    "expected": "Revelation 12:17"
+  },
+  {
+    "language": "en",
+    "category": "great-controversy-direct",
+    "mode": "fire",
+    "text": "You see Christ says in John 10, 10 I came that they might have life and have it in its abundance.",
+    "expected": "John 10:10"
+  },
+  {
+    "language": "en",
+    "category": "great-controversy-direct",
+    "mode": "fire",
+    "text": "He says now John 12, 31 and 32 now is the time for judgment of this world, on this world. Now the prince of this world will be driven out.",
+    "expected": "John 12:31-32"
+  },
+  {
+    "language": "en",
+    "category": "great-controversy-direct",
+    "mode": "fire",
+    "text": "So we argue that and Peter in Peter 1st Peter 3.15 he says be prepared to give an answer to everyone who asks you to give the reason for the hope that you have.",
+    "expected": "1 Peter 3:15"
+  },
+  {
+    "language": "en",
+    "category": "great-controversy-direct",
+    "mode": "fire",
+    "text": "Which now and then is reflected in 2nd Corinthians 10.5 one of my favorite verses. We destroy every proud obstacle that keeps people from knowing God.",
+    "expected": "2 Corinthians 10:5"
+  },
+  {
+    "language": "en",
+    "category": "great-controversy-direct",
+    "mode": "fire",
+    "text": "You remember in Matthew 8 29 he says to Christ what do you want with our son of God? They shouted.",
+    "expected": "Matthew 8:29"
+  },
+  {
+    "language": "en",
+    "category": "great-controversy-asr",
+    "mode": "hint",
+    "text": "The Bible says in Matthew 25 45 41 was prepared for the devil and his angels.",
+    "expected": "Matthew 25:41",
+    "forbidden": ["Matthew 25:45"]
+  },
+  {
+    "language": "en",
+    "category": "great-controversy-direct",
+    "mode": "fire",
+    "text": "But remember as Paul says in Romans 8 18 I consider that the sufferings of this present time are not worth comparing with the glory that is going to be revealed to us.",
+    "expected": "Romans 8:18"
+  },
+  {
+    "language": "en",
+    "category": "great-controversy-quote",
+    "mode": "fire",
+    "text": "And so we read in Isaiah 14 where it says that he says, quoting him, I will ascend above the tops of the clouds. I will make myself like the most high.",
+    "expected": "Isaiah 14:14"
+  },
+  {
+    "language": "en",
+    "category": "great-controversy-noise",
+    "mode": "silent",
+    "text": "You cannot say it was a proxy war because the devil also was involved in this war. The number 12, not 14, also indicates completeness, that every single angel was involved in this controversy."
+  },
+  {
+    "language": "en",
+    "category": "great-controversy-noise",
+    "mode": "silent",
+    "text": "I lost my dad almost 20 years ago and I found myself once in a while crying. I said hey don't cry you are too old but once in a while you just have a tear."
+  },
+  {
+    "language": "en",
+    "category": "great-controversy-noise",
+    "mode": "silent",
+    "text": "Listen to what Ellen G. White says in Desire for Ages page 762 when she references this pointing to the cross."
+  },
+
+  {
+    "language": "en",
+    "category": "words-sermon-direct",
+    "mode": "fire",
+    "text": "The Bible tells us, Proverbs 18, 21, death and life are in the power of the tongue.",
+    "expected": "Proverbs 18:21"
+  },
+  {
+    "language": "en",
+    "category": "words-sermon-direct",
+    "mode": "fire",
+    "text": "You read there in Psalm 33, verse 6, by the word of the Lord, the heavens were made, and all the host of them by the breath of His mouth.",
+    "expected": "Psalms 33:6"
+  },
+  {
+    "language": "en",
+    "category": "words-sermon-direct",
+    "mode": "fire",
+    "text": "Speaking of Jesus, Luke chapter 4 verse 22, So all bore witness to Him, and they marveled at the gracious words that proceeded out of His mouth.",
+    "expected": "Luke 4:22"
+  },
+  {
+    "language": "en",
+    "category": "words-sermon-direct",
+    "mode": "fire",
+    "text": "Proverbs 25, 11, A word fitly spoken is like apples of gold in settings of silver.",
+    "expected": "Proverbs 25:11"
+  },
+  {
+    "language": "en",
+    "category": "words-sermon-direct",
+    "mode": "fire",
+    "text": "Isaiah 50 verse 4, The Lord God has given me the tongue of the learned, that I should know how to speak a word in season to him that is weary.",
+    "expected": "Isaiah 50:4"
+  },
+  {
+    "language": "en",
+    "category": "words-sermon-direct",
+    "mode": "fire",
+    "text": "1 Peter 3 verse 10, For he who would love life and see good days, let him refrain his tongue from evil and his lips from speaking deceit.",
+    "expected": "1 Peter 3:10"
+  },
+  {
+    "language": "en",
+    "category": "words-sermon-direct",
+    "mode": "fire",
+    "text": "Go with me in your Bibles to Ecclesiastes chapter 5, verse 1.",
+    "expected": "Ecclesiastes 5:1"
+  },
+  {
+    "language": "en",
+    "category": "words-sermon-direct",
+    "mode": "fire",
+    "text": "Matthew chapter 6 verse 7. And when you pray, do not use vain repetitions as the heathen do.",
+    "expected": "Matthew 6:7"
+  },
+  {
+    "language": "en",
+    "category": "words-sermon-direct",
+    "mode": "fire",
+    "text": "Job 19, verse 1 and 2, Job answered and said, how long will you torment my soul and break me in pieces with your words.",
+    "expected": "Job 19:1-2"
+  },
+  {
+    "language": "en",
+    "category": "words-sermon-direct",
+    "mode": "fire",
+    "text": "1 Peter 2, verse 1 and 2, laying aside all malice, all deceit, hypocrisy, envy, all evil speaking, as newborn babes desire the pure milk of the word.",
+    "expected": "1 Peter 2:1-2"
+  },
+  {
+    "language": "en",
+    "category": "words-sermon-direct",
+    "mode": "fire",
+    "text": "Leviticus 19,16 Moses said, you shall not go up and down as a tail bearer among your people.",
+    "expected": "Leviticus 19:16"
+  },
+  {
+    "language": "en",
+    "category": "words-sermon-direct",
+    "mode": "fire",
+    "text": "Ecclesiastes 7.21, Do not take to heart everything people say, lest you hear your servant cursing you.",
+    "expected": "Ecclesiastes 7:21"
+  },
+  {
+    "language": "en",
+    "category": "words-sermon-direct",
+    "mode": "fire",
+    "text": "Proverbs 26.4 and 5, Do not answer a fool according to his folly, lest you be like him. Answer a fool according to his folly, lest he is wise in his own eyes.",
+    "expected": "Proverbs 26:4-5"
+  },
+  {
+    "language": "en",
+    "category": "words-sermon-contextual",
+    "mode": "fire",
+    "text": "Numbers 14, God says to them, verse 28, as I live says the Lord, just as you have spoken in my hearing, so will I do to you.",
+    "expected": "Numbers 14:28"
+  },
+  {
+    "language": "en",
+    "category": "words-sermon-direct",
+    "mode": "fire",
+    "text": "Ephesians 4 29 let no corrupt word proceed from your mouth, but what is good and necessary for edification, that it, your words, may impart grace to the hearers.",
+    "expected": "Ephesians 4:29"
+  },
+  {
+    "language": "en",
+    "category": "words-sermon-direct",
+    "mode": "fire",
+    "text": "John 6, 68, when Jesus said, are you going to go somewhere else? They said, Lord, to whom will we go? You have the words of eternal life.",
+    "expected": "John 6:68"
+  },
+  {
+    "language": "en",
+    "category": "words-sermon-quote",
+    "mode": "fire",
+    "text": "And the tongue is a fire, a world of iniquity. The tongue is so set among our members that it defiles the whole body.",
+    "expected": "James 3:6"
+  },
+  {
+    "language": "en",
+    "category": "words-sermon-quote",
+    "mode": "fire",
+    "text": "But no man can tame the tongue. It is an unruly evil full of deadly poison.",
+    "expected": "James 3:8"
+  },
+  {
+    "language": "en",
+    "category": "words-sermon-noise",
+    "mode": "silent",
+    "text": "A woman in one day speaks approximately 16,250 words. Males speak 15,699. He says, you guys speak 500 more words than we do."
+  },
+  {
+    "language": "en",
+    "category": "words-sermon-noise",
+    "mode": "silent",
+    "text": "The most deadly animal in the world is a mosquito. It kills 2.7 million people every year. Just a little mosquito."
+  },
+  {
+    "language": "en",
+    "category": "words-sermon-noise",
+    "mode": "silent",
+    "text": "The parrot may outlive them, may last for years, you know, they can live 70 years."
+  },
+
+  {
+    "language": "en",
+    "category": "uniform-sermon-direct",
+    "mode": "fire",
+    "text": "Psalm 100 verse 5, for the Lord is good. His mercy is everlasting, and his truth endureth to all generations.",
+    "expected": "Psalms 100:5"
+  },
+  {
+    "language": "en",
+    "category": "uniform-sermon-direct",
+    "mode": "fire",
+    "text": "Jeremiah chapter one, verse nine, then the Lord put forth his hand and touched my mouth.",
+    "expected": "Jeremiah 1:9"
+  },
+  {
+    "language": "en",
+    "category": "uniform-sermon-asr",
+    "mode": "hint",
+    "text": "Isaiah 118, Come now, let us reason together, says the Lord.",
+    "expected": "Isaiah 1:18"
+  },
+  {
+    "language": "en",
+    "category": "uniform-sermon-direct",
+    "mode": "fire",
+    "text": "Matthew 28, reading from verse 18, the Great Gospel Commission.",
+    "expected": "Matthew 28:18"
+  },
+  {
+    "language": "en",
+    "category": "uniform-sermon-direct",
+    "mode": "fire",
+    "text": "John 17, verse 14. I have given them thy word and the world has hated them.",
+    "expected": "John 17:14"
+  },
+  {
+    "language": "en",
+    "category": "uniform-sermon-contextual",
+    "mode": "fire",
+    "text": "Verse 15. I pray not that thou shouldst take them out of the world, but that thou shouldst keep them from the evil.",
+    "expected": "John 17:15"
+  },
+  {
+    "language": "en",
+    "category": "uniform-sermon-direct",
+    "mode": "fire",
+    "text": "Romans 12, let's read from verse 1. I beseech you therefore brethren, by the mercies of God.",
+    "expected": "Romans 12:1"
+  },
+  {
+    "language": "en",
+    "category": "uniform-sermon-direct",
+    "mode": "fire",
+    "text": "Second Corinthians 6, reading from verse 14, go with me.",
+    "expected": "2 Corinthians 6:14"
+  },
+  {
+    "language": "en",
+    "category": "uniform-sermon-direct",
+    "mode": "fire",
+    "text": "Before we go to Second Corinthians 6, let's go to Second Timothy 4. We read verse 9 and verse 10.",
+    "expected": "2 Timothy 4:9"
+  },
+  {
+    "language": "en",
+    "category": "uniform-sermon-contextual",
+    "mode": "hint",
+    "text": "Read verse 10, for Demas hath forsaken me, having loved this present world.",
+    "expected": "2 Timothy 4:10"
+  },
+  {
+    "language": "en",
+    "category": "uniform-sermon-direct",
+    "mode": "fire",
+    "text": "Galatians 1, reading from verse 1, our subject, serving God in Satan's uniform.",
+    "expected": "Galatians 1:1"
+  },
+  {
+    "language": "en",
+    "category": "uniform-sermon-direct",
+    "mode": "fire",
+    "text": "Go to Titus chapter 2. Teaching us, verse 12, that denying ungodliness and worldly lusts, we should live soberly, righteously, godly, in this present world.",
+    "expected": "Titus 2:12"
+  },
+  {
+    "language": "en",
+    "category": "uniform-sermon-direct",
+    "mode": "fire",
+    "text": "Pray and say, open thou mine eyes, Psalm 119 verse 18, that I may behold wondrous things out of thy law.",
+    "expected": "Psalms 119:18"
+  },
+  {
+    "language": "en",
+    "category": "uniform-sermon-direct",
+    "mode": "fire",
+    "text": "Now, let's read from verse 25 of Ephesians 5. Husbands, love your wives, even as Christ also loved the church and gave himself for it.",
+    "expected": "Ephesians 5:25"
+  },
+  {
+    "language": "en",
+    "category": "uniform-sermon-direct",
+    "mode": "fire",
+    "text": "John 16, 13. When he, the Spirit of truth, is come, he will guide you into all truth.",
+    "expected": "John 16:13"
+  },
+  {
+    "language": "en",
+    "category": "uniform-sermon-direct",
+    "mode": "fire",
+    "text": "Father, Jesus said in John 6, verse 70, have I not chosen you twelve? One of you is a devil.",
+    "expected": "John 6:70"
+  },
+  {
+    "language": "en",
+    "category": "uniform-sermon-quote",
+    "mode": "fire",
+    "text": "By the word of the Lord were the heavens made, and all the host of them by the breath of his mouth.",
+    "expected": "Psalms 33:6"
+  },
+  {
+    "language": "en",
+    "category": "uniform-sermon-quote",
+    "mode": "fire",
+    "text": "For he spake, and it was done. He commanded, and it stood fast.",
+    "expected": "Psalms 33:9"
+  },
+  {
+    "language": "en",
+    "category": "uniform-sermon-quote",
+    "mode": "fire",
+    "text": "For by him were all things created, that are in heaven and that are in earth, visible and invisible. All things were created by him and for him.",
+    "expected": "Colossians 1:16"
+  },
+  {
+    "language": "en",
+    "category": "uniform-sermon-noise",
+    "mode": "silent",
+    "text": "A generator will come on at 8. I'll try to finish by 8 and see what the Holy Ghost says to me."
+  },
+  {
+    "language": "en",
+    "category": "uniform-sermon-noise",
+    "mode": "silent",
+    "text": "The Great Controversy page 509, paragraph 1. Conformity to worldly customs converts the church to the world."
+  },
+  {
+    "language": "en",
+    "category": "uniform-sermon-noise",
+    "mode": "silent",
+    "text": "You do that 15 minutes in the morning, 15 in the evening, 3 weeks, you will be a different person."
+  },
+  {
+    "language": "en",
+    "category": "no-condemnation-noise",
+    "mode": "silent",
+    "text": "I'm going to make use of this stool. By chance, is anyone here an avid rock climber? Any avid bird watchers?"
+  },
+  {
+    "language": "en",
+    "category": "no-condemnation-noise",
+    "mode": "silent",
+    "text": "The dates are there November 10 to 18. If you'd like to go to Turkey, this will be a great tour."
+  },
+  {
+    "language": "en",
+    "category": "no-condemnation-noise",
+    "mode": "silent",
+    "text": "This is about what you normally get, around 10 percent of people will self identify as car people."
+  },
+  {
+    "language": "en",
+    "category": "no-condemnation-chapter",
+    "mode": "abstain",
+    "text": "We'll be taking a look at the book of Romans, and we'll be in chapter eight.",
+    "expected": "Romans 8"
+  },
+  {
+    "language": "en",
+    "category": "no-condemnation-direct",
+    "mode": "fire",
+    "text": "Romans chapter eight, we're going to look at verse one.",
+    "expected": "Romans 8:1"
+  },
+  {
+    "language": "en",
+    "category": "no-condemnation-quote",
+    "mode": "fire",
+    "text": "There is therefore now no condemnation for those who are in Christ Jesus, who do not walk according to the flesh, but according to the spirit.",
+    "expected": "Romans 8:1"
+  },
+  {
+    "language": "en",
+    "category": "no-condemnation-contextual",
+    "mode": "hint",
+    "text": "We come to verse 34 and Paul returns to the theme of condemnation. Who is going to condemn? It is the Messiah Jesus who has died, or rather that has been raised.",
+    "expected": "Romans 8:34"
+  },
+  {
+    "language": "en",
+    "category": "no-condemnation-contextual",
+    "mode": "hint",
+    "text": "Next slide, verse 35. Who shall separate us from the Messiah's love?",
+    "expected": "Romans 8:35"
+  },
+  {
+    "language": "en",
+    "category": "no-condemnation-contextual",
+    "mode": "fire",
+    "text": "Then in verse 36, he quotes from Psalm 44, as the Bible says, because of you, we are being killed all day long. We are regarded as sheep destined for the slaughter.",
+    "expectedAny": [
+      "Romans 8:36",
+      "Psalms 44:22"
+    ]
+  },
+  {
+    "language": "en",
+    "category": "no-condemnation-chapter",
+    "mode": "abstain",
+    "text": "The last time I preached this message, I actually went to Psalm 44, which Paul quotes from here.",
+    "expected": "Psalms 44"
+  },
+  {
+    "language": "en",
+    "category": "no-condemnation-contextual",
+    "mode": "hint",
+    "text": "Then verse 37. No, in all these things, we are completely victorious through the one who loved us.",
+    "expected": "Romans 8:37"
+  },
+  {
+    "language": "en",
+    "category": "no-condemnation-quote",
+    "mode": "fire",
+    "text": "Yet in all these things we are more than conquerors through him who loved us.",
+    "expected": "Romans 8:37"
+  },
+  {
+    "language": "en",
+    "category": "no-condemnation-contextual",
+    "mode": "abstain",
+    "text": "Verse 38. Now Paul finally says, as we're to the second to last verse, I am persuaded.",
+    "expected": "Romans 8:38"
+  },
+  {
+    "language": "en",
+    "category": "no-condemnation-quote",
+    "mode": "hint",
+    "text": "Neither death, nor life, nor angels, nor rulers, nor the present, nor the future, nor the powers, nor the height, nor the depth, nor anything else in all of creation will be able to separate us from the love of God in Messiah Jesus our Lord.",
+    "expectedAny": [
+      "Romans 8:38-39",
+      "Romans 8:38",
+      "Romans 8:39"
+    ]
+  },
+  {
+    "language": "en",
+    "category": "no-condemnation-chapter",
+    "mode": "abstain",
+    "text": "Paul was in Acts chapter 16, stripped before the authorities in Philippi and then beaten.",
+    "expected": "Acts 16"
+  },
+  {
+    "language": "en",
+    "category": "no-condemnation-noise",
+    "mode": "silent",
+    "text": "Paul moves from the seven events to the ten. Sevenness and tenness means complete."
+  },
+  {
+    "language": "en",
+    "category": "blessed-hope-noise",
+    "mode": "silent",
+    "text": "We're working towards a major evangelistic series in Baltimore later this year as part of Pentecost 2025.",
+    "forbidden": ["Psalms 20:25"]
+  },
+  {
+    "language": "en",
+    "category": "blessed-hope-noise",
+    "mode": "silent",
+    "text": "It was May 29, 1953, when a beekeeper from New Zealand stood atop Mount Everest. At 29,032 feet tall, almost 9,000 meters, there's only one third as much oxygen.",
+    "forbidden": ["Matthew 29:19", "Matthew 29:53"]
+  },
+  {
+    "language": "en",
+    "category": "blessed-hope-noise",
+    "mode": "silent",
+    "text": "At the Seventh-day Adventist Church's annual council in 1978, it was held in Tacoma Park, Maryland.",
+    "forbidden": ["Acts 19:78"]
+  },
+  {
+    "language": "en",
+    "category": "blessed-hope-noise",
+    "mode": "silent",
+    "text": "In 1993, GC Ministerial produced a book on preaching called Preaching to the Times. It was written by Charles Bradford.",
+    "forbidden": ["Isaiah 19:93"]
+  },
+  {
+    "language": "en",
+    "category": "blessed-hope-noise",
+    "mode": "silent",
+    "text": "In the chaos her 8 year old son cried out. Both of her legs were amputated, one slightly below the knee and one above.",
+    "forbidden": ["Luke 8:1"]
+  },
+  {
+    "language": "en",
+    "category": "blessed-hope-direct",
+    "mode": "fire",
+    "text": "I invite you to turn with me to 1 Thessalonians 4. 1 Thessalonians chapter 4, I'll pick it up in verse 13.",
+    "expected": "1 Thessalonians 4:13"
+  },
+  {
+    "language": "en",
+    "category": "blessed-hope-contextual",
+    "mode": "fire",
+    "text": "But I would not have you to be ignorant, brethren, concerning them which are asleep, that ye sorrow not even as others which have no hope.",
+    "expected": "1 Thessalonians 4:13"
+  },
+  {
+    "language": "en",
+    "category": "blessed-hope-contextual",
+    "mode": "fire",
+    "text": "For if we believe that Jesus died and rose again, even so, them also which sleep in Jesus will God bring with Him.",
+    "expected": "1 Thessalonians 4:14"
+  },
+  {
+    "language": "en",
+    "category": "blessed-hope-contextual",
+    "mode": "fire",
+    "text": "For this we say to you by the word of the Lord, that we which are alive and remain unto the coming of the Lord shall not go before them which are asleep.",
+    "expected": "1 Thessalonians 4:15"
+  },
+  {
+    "language": "en",
+    "category": "blessed-hope-quote",
+    "mode": "fire",
+    "text": "For the Lord Himself shall descend from heaven with a shout, with the voice of the archangel, and with the trumpet of God, and the dead in Christ will rise first.",
+    "expected": "1 Thessalonians 4:16"
+  },
+  {
+    "language": "en",
+    "category": "blessed-hope-quote",
+    "mode": "fire",
+    "text": "Then we which are alive and remain shall be caught up together with them in the clouds to meet the Lord in the air, and so shall we ever be with the Lord.",
+    "expected": "1 Thessalonians 4:17"
+  },
+  {
+    "language": "en",
+    "category": "blessed-hope-contextual",
+    "mode": "fire",
+    "text": "Wherefore comfort one another with these words.",
+    "expected": "1 Thessalonians 4:18"
+  },
+  {
+    "language": "en",
+    "category": "blessed-hope-chapter",
+    "mode": "abstain",
+    "text": "Titus chapter 2.",
+    "expected": "Titus 2"
+  },
+  {
+    "language": "en",
+    "category": "blessed-hope-quote",
+    "mode": "fire",
+    "text": "Looking for that blessed hope, and the glorious appearing of the great God, and our Savior Jesus Christ.",
+    "expected": "Titus 2:13"
+  },
+  {
+    "language": "en",
+    "category": "blessed-hope-quote",
+    "mode": "fire",
+    "text": "To the north give up and to the south keep not back. Bring my sons from far and my daughters from the end of the earth.",
+    "expected": "Isaiah 43:6"
+  },
+  {
+    "language": "en",
+    "category": "blessed-hope-direct",
+    "mode": "fire",
+    "text": "Revelation 10, starting in verse 8. Go, take the little book which is open in the hand of the angel who stands on the sea and on the earth.",
+    "expected": "Revelation 10:8"
+  },
+  {
+    "language": "en",
+    "category": "blessed-hope-contextual",
+    "mode": "fire",
+    "text": "Then I took the little book out of the angel's hand, and I ate it. And it was as sweet as honey in my mouth. But when I had eaten it, my stomach became bitter.",
+    "expectedAny": ["Revelation 10:9", "Revelation 10:10"]
+  },
+  {
+    "language": "en",
+    "category": "blessed-hope-contextual",
+    "mode": "fire",
+    "text": "And He said to me, You must prophesy again about many peoples and nations and tongues and kings.",
+    "expected": "Revelation 10:11"
+  },
+  {
+    "language": "en",
+    "category": "blessed-hope-chapter",
+    "mode": "abstain",
+    "text": "Matthew 24. Matthew 25. Given us not just to tell us when approximately, but what and how. Be ready.",
+    "expectedAny": ["Matthew 24", "Matthew 25"]
+  },
+  {
+    "language": "en",
+    "category": "blessed-hope-direct",
+    "mode": "fire",
+    "text": "We neither need nor want to be the people in Isaiah 30 in verse 10, which say to the seers, see not, and to the prophets, prophesy not unto us right things.",
+    "expected": "Isaiah 30:10"
+  },
+  {
+    "language": "en",
+    "category": "blessed-hope-quote",
+    "mode": "fire",
+    "text": "For God so loved the world that he gave his only begotten son, so that whosoever believeth in him should not perish, but have everlasting life.",
+    "expected": "John 3:16"
+  },
+  {
+    "language": "en",
+    "category": "blessed-hope-quote",
+    "mode": "fire",
+    "text": "God demonstrated his love towards us, in that while we were yet sinners, Christ died for us.",
+    "expected": "Romans 5:8"
+  },
+  {
+    "language": "en",
+    "category": "blessed-hope-quote",
+    "mode": "fire",
+    "text": "Christ has redeemed us from the curse of the law, being made a curse for us.",
+    "expected": "Galatians 3:13"
+  },
+  {
+    "language": "en",
+    "category": "blessed-hope-quote",
+    "mode": "fire",
+    "text": "He is despised and rejected of men, a man of sorrows and acquainted with grief. He was wounded for our transgressions. He was bruised for our iniquities. The chastisement of our peace was upon him, and with his stripes we are healed.",
+    "expectedAny": ["Isaiah 53:3", "Isaiah 53:4", "Isaiah 53:5"]
+  },
+  {
+    "language": "en",
+    "category": "blessed-hope-contextual",
+    "mode": "hint",
+    "text": "The Bible says his visage was so marred more than any man.",
+    "expected": "Isaiah 52:14"
+  },
+  {
+    "language": "en",
+    "category": "blessed-hope-contextual",
+    "mode": "fire",
+    "text": "He came unto his own and his own received him not.",
+    "expected": "John 1:11"
+  },
+  {
+    "language": "en",
+    "category": "blessed-hope-contextual",
+    "mode": "fire",
+    "text": "Greater is he that is in you than he that is in the world.",
+    "expected": "1 John 4:4"
+  },
+  {
+    "language": "en",
+    "category": "blessed-hope-contextual",
+    "mode": "fire",
+    "text": "What are these wounds in your hands? And he will answer, Those with which I was wounded in the house of my friends.",
+    "expected": "Zechariah 13:6"
+  },
+  {
+    "language": "en",
+    "category": "blessed-hope-contextual",
+    "mode": "fire",
+    "text": "Here I am. Send me.",
+    "expected": "Isaiah 6:8"
+  },
+  {
+    "language": "en",
+    "category": "blessed-hope-contextual",
+    "mode": "fire",
+    "text": "Even so, come, Lord Jesus.",
+    "expected": "Revelation 22:20"
   }
 ]

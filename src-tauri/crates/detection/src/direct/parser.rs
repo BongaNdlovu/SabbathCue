@@ -103,6 +103,37 @@ pub fn parse_reference(text: &str, book_match: &BookMatch) -> Option<VerseRef> {
     None
 }
 
+/// Return both plausible verses when an STT fragment contains a book followed
+/// by three unconnected numbers, such as "Matthew 25 45 41".
+///
+/// With no range or correction word, the detector cannot safely decide whether
+/// the second or third number is the intended verse. Both candidates stay
+/// available for operator review below the live threshold.
+pub(super) fn parse_ambiguous_three_number_reference(
+    text: &str,
+    book_match: &BookMatch,
+) -> Option<[VerseRef; 2]> {
+    let tokens = tokenize(text[book_match.end..].trim_start());
+    let [Token::Number(chapter), Token::Number(first_verse), Token::Number(alternative_verse), ..] =
+        tokens.as_slice()
+    else {
+        return None;
+    };
+
+    let make_reference = |verse_start| VerseRef {
+        book_number: book_match.book_number,
+        book_name: book_match.book_name.clone(),
+        chapter: *chapter,
+        verse_start,
+        verse_end: None,
+    };
+
+    Some([
+        make_reference(*first_verse),
+        make_reference(*alternative_verse),
+    ])
+}
+
 fn is_dangling_chapter_keyword(tokens: &[Token]) -> bool {
     tokens
         .last()
@@ -567,28 +598,12 @@ fn try_two_numbers(tokens: &[Token], book_match: &BookMatch) -> Option<VerseRef>
         if chapter > 0 {
             if let Some((verse, verse_next)) = consume_number_at(tokens, next_idx) {
                 if verse > 0 {
-                    // Check for range: "3 16-18" or "3 16 through 18"
-                    let mut verse_end = None;
-                    if verse_next < tokens.len() {
-                        if matches!(&tokens[verse_next], Token::Dash) {
-                            if let Some((end, _)) = consume_number(tokens, verse_next + 1) {
-                                verse_end = Some(end);
-                            }
-                        }
-                        if let Token::Word(tw) = &tokens[verse_next] {
-                            if tw == "through" || tw == "to" {
-                                if let Some((end, _)) = consume_number(tokens, verse_next + 1) {
-                                    verse_end = Some(end);
-                                }
-                            }
-                        }
-                    }
                     return Some(VerseRef {
                         book_number: book_match.book_number,
                         book_name: book_match.book_name.clone(),
                         chapter,
                         verse_start: verse,
-                        verse_end,
+                        verse_end: scan_verse_end(tokens, verse_next),
                     });
                 }
             }

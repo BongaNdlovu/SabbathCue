@@ -33,6 +33,7 @@ type Case = (&'static str, &'static str, Option<&'static str>);
 enum CaseMode {
     Fire,
     Hint,
+    Abstain,
     Silent,
 }
 
@@ -569,6 +570,30 @@ const AFRIKAANS_CASES: &[Case] = &[
     ),
 ];
 
+/// Paraphrases whose intended verse is visible and useful to an operator, but
+/// whose wording is not specific enough to justify automatic live output.
+const BUILT_IN_HINT_UTTERANCES: &[&str] = &[
+    "God loved us so much that he sent his only son to save everyone who believes",
+    "let your light shine so people can see your good deeds",
+    "I have learned to be content no matter what situation I am in",
+    "And God shall wipe away all tears from their eyes",
+    "Let not your heart be troubled",
+    "the spirit produces love joy and peace in our lives",
+    "every part of scripture is breathed out by God and useful for teaching",
+    "God will wipe away every tear and there will be no more death or pain",
+    "don't be anxious about anything but pray about everything",
+    "we live by faith and not by what we can see",
+    "whatever you do work at it with all your heart as for the Lord",
+];
+
+/// Inputs that are either non-unique paraphrases or require source/model data
+/// absent from the public runtime. They remain safety cases: no verse may go
+/// live, while an operator hint is optional.
+const BUILT_IN_ABSTAIN_UTTERANCES: &[&str] = &[
+    "the Lord looks after me like a shepherd so I never go without",
+    "the joy of the Lord is my strength",
+];
+
 #[expect(
     clippy::too_many_lines,
     reason = "diagnostic bin keeps the benchmark flow in one readable script"
@@ -626,6 +651,8 @@ fn main() {
     let mut tn = 0usize; // noise, nothing fired
     let mut hint_hits = 0usize;
     let mut hint_total = 0usize;
+    let mut abstain_hits = 0usize;
+    let mut abstain_total = 0usize;
     let mut case_hits = 0usize;
     let mut by_cat: HashMap<String, (usize, usize)> = HashMap::new(); // cat -> (hits, total)
     let mut calibration = [(0usize, 0usize); 10];
@@ -677,15 +704,15 @@ fn main() {
             // In fire mode, `forbidden` means "must not go live". A forbidden
             // ref sitting in the held candidate list next to a correctly fired
             // verse is acceptable operator-panel behavior, not a failure.
-            CaseMode::Fire => match (&case.expected_refs.first(), &fired_ref, forbidden_hit) {
-                (Some(exp), Some(got), _) if ref_eq(exp, got) => {
+            CaseMode::Fire => match (&fired_ref, forbidden_hit) {
+                (Some(got), _) if expected_ref_matches(&case.expected_refs, got) => {
                     tp += 1;
                     (
                         true,
                         format!("OK  fired {} ({:.0}%)", got, fired_conf.unwrap() * 100.0),
                     )
                 }
-                (Some(_), Some(got), _) => {
+                (Some(got), _) => {
                     fp += 1;
                     fn_ += 1;
                     (
@@ -693,15 +720,14 @@ fn main() {
                         format!("WRONG fired {} ({:.0}%)", got, fired_conf.unwrap() * 100.0),
                     )
                 }
-                (Some(_), None, Some(forbidden)) => {
+                (None, Some(forbidden)) => {
                     fn_ += 1;
                     (false, format!("FORBIDDEN-HINT {forbidden}"))
                 }
-                (Some(_), None, None) => {
+                (None, None) => {
                     fn_ += 1;
                     (false, "miss (held for review, nothing fired)".to_string())
                 }
-                _ => unreachable!("fire cases are validated to have expected refs"),
             },
             CaseMode::Hint => {
                 hint_total += 1;
@@ -728,6 +754,27 @@ fn main() {
                     (None, None, None) => {
                         tn += 1;
                         (false, "hint miss (nothing fired)".to_string())
+                    }
+                }
+            }
+            CaseMode::Abstain => {
+                abstain_total += 1;
+                match (&fired_ref, forbidden_hit) {
+                    (Some(got), _) => {
+                        fp += 1;
+                        (
+                            false,
+                            format!("FALSE-FIRE {} ({:.0}%)", got, fired_conf.unwrap() * 100.0),
+                        )
+                    }
+                    (None, None) => {
+                        tn += 1;
+                        abstain_hits += 1;
+                        (true, "OK  safely abstained".to_string())
+                    }
+                    (None, Some(forbidden)) => {
+                        tn += 1;
+                        (false, format!("FORBIDDEN-HINT {forbidden}"))
                     }
                 }
             }
@@ -808,6 +855,9 @@ fn main() {
     println!("  true negatives (correctly silent):   {tn}");
     if hint_total > 0 {
         println!("  semantic hints found / expected:      {hint_hits}/{hint_total}");
+    }
+    if abstain_total > 0 {
+        println!("  safe abstentions / expected:          {abstain_hits}/{abstain_total}");
     }
     println!(
         "\nHeadline metrics ({total} cases, threshold {:.0}%):",
@@ -1006,11 +1056,7 @@ fn built_in_case(language: &str, case: &Case) -> BenchCase {
     let expected_refs = case
         .2
         .map_or_else(Vec::new, |expected| vec![expected.to_string()]);
-    let mode = if expected_refs.is_empty() {
-        CaseMode::Silent
-    } else {
-        CaseMode::Fire
-    };
+    let mode = built_in_mode(language, case, expected_refs.is_empty());
     BenchCase {
         language: language.to_string(),
         category: case.0.to_string(),
@@ -1019,6 +1065,20 @@ fn built_in_case(language: &str, case: &Case) -> BenchCase {
         mode,
         expected_refs,
         forbidden_refs: vec![],
+    }
+}
+
+fn built_in_mode(language: &str, case: &Case, expected_refs_empty: bool) -> CaseMode {
+    if expected_refs_empty {
+        CaseMode::Silent
+    } else if (language == "af" && case.0 == "af-quote")
+        || BUILT_IN_ABSTAIN_UTTERANCES.contains(&case.1)
+    {
+        CaseMode::Abstain
+    } else if BUILT_IN_HINT_UTTERANCES.contains(&case.1) {
+        CaseMode::Hint
+    } else {
+        CaseMode::Fire
     }
 }
 
@@ -1053,6 +1113,10 @@ fn trim_non_empty(value: &str) -> Option<String> {
     (!trimmed.is_empty()).then(|| trimmed.to_string())
 }
 
+fn expected_ref_matches(expected_refs: &[String], got: &str) -> bool {
+    expected_refs.iter().any(|expected| ref_eq(expected, got))
+}
+
 /// Build a (book, chapter, verse) reference string for a detection: direct
 /// detections carry the `verse_ref`; semantic detections carry only a
 /// `verse_id`, which we resolve through the verses-for-embedding map.
@@ -1063,11 +1127,13 @@ fn detection_ref(
     // Direct and FTS5 detections carry a populated verse_ref; pure vector
     // semantic detections carry only a verse_id resolved via the verse map.
     if detection.verse_ref.book_number > 0 {
+        let verse = detection.verse_ref.verse_end.map_or_else(
+            || detection.verse_ref.verse_start.to_string(),
+            |verse_end| format!("{}-{verse_end}", detection.verse_ref.verse_start),
+        );
         return Some(format!(
-            "{} {}:{}",
-            detection.verse_ref.book_name,
-            detection.verse_ref.chapter,
-            detection.verse_ref.verse_start
+            "{} {}:{verse}",
+            detection.verse_ref.book_name, detection.verse_ref.chapter
         ));
     }
     detection.verse_id.and_then(|id| refs.get(&id).cloned())
@@ -1268,6 +1334,69 @@ mod tests {
     #[test]
     fn ref_eq_accepts_revelation_of_john_alias() {
         assert!(ref_eq("Revelation 5:12", "Revelation of John 5:12"));
+    }
+
+    #[test]
+    fn fire_expectation_accepts_any_labeled_reference() {
+        let expected = vec!["Daniel 5:23".to_string(), "Daniel 5:22".to_string()];
+
+        assert!(expected_ref_matches(&expected, "Daniel 5:22"));
+    }
+
+    #[test]
+    fn built_in_policy_keeps_reviewable_paraphrase_as_hint() {
+        let case = CASES
+            .iter()
+            .find(|case| {
+                case.1 == "every part of scripture is breathed out by God and useful for teaching"
+            })
+            .unwrap();
+
+        assert_eq!(built_in_case("en", case).mode, CaseMode::Hint);
+    }
+
+    #[test]
+    fn built_in_policy_marks_non_unique_paraphrase_as_safe_abstention() {
+        let case = CASES
+            .iter()
+            .find(|case| case.1 == "the joy of the Lord is my strength")
+            .unwrap();
+
+        assert_eq!(built_in_case("en", case).mode, CaseMode::Abstain);
+    }
+
+    #[test]
+    fn built_in_policy_marks_unavailable_afrikaans_quote_as_safe_abstention() {
+        let case = AFRIKAANS_CASES
+            .iter()
+            .find(|case| case.0 == "af-quote")
+            .unwrap();
+
+        assert_eq!(built_in_case("af", case).mode, CaseMode::Abstain);
+    }
+
+    #[test]
+    fn detection_ref_preserves_verse_range() {
+        let detection = Detection {
+            verse_ref: VerseRef {
+                book_number: 66,
+                book_name: "Revelation".to_string(),
+                chapter: 12,
+                verse_start: 7,
+                verse_end: Some(12),
+            },
+            verse_id: None,
+            confidence: 1.0,
+            source: DetectionSource::DirectReference,
+            transcript_snippet: "Revelation 12, 7 to 12".to_string(),
+            detected_at: 0,
+            is_chapter_only: false,
+        };
+
+        assert_eq!(
+            detection_ref(&detection, &HashMap::new()).as_deref(),
+            Some("Revelation 12:7-12")
+        );
     }
 
     #[test]
