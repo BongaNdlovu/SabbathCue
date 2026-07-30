@@ -65,7 +65,7 @@ Where the pattern is violated or watchlisted: the theme catalog still exports `K
 Core modules:
 | Module | Location | Responsibility | Depended on by |
 |---|---|---|---|
-| Settings store | src/stores/settings-store.ts:6 | STT provider setting and cloud key status | Settings UI, transcript panel, transcription hook |
+| Settings store | src/stores/settings-store.ts:17 | Persisted STT, detection, Bible-mode, and operator preferences | Settings UI, transcript panel, transcription and detection-sync hooks |
 | Verification store | src/stores/verification-store.ts:20 | Bounds startup/session refresh checks and exposes auth state | Verification gate and sign-in screen |
 | Verification provider | src/lib/verification/verification-provider.ts:191 | Restores sessions, clears expired credentials, and verifies device access | Verification store and heartbeat |
 | Supabase account profile | supabase/migrations/008_church_organization_profiles.sql:4 | Stores optional self-declared church organization identity and exposes it through device/admin RPCs | Signup, verification session, operator badge, admin account list |
@@ -74,6 +74,8 @@ Core modules:
 | STT provider routing | src-tauri/src/commands/stt/provider.rs:95 | Selects Vosk, Deepgram, or Soniox and handles removed providers | Tauri STT commands |
 | Collected detections store | src/stores/collected-detections-store.ts:48 | Session-scoped reuse list of presented/queued detections | Detections panel |
 | Detection actions | src/components/panels/detections-panel.tsx:144 | Shared preview/present/queue closures for detection types | Detection cards, latest bar, collection UI |
+| Queue voice control | src/services/queue/queue-voice-control.ts:19 | Strictly parses one-based queue-item commands, resolves the current queue order, and presents through the common queue path with duplicate-final protection | Final transcript bridge |
+| Live Bible-mode policy | src-tauri/src/commands/stt/live_session.rs:243, src-tauri/src/commands/detection.rs:241 | Separately gates live Bible direct/semantic/reading-mode output while preserving transcription, operator commands, queued scripture, and EGW detection | Detection settings sync and live STT workers |
 | Direct scripture scope | src-tauri/crates/detection/src/direct/context.rs:3, src-tauri/crates/detection/src/direct/detector.rs:674 | Keeps the active book/chapter until another resolved citation replaces it and promotes explicit in-scope verse phrases as direct citations | Live STT scripture detection |
 | Verse ranking and calibration | src-tauri/crates/detection/src/semantic/detector.rs:128, src-tauri/crates/detection/src/pipeline.rs:173, src-tauri/crates/detection/src/bin/detection_accuracy.rs:607 | Keeps rank evidence separate from displayed match strength, distinguishes unique exact quotes from ambiguous shared phrases, surfaces strong broad matches only for review, and evaluates policy-aware Auto selection | Live STT detection, frontend detection workflow, desktop CI |
 | Command-classifier experiment | src-tauri/crates/detection/src/command_eval.rs:1, src-tauri/crates/detection/src/bin/command_benchmark.rs:1 | Compares deterministic rules with a trained MiniLM linear head against isolated quality/safety partitions without executing commands | Developer benchmark and shadow replay only |
@@ -199,6 +201,41 @@ Deepgram, Soniox, Vosk, and Speechmatics spans after a longer pause remain separ
   -> src/hooks/use-transcription.test.ts:476
 ```
 
+### Flow: queue-item voice presentation
+```text
+Every final STT span is stored in transcript history first
+  -> src/hooks/use-transcription.ts:252
+The strict queue grammar accepts complete commands such as "item 2" and
+"item number two", resolves the latest one-based queue position, and guards duplicates
+  -> src/services/queue/queue-voice-control.ts:19
+  -> src/services/queue/queue-voice-control.ts:31
+The selected item becomes active and uses the same presentation path as a queue click,
+so scripture, hymn, media, slide deck, EGW, and video items share one implementation
+  -> src/services/queue/queue-voice-control.ts:48
+Backend command filtering recognizes the same command shape so it does not become
+semantic Bible-suggestion noise
+  -> src-tauri/crates/detection/src/direct/detector.rs:636
+```
+
+### Flow: Bible mode without stopping transcription
+```text
+Persisted Bible mode defaults ON and syncs independently of semantic preference
+  -> src/stores/settings-store.ts:68
+  -> src/hooks/use-detection-settings-sync.ts:23
+Turning it OFF deactivates Bible reading mode without changing STT-active state
+  -> src-tauri/src/commands/detection.rs:241
+Direct work skips Bible parsing but retains explicit EGW detection; semantic work
+skips Bible FTS/vector resolution but retains eligible EGW quotation detection
+  -> src-tauri/src/commands/stt/live_session.rs:261
+  -> src-tauri/src/commands/stt/live_session.rs:440
+Both workers re-check the flag before emission to suppress in-flight Bible results
+  -> src-tauri/src/commands/stt/live_session.rs:389
+  -> src-tauri/src/commands/stt/live_session.rs:619
+Final transcript storage and queue/slide/hymn command dispatch remain upstream and active
+  -> src/hooks/use-transcription.ts:252
+  -> src/hooks/use-transcription.ts:272
+```
+
 ### Flow: live EGW quotation detection
 ```text
 Each transcription session owns one cue timestamp shared by its partial and final workers
@@ -304,6 +341,27 @@ Theme designer library reads useBroadcastThemeDesignerStore alias
 Both aliases point to broadcast theme slice wrappers
   -> src/stores/broadcast/theme-store.ts:32
   -> src/stores/broadcast/theme-designer-store.ts:38
+```
+
+### Flow: authored hymn pages and full-fidelity hymn themes
+```text
+Hymnal source sections already carry stable verse/refrain identity
+  -> src/types/hymnal.ts
+Default screen generation preserves each authored section as one page; an explicit
+maxLinesPerScreen remains available for callers that intentionally request chunking
+  -> src/services/hymnal/generate-hymn-screens.ts
+Presentation conversion retains section id, label, kind, and within-section indexes
+  -> src/services/hymnal/hymn-presentation.ts
+  -> src/lib/presentation-render-data.ts
+Manual song input treats each blank-line or --- separated block as an authored page
+  -> src/lib/song-slide-pages.ts
+Seven source designs share deterministic canvas scene ports across preview, live output,
+and NDI; Sacred Minimal and Heritage Hymnal also expose frozen time-zero variants
+  -> src/lib/hymn-theme-scenes.ts
+  -> src/lib/kinetic-theme-renderer.ts
+Refrain/chorus typography resolves from section metadata without mutating the saved theme
+  -> src/lib/hymn-theme-style.ts
+  -> src/lib/verse-renderer.ts
 ```
 
 ### Flow: operator accent themes
@@ -423,11 +481,12 @@ registration or command-execution dependency
 ## 7 - Data model & persistence
 | Entity | Storage | Key fields | Relationships | Defined at |
 |---|---|---|---|---|
-| STT settings | Tauri store plus Zustand hydration | sttProvider, key status booleans | Settings UI, transcription hook | src/stores/settings-store.ts:6, src/stores/settings-store.ts:188 |
+| STT and detection settings | Tauri store plus Zustand hydration | sttProvider, key status booleans, bibleDetectionEnabled, semanticDetectionEnabled, thresholds | Settings UI, transcription hook, detection-settings sync | src/stores/settings-store.ts:17, src/stores/settings-store.ts:105 |
 | Cloud API keys | OS keyring via Tauri commands | Deepgram/Soniox/Speechmatics key presence and validation | STT provider routing | src-tauri/Cargo.toml:70, src/components/settings/sections/ApiKeysSection.tsx:5 |
 | Collected detections | In-memory Zustand only | detection, source, kind, useCount, timestamps | Detections panel action reuse | src/stores/collected-detections-store.ts:20, src/stores/collected-detections-store.ts:85 |
 | Detection feedback | Browser localStorage, capped at 500 entries | reference, source, match strength, rank score, action, timestamp | Offline ranking evaluation; no transcript/audio content | src/lib/detection-feedback.ts:3 |
-| Broadcast themes | Broadcast Zustand slice | activeThemeId, themes, kinetic flag | Theme catalog and renderer | src/components/broadcast/KineticThemesPage.tsx:146, src/components/broadcast/theme-library.tsx:54 |
+| Broadcast themes | Broadcast Zustand slice | activeThemeId, themes, kinetic metadata, optional hymn section styles | Theme catalog and deterministic canvas renderer | src/components/broadcast/KineticThemesPage.tsx:146, src/lib/kinetic-themes.ts, src/lib/hymn-theme-scenes.ts |
+| Hymn presentation pages | In-memory presentation/queue data | authored section id/label/kind, section screen index/count, deck index/count | Hymnal source, queue, preview/live/NDI renderer | src/types/hymnal.ts, src/types/presentation.ts, src/services/hymnal/hymn-presentation.ts |
 | Bible/EGW content | SQLite | translations, verses, EGW paragraphs | Search/detection/presentation | README.md:49, src-tauri/Cargo.toml:75 |
 | EGW source JSON | data/sources/egw/*.json | book_number, chapter, paragraph, page, page_paragraph, text | Built into SQLite by `build:egw` | data/build-egw.ts:2, data/validate-egw-sources.ts:7 |
 | Account flags | Supabase Postgres | user_id, access_expires_at, suspended, is_church_organization, church_name | Auth user, registered devices, admin account list | supabase/migrations/008_church_organization_profiles.sql:4 |
@@ -543,9 +602,28 @@ npm.cmd run build
 npm.cmd run test:unit -- src/lib/kinetic-themes.test.ts src/lib/kinetic-theme-renderer.test.ts
 # Result after KNFC stage-theme port: 2 files passed, 41 tests passed.
 
+npm.cmd run test:unit -- src/services/hymnal/generate-hymn-screens.test.ts src/services/hymnal/hymn-presentation.test.ts src/lib/song-slide-pages.test.ts src/lib/hymn-theme-style.test.ts src/lib/kinetic-themes.test.ts src/lib/kinetic-theme-renderer.test.ts src/lib/verse-draw.test.ts
+# Result after authored hymn pages and full-fidelity theme port:
+# 7 files passed, 64 tests passed.
+
 npm.cmd run test:unit
 # Result after Personal identity and KNFC stage themes: 140 files passed,
 # 999 tests passed, 1 skipped.
+# Current local result: 182 files and 1,205 tests passed, 1 skipped; the only
+# remaining test is the credentialed live Paddle sandbox check, which cannot run
+# under restricted network policy.
+
+npm.cmd run lint
+# Current result: passed with 0 errors and 0 warnings.
+
+npm.cmd run typecheck
+# Current result: passed.
+
+cargo test -p rhema-detection
+# Current result: 353 tests passed across unit and integration targets.
+
+cargo check -p sabbathcue
+# Current result: passed.
 
 npm.cmd run test:db
 # Applies supabase/migrations/*.sql to a throwaway Postgres container (Docker
@@ -598,6 +676,8 @@ CI/CD & deployment: not fully mapped in this pass. See open questions.
 | Full-model accuracy is CI-gated with explicit fire, review-hint, safe-abstention, and silent expectations, but the curated corpus is not a substitute for a held-out multi-church audio corpus. | detection quality | watch | src-tauri/crates/detection/src/bin/detection_accuracy.rs:1, .github/workflows/desktop-ci.yml:184 |
 | Runtime performance metrics begin when ranked candidates reach the frontend; true speech-to-result latency still requires timestamped provider audio fixtures. | detection quality | watch | src/lib/detection-profiler.ts:28 |
 | The command-classifier training corpus now includes deterministic synthetic sermon transcripts, but synthetic text cannot represent real microphones, accents, speakers, congregations, or STT behavior; the gated MiniLM head remains intentionally disconnected from command execution until tested on held-out multi-church transcripts. | command classification | watch | docs/minilm-command-benchmark.md:1, src-tauri/crates/detection/src/bin/command_benchmark.rs:1 |
+| Queue voice commands are deliberately position-based and final-transcript-only; reordered queues change what a number targets, and real-microphone provider/accent coverage remains a field-validation need. | operator voice control | watch | src/services/queue/queue-voice-control.ts:31, src/hooks/use-transcription.ts:247 |
+| The seven hymn presets use bundled open-font alternatives rather than the source HTML's proprietary/device-specific names, so every SabbathCue installation renders consistently without external font licensing or downloads. | typography portability | healthy | src/lib/kinetic-themes.ts, src/index.css, src/components/ui/canvas-verse.tsx |
 | The installer still bundles the offline Vosk model and complete content database; moving either to first-run delivery remains gated on product, hosting, and signing decisions. | installer size | watch | docs/superpowers/plans/2026-07-26-installer-size-and-performance.md |
 
 Strengths: targeted stores and shared helpers make the current STT/detection/theme changes testable.
@@ -609,6 +689,10 @@ Top risks (ranked): 1. STT provider removal can leave stale docs or tests if his
 - Do not grep-to-zero removed STT provider names across historical reports; compatibility tests may intentionally retain removed-provider strings.
 - Collected detections should be recorded from present/queue actions, not preview-only actions.
 - Quick-search ghost overlays must use `getGhostSuggestionSuffix` instead of local slicing.
+- Queue voice control must resolve the queue at execution time and stay on the strict whole-utterance grammar; do not route it through the experimental learned classifier.
+- Bible mode is Bible-specific. Keep it independent from Pause Suggestions, which remains the pause-all control, and preserve the saved semantic preference while the master switch is OFF.
+- Preserve authored hymn section boundaries by default. Use `maxLinesPerScreen` only when a caller explicitly chooses automatic pagination.
+- Frozen procedural themes keep `kinetic` metadata with `animate: false`: they draw the deterministic time-zero scene and load the bundled canvas font, but do not schedule animation frames.
 
 ## 13 - Open questions
 - [ ] Full CI/CD and deployment flow is not mapped in this scoped pass.
@@ -624,6 +708,8 @@ Top risks (ranked): 1. STT provider removal can leave stale docs or tests if his
 | Soniox | Cloud STT provider. |
 | Kinetic theme | Theme with moving background data. |
 | Collected detection | Session-scoped item captured when an operator presents or queues a detection. |
+| Bible mode | Persisted master switch for live Bible direct, semantic, and reading-mode detection; it does not stop transcription or EGW detection. |
+| Queue voice command | Strict final-transcript command that presents the current one-based queue position, such as `item 2`. |
 
 ## 15 - Map changelog
 | Date | Change | Sections touched |
@@ -653,3 +739,5 @@ Top risks (ranked): 1. STT provider removal can leave stale docs or tests if his
 | 2026-07-26 | Added 100 deterministic synthetic sermon transcripts with speaker-isolated training/validation sampling, improved the authored held-out MiniLM result to 83.3% accuracy and 77.8% macro-F1 with zero safety false commands, and removed the abandoned external-model prototype. | 5, 6, 10, 11, 15 |
 | 2026-07-29 | Made unique short exact quotations live-eligible, kept shared exact phrases and strong broad paraphrases review-only, and made the 204-case benchmark distinguish fire, hint, safe abstention, and silence. | 5, 6, 10, 11, 15 |
 | 2026-07-29 | Preserved high-overlap quote quality for deterministic verse ranking, made explicitly named books preempt stale pending context, and expanded the permanent Auto Live corpus with a 30-case blessed-hope sermon. | 6, 10, 11, 15 |
+| 2026-07-30 | Added deterministic voice presentation for every queue item kind and a persisted Bible-only detection mode that leaves transcription, operator commands, manual/queued scripture, and EGW active. | 5-7, 10-12, 14-15 |
+| 2026-07-30 | Preserved authored hymn verse/refrain pages, retained section identity through presentation rendering, ported seven hymn scenes with bundled portable font alternatives, and added frozen Sacred Minimal/Heritage variants. | 3, 5-7, 10-12, 14-15 |
