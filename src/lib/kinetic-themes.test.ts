@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs"
+import { dirname, resolve } from "node:path"
+import { fileURLToPath } from "node:url"
 import { describe, expect, it } from "vitest"
 import {
   KINETIC_THEME_PRESETS,
@@ -5,6 +8,7 @@ import {
   buildKineticBroadcastThemes,
   kineticThemeId,
 } from "./kinetic-themes"
+import { SYSTEM_FONT_FAMILIES } from "./fonts"
 
 const EXPECTED_PRESET_IDS = [
   // classical serif group
@@ -116,22 +120,24 @@ describe("buildKineticBroadcastThemes", () => {
   })
 
   it("uses only bundled or system font families", () => {
-    const allowed = new Set([
-      "Source Serif 4 Variable",
-      "DM Serif Display",
-      "Geist Variable",
-      "Source Sans 3 Variable",
-      "Cinzel",
-      "Playfair Display",
-      "Bebas Neue",
-      "Plus Jakarta Sans Variable",
-      "Outfit Variable",
-      // OS-installed system serif (Desert Cloth) — offline by definition.
-      "Georgia",
-    ])
-    for (const theme of themes) {
-      expect(allowed.has(theme.verseText.fontFamily)).toBe(true)
-    }
+    // The allowlist is derived from the `@font-face` rules in index.css, not
+    // written out here. A literal list keeps passing after the font it names is
+    // uninstalled, which is how "Geist Variable" and "Source Serif 4 Variable"
+    // stayed in this test for months while rendering as generic fallbacks.
+    const bundled = new Set(
+      [
+        ...readFileSync(
+          resolve(dirname(fileURLToPath(import.meta.url)), "..", "index.css"),
+          "utf8"
+        ).matchAll(/@font-face\s*\{[^}]*font-family:\s*"([^"]+)"/g),
+      ].map(([, family]) => family)
+    )
+    const allowed = new Set([...bundled, ...SYSTEM_FONT_FAMILIES])
+
+    const offenders = themes
+      .map((theme) => theme.verseText.fontFamily)
+      .filter((family) => !allowed.has(family))
+    expect(offenders).toEqual([])
   })
 
   it("uses portable hymn font alternatives and only two static candidates", () => {

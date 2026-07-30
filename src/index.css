@@ -147,6 +147,125 @@
     format("woff2");
 }
 
+/* Families named by the builtin themes and the operator font picker. All are
+   OFL-licensed and bundled from node_modules, so nothing is fetched at runtime. */
+@font-face {
+  font-family: "Geist Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("@fontsource-variable/geist/files/geist-latin-wght-normal.woff2")
+    format("woff2");
+}
+
+@font-face {
+  font-family: "Source Serif 4 Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 200 900;
+  src: url("@fontsource-variable/source-serif-4/files/source-serif-4-latin-wght-normal.woff2")
+    format("woff2");
+}
+
+@font-face {
+  font-family: "EB Garamond Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400 800;
+  src: url("@fontsource-variable/eb-garamond/files/eb-garamond-latin-wght-normal.woff2")
+    format("woff2");
+}
+
+@font-face {
+  font-family: "Fraunces Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("@fontsource-variable/fraunces/files/fraunces-latin-wght-normal.woff2")
+    format("woff2");
+}
+
+@font-face {
+  font-family: "Manrope Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 200 800;
+  src: url("@fontsource-variable/manrope/files/manrope-latin-wght-normal.woff2")
+    format("woff2");
+}
+
+@font-face {
+  font-family: "Sora Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 800;
+  src: url("@fontsource-variable/sora/files/sora-latin-wght-normal.woff2")
+    format("woff2");
+}
+
+@font-face {
+  font-family: "Oswald Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 200 700;
+  src: url("@fontsource-variable/oswald/files/oswald-latin-wght-normal.woff2")
+    format("woff2");
+}
+
+@font-face {
+  font-family: "Cormorant Garamond";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url("@fontsource/cormorant-garamond/files/cormorant-garamond-latin-400-normal.woff2")
+    format("woff2");
+}
+
+@font-face {
+  font-family: "Cormorant Garamond";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 600;
+  src: url("@fontsource/cormorant-garamond/files/cormorant-garamond-latin-600-normal.woff2")
+    format("woff2");
+}
+
+@font-face {
+  font-family: "Cormorant Garamond";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 700;
+  src: url("@fontsource/cormorant-garamond/files/cormorant-garamond-latin-700-normal.woff2")
+    format("woff2");
+}
+
+@font-face {
+  font-family: "Libre Baskerville";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url("@fontsource/libre-baskerville/files/libre-baskerville-latin-400-normal.woff2")
+    format("woff2");
+}
+
+@font-face {
+  font-family: "Libre Baskerville";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 700;
+  src: url("@fontsource/libre-baskerville/files/libre-baskerville-latin-700-normal.woff2")
+    format("woff2");
+}
+
+@font-face {
+  font-family: "Marcellus";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url("@fontsource/marcellus/files/marcellus-latin-400-normal.woff2")
+    format("woff2");
+}
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {

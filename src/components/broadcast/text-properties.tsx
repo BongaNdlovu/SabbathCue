@@ -4,23 +4,13 @@ import { Input } from "@/components/ui/input"
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-
-const FONT_FAMILIES = [
-  "Geist Variable",
-  "Source Serif 4 Variable",
-  "Plus Jakarta Sans Variable",
-  "Outfit Variable",
-  "Playfair Display",
-  "Georgia",
-  "Arial",
-  "Helvetica",
-  "Times New Roman",
-  "Courier New",
-]
+import { FONT_FAMILY_GROUPS } from "@/lib/fonts"
 
 const FONT_WEIGHTS = [
   { value: "100", label: "100 - Thin" },
@@ -120,10 +110,17 @@ function FontControls({ prefix }: { prefix: "verseText" | "reference" }) {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {FONT_FAMILIES.map((f) => (
-              <SelectItem key={f} value={f}>
-                {f}
-              </SelectItem>
+            {FONT_FAMILY_GROUPS.map((group) => (
+              <SelectGroup key={group.label}>
+                <SelectLabel>{group.label}</SelectLabel>
+                {group.families.map((f) => (
+                  // Preview each option in its own face so the operator picks
+                  // by how it looks, not by name recall.
+                  <SelectItem key={f} value={f} style={{ fontFamily: f }}>
+                    {f}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
             ))}
           </SelectContent>
         </Select>
