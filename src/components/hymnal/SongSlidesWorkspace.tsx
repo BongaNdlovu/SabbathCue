@@ -6,7 +6,7 @@ import { PanelEmptyState } from "@/components/ui/panel-empty-state"
 import { PanelHeader } from "@/components/ui/panel-header"
 import { presentItem, selectPreviewItem } from "@/lib/presentation-workflow"
 import { createHymnDeckQueueItems } from "@/services/hymnal/hymn-presentation"
-import { splitLyricLineForReadableSlides } from "@/lib/text-slide-chunking"
+import { parseAuthoredSongPages } from "@/lib/song-slide-pages"
 import { cn } from "@/lib/utils"
 import { useHymnSlideStore } from "@/stores/hymn-slide-store"
 import { useLibraryStore } from "@/stores/library-store"
@@ -28,30 +28,6 @@ That saved a soul like me
 
 I once was lost, but now am found
 Was blind, but now I see`
-
-function splitSlides(text: string): string[][] {
-  const manualSlides = text
-    .split(/\n\s*(?:---+|\n)\s*\n/g)
-    .map((block) =>
-      block
-        .split(/\r?\n/)
-        .map((line) => line.trim())
-        .filter(Boolean)
-    )
-    .filter((lines) => lines.length > 0)
-
-  const slides: string[][] = []
-  for (const lines of manualSlides) {
-    const readableLines = lines.flatMap((line) =>
-      splitLyricLineForReadableSlides(line)
-    )
-    for (let index = 0; index < readableLines.length; index += 3) {
-      slides.push(readableLines.slice(index, index + 3))
-    }
-  }
-
-  return slides
-}
 
 function fileNameWithoutExtension(name: string): string {
   return name.replace(/\.[^.]+$/, "").trim()
@@ -95,7 +71,10 @@ export function SongSlidesWorkspace() {
   const [activeIndex, setActiveIndex] = useState(0)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const slideLines = useMemo(() => splitSlides(rawSlides), [rawSlides])
+  const slideLines = useMemo(
+    () => parseAuthoredSongPages(rawSlides),
+    [rawSlides]
+  )
   const deck = useMemo(
     () =>
       slideLines.map((lines, index) =>

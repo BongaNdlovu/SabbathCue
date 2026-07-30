@@ -49,6 +49,7 @@ describe("hymnal services", () => {
     const screens = generateHymnScreens({
       hymn,
       selectedSectionIds: ["v1"],
+      maxLinesPerScreen: 3,
     })
 
     expect(screens.length).toBeGreaterThan(1)
@@ -59,7 +60,9 @@ describe("hymnal services", () => {
       sectionScreenCount: screens.length,
     })
     expect(screens.every((screen) => screen.lines.length <= 3)).toBe(true)
-    expect(screens.flatMap((screen) => screen.lines)).toEqual(hymn.sections[0].lines)
+    expect(screens.flatMap((screen) => screen.lines)).toEqual(
+      hymn.sections[0].lines
+    )
   })
 
   it("splits very long lyric lines before creating screens", () => {
@@ -82,7 +85,9 @@ describe("hymnal services", () => {
 
     expect(screens.flatMap((screen) => screen.lines).length).toBeGreaterThan(1)
     expect(
-      screens.flatMap((screen) => screen.lines).every((line) => line.length <= 42),
+      screens
+        .flatMap((screen) => screen.lines)
+        .every((line) => line.length <= 42)
     ).toBe(true)
   })
 
@@ -138,6 +143,45 @@ describe("hymnal services", () => {
     ])
   })
 
+  it("keeps standard four-line verses and refrains on their own authored pages", () => {
+    const hymn = makeHymn([
+      {
+        id: "v1",
+        kind: "verse",
+        label: "Verse 1",
+        number: 1,
+        lines: ["Verse line 1", "Verse line 2", "Verse line 3", "Verse line 4"],
+      },
+      {
+        id: "r1",
+        kind: "refrain",
+        label: "Refrain",
+        afterVerseNumber: 1,
+        lines: [
+          "Refrain line 1",
+          "Refrain line 2",
+          "Refrain line 3",
+          "Refrain line 4",
+        ],
+      },
+    ])
+
+    const screens = generateHymnScreens({
+      hymn,
+      selectedSectionIds: ["v1", "r1"],
+    })
+
+    expect(screens).toHaveLength(2)
+    expect(screens.map((screen) => screen.sectionKind)).toEqual([
+      "verse",
+      "refrain",
+    ])
+    expect(screens.map((screen) => screen.lines)).toEqual([
+      hymn.sections[0].lines,
+      hymn.sections[1].lines,
+    ])
+  })
+
   it("preserves repeated hymn sections as separate screen groups", () => {
     const sectionId = "v1"
     const hymn = makeHymn([
@@ -160,6 +204,7 @@ describe("hymnal services", () => {
     const screens = generateHymnScreens({
       hymn,
       selectedSectionIds: [sectionId, sectionId],
+      maxLinesPerScreen: 3,
     })
 
     expect(screens).toHaveLength(4)
@@ -169,8 +214,12 @@ describe("hymnal services", () => {
       `${sectionId}-repeat-2-screen-1`,
       `${sectionId}-repeat-2-screen-2`,
     ])
-    expect(screens.map((screen) => screen.sectionScreenCount)).toEqual([2, 2, 2, 2])
-    expect(screens.map((screen) => screen.sectionScreenIndex)).toEqual([0, 1, 0, 1])
+    expect(screens.map((screen) => screen.sectionScreenCount)).toEqual([
+      2, 2, 2, 2,
+    ])
+    expect(screens.map((screen) => screen.sectionScreenIndex)).toEqual([
+      0, 1, 0, 1,
+    ])
     expect(screens.map((screen) => screen.lines)).toEqual([
       ["Line one", "Line two", "Line three"],
       ["Line four", "Line five", "Line six"],

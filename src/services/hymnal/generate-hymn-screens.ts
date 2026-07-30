@@ -7,9 +7,18 @@ export interface GenerateHymnScreensOptions {
   maxLinesPerScreen?: number
 }
 
-function splitSectionLines(lines: string[], maxLinesPerScreen: number): string[][] {
+function splitSectionLines(
+  lines: string[],
+  maxLinesPerScreen: number | undefined
+): string[][] {
+  const readableLines = lines.flatMap((line) =>
+    splitLyricLineForReadableSlides(line)
+  )
+  if (maxLinesPerScreen === undefined) {
+    return [readableLines]
+  }
+
   const normalizedLimit = Math.max(1, maxLinesPerScreen)
-  const readableLines = lines.flatMap((line) => splitLyricLineForReadableSlides(line))
   const screens: string[][] = []
 
   for (let index = 0; index < readableLines.length; index += normalizedLimit) {
@@ -22,10 +31,12 @@ function splitSectionLines(lines: string[], maxLinesPerScreen: number): string[]
 export function generateHymnScreens({
   hymn,
   selectedSectionIds,
-  maxLinesPerScreen = 3,
+  maxLinesPerScreen,
 }: GenerateHymnScreensOptions): HymnScreen[] {
   const screens: HymnScreen[] = []
-  const sectionsById = new Map(hymn.sections.map((section) => [section.id, section]))
+  const sectionsById = new Map(
+    hymn.sections.map((section) => [section.id, section])
+  )
   const occurrenceBySectionId = new Map<string, number>()
 
   for (const sectionId of selectedSectionIds) {
