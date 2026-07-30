@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react"
+import type { ReactNode } from "react"
 import {
   BanIcon,
   CalendarPlusIcon,
@@ -86,7 +87,9 @@ function DeviceStatusBadge({ status }: { status: DeviceActivation["status"] }) {
         ? "bg-amber-500/15 text-amber-700 dark:text-amber-300"
         : "bg-destructive/15 text-destructive"
   return (
-    <span className={`rounded px-1.5 py-0.5 text-[10px] tracking-wide uppercase ${classes}`}>
+    <span
+      className={`rounded px-1.5 py-0.5 text-[10px] tracking-wide uppercase ${classes}`}
+    >
       {status}
     </span>
   )
@@ -123,7 +126,11 @@ function DeviceSummary({
   )
 }
 
-function OwnDevicesPanel({ onCurrentDeactivated }: { onCurrentDeactivated: () => Promise<void> }) {
+function OwnDevicesPanel({
+  onCurrentDeactivated,
+}: {
+  onCurrentDeactivated: () => Promise<void>
+}) {
   const currentDeviceId = useVerificationStore((s) => s.verifiedDeviceId)
   const currentUserId = useVerificationStore((s) => s.verifiedUserId)
   const [devices, setDevices] = useState<DeviceActivation[]>([])
@@ -200,10 +207,16 @@ function OwnDevicesPanel({ onCurrentDeactivated }: { onCurrentDeactivated: () =>
         <div>
           <p className="text-sm font-medium">Activated computers</p>
           <p className="text-xs text-muted-foreground">
-            Up to two approved computers. Deactivated computers cannot reconnect without approval.
+            Up to two approved computers. Deactivated computers cannot reconnect
+            without approval.
           </p>
         </div>
-        <Button variant="outline" size="sm" disabled={loading} onClick={() => void loadDevices()}>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={loading}
+          onClick={() => void loadDevices()}
+        >
           <RefreshCwIcon className="mr-1.5 size-3.5" />
           Refresh
         </Button>
@@ -215,15 +228,33 @@ function OwnDevicesPanel({ onCurrentDeactivated }: { onCurrentDeactivated: () =>
       ) : (
         <div className="space-y-2">
           {devices.map((device) => (
-            <div key={device.deviceId} className="flex items-center justify-between gap-3 rounded-lg border border-[var(--border-subtle)] bg-[var(--shell-bg-sunken)] p-3">
-              <DeviceSummary device={device} isCurrent={device.deviceId === currentDeviceId} />
+            <div
+              key={device.deviceId}
+              className="flex items-center justify-between gap-3 rounded-lg border border-[var(--border-subtle)] bg-[var(--shell-bg-sunken)] p-3"
+            >
+              <DeviceSummary
+                device={device}
+                isCurrent={device.deviceId === currentDeviceId}
+              />
               {device.status === "pending" && currentIsApproved ? (
-                <Button variant="outline" size="sm" disabled={busyDeviceId === device.deviceId} onClick={() => void approve(device)}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={busyDeviceId === device.deviceId}
+                  onClick={() => void approve(device)}
+                >
                   Approve
                 </Button>
               ) : device.status === "revoked" ? null : (
-                <Button variant="outline" size="sm" disabled={busyDeviceId === device.deviceId} onClick={() => void deactivate(device)}>
-                  {device.deviceId === currentDeviceId ? "Deactivate and sign out" : "Deactivate"}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={busyDeviceId === device.deviceId}
+                  onClick={() => void deactivate(device)}
+                >
+                  {device.deviceId === currentDeviceId
+                    ? "Deactivate and sign out"
+                    : "Deactivate"}
                 </Button>
               )}
             </div>
@@ -255,13 +286,20 @@ function AdminDeviceManager({ userId }: { userId: string }) {
       toast.error(result.message)
       return
     }
-    toast.success(status === "approved" ? "Computer approved." : "Computer revoked.")
+    toast.success(
+      status === "approved" ? "Computer approved." : "Computer revoked."
+    )
     await loadDevices()
   }
 
   if (devices === null) {
     return (
-      <Button variant="ghost" size="sm" disabled={loading} onClick={() => void loadDevices()}>
+      <Button
+        variant="ghost"
+        size="sm"
+        disabled={loading}
+        onClick={() => void loadDevices()}
+      >
         <LaptopIcon className="mr-1.5 size-3.5" />
         {loading ? "Loading computers..." : "Manage computers"}
       </Button>
@@ -271,13 +309,30 @@ function AdminDeviceManager({ userId }: { userId: string }) {
   return (
     <div className="space-y-2 border-t border-[var(--border-subtle)] pt-2">
       {devices.map((device) => (
-        <div key={device.deviceId} className="flex items-center justify-between gap-3 rounded-md bg-[var(--shell-bg-sunken)] p-2">
+        <div
+          key={device.deviceId}
+          className="flex items-center justify-between gap-3 rounded-md bg-[var(--shell-bg-sunken)] p-2"
+        >
           <DeviceSummary device={device} />
           <div className="flex gap-2">
             {device.status === "approved" ? (
-              <Button variant="outline" size="sm" disabled={busyDeviceId === device.deviceId} onClick={() => void setStatus(device.deviceId, "revoked")}>Revoke</Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={busyDeviceId === device.deviceId}
+                onClick={() => void setStatus(device.deviceId, "revoked")}
+              >
+                Revoke
+              </Button>
             ) : (
-              <Button variant="outline" size="sm" disabled={busyDeviceId === device.deviceId} onClick={() => void setStatus(device.deviceId, "approved")}>Approve</Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={busyDeviceId === device.deviceId}
+                onClick={() => void setStatus(device.deviceId, "approved")}
+              >
+                Approve
+              </Button>
             )}
           </div>
         </div>
@@ -432,8 +487,7 @@ function AdminAccountsPanel() {
                         </span>
                       ) : null}
                     </p>
-                    {account.is_church_organization &&
-                    account.church_name ? (
+                    {account.is_church_organization && account.church_name ? (
                       <p className="truncate text-xs font-medium text-emerald-700 dark:text-emerald-300">
                         {account.church_name}
                       </p>
@@ -515,10 +569,16 @@ function AdminAccountsPanel() {
                   {OFFLINE_LEASE_OPTIONS.map((option) => (
                     <Button
                       key={option.hours}
-                      variant={account.offline_lease_hours === option.hours ? "default" : "outline"}
+                      variant={
+                        account.offline_lease_hours === option.hours
+                          ? "default"
+                          : "outline"
+                      }
                       size="sm"
                       disabled={isBusy}
-                      onClick={() => void handleOfflineLeaseHours(account, option.hours)}
+                      onClick={() =>
+                        void handleOfflineLeaseHours(account, option.hours)
+                      }
                     >
                       {option.label}
                     </Button>
@@ -529,6 +589,82 @@ function AdminAccountsPanel() {
           })}
         </div>
       )}
+    </div>
+  )
+}
+
+interface AccountDeletionPanelProps {
+  isAdmin: boolean
+  checkingAdmin: boolean
+  confirmingDelete: boolean
+  deleting: boolean
+  onRequestDelete: () => void
+  onCancelDelete: () => void
+  onDelete: () => void
+}
+
+function AccountDeletionPanel({
+  isAdmin,
+  checkingAdmin,
+  confirmingDelete,
+  deleting,
+  onRequestDelete,
+  onCancelDelete,
+  onDelete,
+}: AccountDeletionPanelProps) {
+  let action: ReactNode
+  if (isAdmin) {
+    action = (
+      <p className="text-xs text-muted-foreground">
+        Admin accounts are protected from self-delete. Remove the admin row in
+        Supabase first if this account must be deleted.
+      </p>
+    )
+  } else if (confirmingDelete) {
+    action = (
+      <div className="flex items-center gap-2">
+        <Button
+          variant="destructive"
+          size="sm"
+          disabled={deleting}
+          onClick={onDelete}
+        >
+          {deleting ? "Deleting..." : "Yes, permanently delete"}
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={deleting}
+          onClick={onCancelDelete}
+        >
+          Cancel
+        </Button>
+      </div>
+    )
+  } else {
+    action = (
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={checkingAdmin}
+        onClick={onRequestDelete}
+      >
+        <Trash2Icon className="mr-1.5 size-3.5 text-destructive" />
+        {checkingAdmin ? "Checking account..." : "Delete account"}
+      </Button>
+    )
+  }
+
+  return (
+    <div className="glass-panel space-y-3 p-4">
+      <div>
+        <p className="text-sm font-medium">Delete account</p>
+        <p className="text-xs text-muted-foreground">
+          Permanently removes your account and all registered devices. This
+          cannot be undone.
+        </p>
+      </div>
+      {action}
     </div>
   )
 }
@@ -640,7 +776,8 @@ export function AccountSection() {
             <p className="text-xs text-muted-foreground">SabbathCue account</p>
             {offlineGraceExpiresAt ? (
               <p className="text-xs text-muted-foreground">
-                Offline lease until {new Date(offlineGraceExpiresAt).toLocaleString()}
+                Offline lease until{" "}
+                {new Date(offlineGraceExpiresAt).toLocaleString()}
               </p>
             ) : null}
           </div>
@@ -669,9 +806,13 @@ export function AccountSection() {
         {billingMessage ? (
           <p className="text-xs text-muted-foreground">{billingMessage}</p>
         ) : subscriptionLabel ? (
-          <p className="text-xs font-medium text-foreground">{subscriptionLabel}</p>
+          <p className="text-xs font-medium text-foreground">
+            {subscriptionLabel}
+          </p>
         ) : billingSummary?.paddleCustomerId ? (
-          <p className="text-xs text-muted-foreground">No active subscription on file.</p>
+          <p className="text-xs text-muted-foreground">
+            No active subscription on file.
+          </p>
         ) : null}
         {billingSummary?.accessExpiresAt ? (
           <p className="text-xs text-muted-foreground">
@@ -702,8 +843,8 @@ export function AccountSection() {
         <div>
           <p className="text-sm font-medium">Cancel subscription</p>
           <p className="text-xs text-muted-foreground">
-            Stop renewal at the end of your current billing period or trial.
-            You keep access until then; no refund for time already paid.
+            Stop renewal at the end of your current billing period or trial. You
+            keep access until then; no refund for time already paid.
           </p>
         </div>
         <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--shell-bg-sunken)] p-3 text-xs text-muted-foreground">
@@ -755,50 +896,15 @@ export function AccountSection() {
         )}
       </div>
 
-      <div className="glass-panel space-y-3 p-4">
-        <div>
-          <p className="text-sm font-medium">Delete account</p>
-          <p className="text-xs text-muted-foreground">
-            Permanently removes your account and all registered devices. This
-            cannot be undone.
-          </p>
-        </div>
-        {isAdmin ? (
-          <p className="text-xs text-muted-foreground">
-            Admin accounts are protected from self-delete. Remove the admin row
-            in Supabase first if this account must be deleted.
-          </p>
-        ) : confirmingDelete ? (
-          <div className="flex items-center gap-2">
-            <Button
-              variant="destructive"
-              size="sm"
-              disabled={deleting}
-              onClick={() => void handleDeleteAccount()}
-            >
-              {deleting ? "Deleting..." : "Yes, permanently delete"}
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={deleting}
-              onClick={() => setConfirmingDelete(false)}
-            >
-              Cancel
-            </Button>
-          </div>
-        ) : (
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={checkingAdmin}
-            onClick={() => setConfirmingDelete(true)}
-          >
-            <Trash2Icon className="mr-1.5 size-3.5 text-destructive" />
-            {checkingAdmin ? "Checking account..." : "Delete account"}
-          </Button>
-        )}
-      </div>
+      <AccountDeletionPanel
+        isAdmin={isAdmin}
+        checkingAdmin={checkingAdmin}
+        confirmingDelete={confirmingDelete}
+        deleting={deleting}
+        onRequestDelete={() => setConfirmingDelete(true)}
+        onCancelDelete={() => setConfirmingDelete(false)}
+        onDelete={() => void handleDeleteAccount()}
+      />
 
       {isAdmin ? (
         <>
