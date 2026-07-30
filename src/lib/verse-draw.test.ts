@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest"
-import { drawVerseText } from "./verse-draw"
+import { drawHymnSectionLabel, drawVerseText } from "./verse-draw"
 import { computeVerseLayoutMetrics } from "./verse-layout"
 import { BUILTIN_THEMES } from "./builtin-themes"
 import type { BroadcastTheme, VerseRenderData } from "@/types"
@@ -27,6 +27,7 @@ function mockCtx() {
     shadowBlur: 0,
     shadowOffsetX: 0,
     shadowOffsetY: 0,
+    globalAlpha: 1,
     fillText: vi.fn(),
     strokeText: vi.fn(),
     measureText: vi.fn((s: string) => ({ width: s.length * 10 })),
@@ -71,5 +72,48 @@ describe("drawVerseText fontStyle", () => {
     }
     computeVerseLayoutMetrics(ctx, theme, verse)
     expect(fonts.some((f) => f.startsWith("italic "))).toBe(true)
+  })
+})
+
+describe("drawHymnSectionLabel", () => {
+  it("draws the theme's refrain instruction for an authored refrain page", () => {
+    const { ctx } = mockCtx()
+    const base = BUILTIN_THEMES[0]
+    const theme: BroadcastTheme = {
+      ...base,
+      hymnPresentation: {
+        showSectionLabel: true,
+        refrainLabel: "Sing together",
+      },
+    }
+
+    drawHymnSectionLabel(
+      ctx,
+      theme,
+      {
+        kind: "hymn",
+        reference: "Test hymn",
+        segments: [{ text: "A refrain" }],
+        hymnSlide: {
+          screenId: "test-refrain",
+          slideIndex: 1,
+          slideCount: 2,
+          sectionId: "refrain",
+          sectionLabel: "Chorus",
+          sectionKind: "refrain",
+          sectionScreenIndex: 0,
+          sectionScreenCount: 1,
+        },
+      },
+      100,
+      800,
+      300
+    )
+
+    expect(ctx.fillText).toHaveBeenCalledWith(
+      "SING TOGETHER",
+      expect.any(Number),
+      expect.any(Number)
+    )
   })
 })

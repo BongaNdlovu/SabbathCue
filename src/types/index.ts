@@ -5,8 +5,21 @@ export type {
   TranscriptEventPayload,
 } from "./transcript"
 export type { Translation, Book, Verse, CrossReference } from "./bible"
-export type { EgwBook, EgwChapterInfo, EgwPageInfo, EgwParagraph, EgwSemanticResult, EgwSemanticStatus } from "./egw"
-export type { Hymn, HymnScreen, HymnSearchResult, HymnSection, HymnSectionKind } from "./hymnal"
+export type {
+  EgwBook,
+  EgwChapterInfo,
+  EgwPageInfo,
+  EgwParagraph,
+  EgwSemanticResult,
+  EgwSemanticStatus,
+} from "./egw"
+export type {
+  Hymn,
+  HymnScreen,
+  HymnSearchResult,
+  HymnSection,
+  HymnSectionKind,
+} from "./hymnal"
 export type { QueueItem } from "./queue"
 export type {
   ServicePlan,
@@ -25,7 +38,13 @@ export type {
   VerificationStatus,
 } from "./verification"
 export { getVerseFromItem, getReferenceFromItem } from "./queue"
-export type { DetectionResult, DetectionStatus, HymnDetection, ReadingAdvance, SemanticSearchResult } from "./detection"
+export type {
+  DetectionResult,
+  DetectionStatus,
+  HymnDetection,
+  ReadingAdvance,
+  SemanticSearchResult,
+} from "./detection"
 export type {
   BroadcastIssueOutputId,
   BroadcastOutputErrorEvent,
@@ -50,6 +69,7 @@ export type {
   ScripturePresentationItemData,
   EgwPresentationItemData,
   HymnPresentationItemData,
+  HymnPresentationSectionKind,
   MediaPresentationItemData,
   SlideDeck,
   SlideDeckPresentationItemData,
@@ -58,10 +78,7 @@ export type {
   SlideDeckSlide,
   PresentationItem,
 } from "./presentation"
-export {
-  getPresentationRenderData,
-  getScriptureVerse,
-} from "./presentation"
+export { getPresentationRenderData, getScriptureVerse } from "./presentation"
 export type {
   NdiAlphaMode,
   NdiConfigEventPayload,

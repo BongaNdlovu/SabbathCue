@@ -34,6 +34,16 @@ const EXPECTED_PRESET_IDS = [
   "nature-stars",
   "nature-meadow",
   "nature-aurora",
+  // full-fidelity hymn scenes
+  "hymn-midnight",
+  "hymn-dawn",
+  "hymn-minimal",
+  "hymn-glass",
+  "hymn-water",
+  "hymn-heritage",
+  "hymn-upper-room",
+  "hymn-minimal-static",
+  "hymn-heritage-static",
   // worship scene
   "desert-cloth",
   // KNFC verse-stage group
@@ -45,20 +55,22 @@ const EXPECTED_PRESET_IDS = [
 ]
 
 describe("KINETIC_THEME_PRESETS", () => {
-  it("contains exactly 30 presets with the expected ids", () => {
-    expect(KINETIC_THEME_PRESETS).toHaveLength(30)
+  it("contains exactly 39 presets with the expected ids", () => {
+    expect(KINETIC_THEME_PRESETS).toHaveLength(39)
     expect(KINETIC_THEME_PRESETS.map((p) => p.presetId)).toEqual(
-      EXPECTED_PRESET_IDS,
+      EXPECTED_PRESET_IDS
     )
   })
 
-  it("has fourteen classical, six modern and ten nature presets", () => {
-    const classical = KINETIC_THEME_PRESETS.filter((p) => p.group === "classical")
+  it("has twenty classical, eight modern and eleven nature presets", () => {
+    const classical = KINETIC_THEME_PRESETS.filter(
+      (p) => p.group === "classical"
+    )
     const modern = KINETIC_THEME_PRESETS.filter((p) => p.group === "modern")
     const nature = KINETIC_THEME_PRESETS.filter((p) => p.group === "nature")
-    expect(classical).toHaveLength(14)
-    expect(modern).toHaveLength(6)
-    expect(nature).toHaveLength(10)
+    expect(classical).toHaveLength(20)
+    expect(modern).toHaveLength(8)
+    expect(nature).toHaveLength(11)
   })
 
   it("gives cyberpunk a dot-grid and brutalist diagonal stripes", () => {
@@ -83,7 +95,7 @@ describe("buildKineticBroadcastThemes", () => {
   const themes = buildKineticBroadcastThemes()
 
   it("produces one builtin BroadcastTheme per preset", () => {
-    expect(themes).toHaveLength(30)
+    expect(themes).toHaveLength(39)
     for (const theme of themes) {
       expect(theme.builtin).toBe(true)
       expect(theme.kinetic).toBeDefined()
@@ -103,7 +115,7 @@ describe("buildKineticBroadcastThemes", () => {
     }
   })
 
-  it("does not reference network fonts", () => {
+  it("uses only bundled or system font families", () => {
     const allowed = new Set([
       "Source Serif 4 Variable",
       "DM Serif Display",
@@ -112,6 +124,8 @@ describe("buildKineticBroadcastThemes", () => {
       "Cinzel",
       "Playfair Display",
       "Bebas Neue",
+      "Plus Jakarta Sans Variable",
+      "Outfit Variable",
       // OS-installed system serif (Desert Cloth) — offline by definition.
       "Georgia",
     ])
@@ -119,11 +133,45 @@ describe("buildKineticBroadcastThemes", () => {
       expect(allowed.has(theme.verseText.fontFamily)).toBe(true)
     }
   })
+
+  it("uses portable hymn font alternatives and only two static candidates", () => {
+    const hymnThemes = themes.filter((theme) =>
+      theme.kinetic?.backgroundKind.startsWith("hymn-")
+    )
+    expect(hymnThemes).toHaveLength(9)
+    expect(
+      hymnThemes
+        .filter((theme) => theme.kinetic?.animate === false)
+        .map((theme) => theme.kinetic?.presetId)
+    ).toEqual(["hymn-minimal-static", "hymn-heritage-static"])
+    expect(
+      Object.fromEntries(
+        hymnThemes
+          .filter((theme) => theme.kinetic?.animate !== false)
+          .map((theme) => [theme.kinetic?.presetId, theme.verseText.fontFamily])
+      )
+    ).toEqual({
+      "hymn-midnight": "DM Serif Display",
+      "hymn-dawn": "Playfair Display",
+      "hymn-minimal": "Plus Jakarta Sans Variable",
+      "hymn-glass": "DM Serif Display",
+      "hymn-water": "Outfit Variable",
+      "hymn-heritage": "DM Serif Display",
+      "hymn-upper-room": "DM Serif Display",
+    })
+    for (const theme of hymnThemes) {
+      expect(theme.hymnPresentation?.slideCounter).toEqual({
+        position: "bottom-right",
+        format: "slash",
+        style: "plain",
+      })
+    }
+  })
 })
 
 describe("desert cloth preset", () => {
   const theme = buildKineticBroadcastThemes().find(
-    (t) => t.id === "builtin-kinetic-desert-cloth",
+    (t) => t.id === "builtin-kinetic-desert-cloth"
   )
 
   it("carries the worship design's typography and transition", () => {

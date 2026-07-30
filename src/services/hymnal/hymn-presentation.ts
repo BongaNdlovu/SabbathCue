@@ -17,6 +17,11 @@ export function createHymnPresentationItem(
     screenId: screen.id,
     slideIndex: screen.screenIndex,
     slideCount: screen.totalScreens,
+    sectionId: screen.sectionId,
+    sectionLabel: screen.sectionLabel,
+    sectionKind: screen.sectionKind,
+    sectionScreenIndex: screen.sectionScreenIndex,
+    sectionScreenCount: screen.sectionScreenCount,
     reference: `#${screen.hymnNumber} ${screen.hymnTitle} - ${label}`,
     segments: [{ text: screen.lines.join("\n") }],
   }

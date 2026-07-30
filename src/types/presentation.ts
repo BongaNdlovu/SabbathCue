@@ -4,12 +4,7 @@ import type { EgwParagraph } from "./egw"
 export type VideoSourceKind = "local" | "url" | "youtube"
 
 export type PresentationItemKind =
-  | "scripture"
-  | "hymn"
-  | "media"
-  | "slideDeck"
-  | "egw"
-  | "video"
+  "scripture" | "hymn" | "media" | "slideDeck" | "egw" | "video"
 
 export interface PresentationSegment {
   verseNumber?: number
@@ -31,6 +26,11 @@ export interface PresentationRenderData {
     screenId: string
     slideIndex: number
     slideCount: number
+    sectionId?: string
+    sectionLabel?: string
+    sectionKind?: HymnPresentationSectionKind
+    sectionScreenIndex?: number
+    sectionScreenCount?: number
   }
 }
 
@@ -73,9 +73,17 @@ export interface HymnPresentationItemData {
   screenId: string
   slideIndex: number
   slideCount: number
+  sectionId?: string
+  sectionLabel?: string
+  sectionKind?: HymnPresentationSectionKind
+  sectionScreenIndex?: number
+  sectionScreenCount?: number
   reference: string
   segments: PresentationSegment[]
 }
+
+export type HymnPresentationSectionKind =
+  "verse" | "refrain" | "chorus" | "bridge" | "ending" | "custom"
 
 export interface MediaPresentationItemData {
   kind: "media"
@@ -105,12 +113,7 @@ export interface VideoPresentationItemData {
 }
 
 export type SlideDeckSectionKind =
-  | "intro"
-  | "verse"
-  | "chorus"
-  | "bridge"
-  | "ending"
-  | "custom"
+  "intro" | "verse" | "chorus" | "bridge" | "ending" | "custom"
 
 export interface SlideDeckSection {
   id: string
@@ -182,6 +185,11 @@ export function getPresentationRenderData(
         screenId: item.screenId,
         slideIndex: item.slideIndex,
         slideCount: item.slideCount,
+        sectionId: item.sectionId,
+        sectionLabel: item.sectionLabel,
+        sectionKind: item.sectionKind,
+        sectionScreenIndex: item.sectionScreenIndex,
+        sectionScreenCount: item.sectionScreenCount,
       },
     }
   }

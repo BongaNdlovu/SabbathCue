@@ -34,4 +34,52 @@ describe("hymn presentation queue items", () => {
     if (items[1].presentation.kind !== "hymn") return
     expect(items[1].presentation.screenId).toBe("screen-1")
   })
+
+  it("retains authored hymn section identity in every presentation page", () => {
+    const verse = makeScreen(0)
+    const refrain: HymnScreen = {
+      ...makeScreen(1),
+      id: "refrain-screen",
+      sectionId: "r1",
+      sectionLabel: "Refrain",
+      sectionKind: "refrain",
+      sectionScreenIndex: 0,
+      sectionScreenCount: 1,
+    }
+
+    const items = createGroupedHymnQueueItems([verse, refrain])
+    const sectionMetadata = items.map((item) => {
+      if (item.presentation.kind !== "hymn") return null
+      return {
+        sectionId: Reflect.get(item.presentation, "sectionId"),
+        sectionLabel: Reflect.get(item.presentation, "sectionLabel"),
+        sectionKind: Reflect.get(item.presentation, "sectionKind"),
+        sectionScreenIndex: Reflect.get(
+          item.presentation,
+          "sectionScreenIndex"
+        ),
+        sectionScreenCount: Reflect.get(
+          item.presentation,
+          "sectionScreenCount"
+        ),
+      }
+    })
+
+    expect(sectionMetadata).toEqual([
+      {
+        sectionId: "v1",
+        sectionLabel: "Verse 1",
+        sectionKind: "verse",
+        sectionScreenIndex: 0,
+        sectionScreenCount: 2,
+      },
+      {
+        sectionId: "r1",
+        sectionLabel: "Refrain",
+        sectionKind: "refrain",
+        sectionScreenIndex: 0,
+        sectionScreenCount: 1,
+      },
+    ])
+  })
 })

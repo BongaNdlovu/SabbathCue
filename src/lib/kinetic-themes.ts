@@ -32,10 +32,16 @@ export interface KineticThemePreset {
   accentColor: string
   /** Body/verse text color tuned for readability over the moving base. */
   textColor: string
-  /** Local (offline) font family approximating the prototype's font intent. */
+  /** Bundled family selected to preserve the source design's visual intent. */
   fontFamily: string
   motion: KineticMotion
   pattern?: KineticPattern
+  /** False renders the deterministic time-zero frame and does not start RAF. */
+  animate?: boolean
+  verseText?: Partial<BroadcastTheme["verseText"]>
+  reference?: Partial<BroadcastTheme["reference"]>
+  layout?: Partial<BroadcastTheme["layout"]>
+  hymnPresentation?: BroadcastTheme["hymnPresentation"]
 }
 
 // Default motion envelope from the prototype: animate-mesh-vigorous is a 6s
@@ -65,6 +71,14 @@ const CINZEL = "Cinzel"
 const PLAYFAIR = "Playfair Display"
 const BEBAS = "Bebas Neue"
 
+// The hymn HTML named proprietary/device-specific families. These alternatives
+// are bundled in index.css, so every SabbathCue installation renders the same
+// glyphs without a separate commercial-font installation or network request.
+const HYMN_BOOK_SERIF = DISPLAY_SERIF
+const HYMN_DIDONE = PLAYFAIR
+const HYMN_SANS = "Plus Jakarta Sans Variable"
+const HYMN_HUMANIST_SANS = "Outfit Variable"
+
 // OS-installed serif used by the Desert Cloth worship scene (the HTML design's
 // own font). System font: available to canvas offline with no loading step.
 const GEORGIA = "Georgia"
@@ -84,6 +98,13 @@ const NATURE_MOTION: KineticMotion = {
 const STAGE_MOTION: KineticMotion = {
   durationMs: 18000,
   driftAmount: 0.25,
+  hueShiftDegrees: 0,
+  saturationBoost: 0,
+}
+
+const HYMN_MOTION: KineticMotion = {
+  durationMs: 14000,
+  driftAmount: 0.42,
   hueShiftDegrees: 0,
   saturationBoost: 0,
 }
@@ -358,6 +379,225 @@ export const KINETIC_THEME_PRESETS: KineticThemePreset[] = [
     fontFamily: CINZEL,
     motion: NATURE_MOTION,
   },
+  // ---- Hymn scenes ported from sabbathcue-hymn-theme ----------------------
+  {
+    presetId: "hymn-midnight",
+    name: "Midnight Sanctuary (Kinetic)",
+    group: "classical",
+    backgroundKind: "hymn-midnight",
+    colors: ["#030711", "#09162f", "#061020", "#02040a"],
+    accentColor: "#d8b56b",
+    textColor: "#fffdf5",
+    fontFamily: HYMN_BOOK_SERIF,
+    motion: HYMN_MOTION,
+    verseText: { fontSize: 74, fontWeight: 400, lineHeight: 1.25 },
+    hymnPresentation: {
+      titleOnly: true,
+      showSectionLabel: true,
+      refrainLabel: "Sing together",
+      sectionStyles: {
+        refrain: { verseText: { fontSize: 78, color: "#fff8e4" } },
+      },
+    },
+  },
+  {
+    presetId: "hymn-dawn",
+    name: "Dawn Over the Hills (Kinetic)",
+    group: "classical",
+    backgroundKind: "hymn-dawn",
+    colors: ["#f2dcc6", "#e3b79f", "#a96868", "#3c3f4a"],
+    accentColor: "#5e322b",
+    textColor: "#272b29",
+    fontFamily: HYMN_DIDONE,
+    motion: HYMN_MOTION,
+    verseText: {
+      fontSize: 74,
+      fontWeight: 500,
+      lineHeight: 1.17,
+      shadow: { color: "rgba(255,255,255,0.35)", blur: 6, x: 0, y: 1 },
+    },
+    hymnPresentation: {
+      titleOnly: true,
+      showSectionLabel: true,
+      refrainLabel: "Refrain",
+      sectionStyles: {
+        refrain: {
+          verseText: { color: "#5e322b", fontStyle: "italic" },
+        },
+      },
+    },
+  },
+  {
+    presetId: "hymn-minimal",
+    name: "Sacred Minimal (Kinetic)",
+    group: "modern",
+    backgroundKind: "hymn-minimal",
+    colors: ["#09110d", "#102019", "#0a1510"],
+    accentColor: "#8fb99a",
+    textColor: "#f4f5ef",
+    fontFamily: HYMN_SANS,
+    motion: HYMN_MOTION,
+    verseText: {
+      fontSize: 68,
+      fontWeight: 370,
+      horizontalAlign: "left",
+      lineHeight: 1.18,
+    },
+    layout: {
+      anchor: "center",
+      offsetX: -260,
+      textAlign: "left",
+      textAreaWidth: 62,
+    },
+    hymnPresentation: {
+      titleOnly: true,
+      showSectionLabel: true,
+      refrainLabel: "All voices",
+      sectionStyles: {
+        refrain: { verseText: { color: "#d5f5cc" } },
+      },
+    },
+  },
+  {
+    presetId: "hymn-glass",
+    name: "Stained Glass (Kinetic)",
+    group: "classical",
+    backgroundKind: "hymn-glass",
+    colors: ["#110b26", "#2f155b", "#7b234c", "#173d64"],
+    accentColor: "#e6bd66",
+    textColor: "#fff8e9",
+    fontFamily: HYMN_BOOK_SERIF,
+    motion: HYMN_MOTION,
+    verseText: { fontSize: 74, fontWeight: 400, lineHeight: 1.25 },
+    hymnPresentation: {
+      titleOnly: true,
+      showSectionLabel: true,
+      refrainLabel: "Refrain",
+      sectionStyles: {
+        refrain: { verseText: { color: "#ffe8bc" } },
+      },
+    },
+  },
+  {
+    presetId: "hymn-water",
+    name: "Living Water (Kinetic)",
+    group: "nature",
+    backgroundKind: "hymn-water",
+    colors: ["#04161d", "#073241", "#0b5962", "#031015"],
+    accentColor: "#8eddd2",
+    textColor: "#f3ffff",
+    fontFamily: HYMN_HUMANIST_SANS,
+    motion: HYMN_MOTION,
+    verseText: {
+      fontSize: 70,
+      fontWeight: 400,
+      lineHeight: 1.28,
+      letterSpacing: 0,
+    },
+    hymnPresentation: {
+      titleOnly: true,
+      showSectionLabel: true,
+      refrainLabel: "Refrain",
+      sectionStyles: {
+        refrain: {
+          verseText: { color: "#d7fff7", letterSpacing: 0 },
+        },
+      },
+    },
+  },
+  {
+    presetId: "hymn-heritage",
+    name: "Heritage Hymnal (Kinetic)",
+    group: "classical",
+    backgroundKind: "hymn-heritage",
+    colors: ["#eee4cd", "#e0cfad", "#cbb58c"],
+    accentColor: "#6a3e2c",
+    textColor: "#273a30",
+    fontFamily: HYMN_BOOK_SERIF,
+    motion: HYMN_MOTION,
+    verseText: { fontSize: 66, fontWeight: 400, lineHeight: 1.32 },
+    hymnPresentation: {
+      titleOnly: true,
+      showSectionLabel: true,
+      refrainLabel: "Refrain",
+      sectionStyles: {
+        refrain: { verseText: { color: "#6a3e2c" } },
+      },
+    },
+  },
+  {
+    presetId: "hymn-upper-room",
+    name: "Upper Room (Kinetic)",
+    group: "classical",
+    backgroundKind: "hymn-upper-room",
+    colors: ["#120a06", "#352013", "#6b3f20", "#090503"],
+    accentColor: "#d8a35e",
+    textColor: "#fff5df",
+    fontFamily: HYMN_BOOK_SERIF,
+    motion: HYMN_MOTION,
+    verseText: { fontSize: 76, fontWeight: 400, lineHeight: 1.23 },
+    hymnPresentation: {
+      titleOnly: true,
+      showSectionLabel: true,
+      refrainLabel: "Refrain",
+      sectionStyles: {
+        refrain: { verseText: { color: "#ffd79b" } },
+      },
+    },
+  },
+  {
+    presetId: "hymn-minimal-static",
+    name: "Sacred Minimal (Static)",
+    group: "modern",
+    backgroundKind: "hymn-minimal",
+    colors: ["#09110d", "#102019", "#0a1510"],
+    accentColor: "#8fb99a",
+    textColor: "#f4f5ef",
+    fontFamily: HYMN_SANS,
+    motion: HYMN_MOTION,
+    animate: false,
+    verseText: {
+      fontSize: 68,
+      fontWeight: 370,
+      horizontalAlign: "left",
+      lineHeight: 1.18,
+    },
+    layout: {
+      anchor: "center",
+      offsetX: -260,
+      textAlign: "left",
+      textAreaWidth: 62,
+    },
+    hymnPresentation: {
+      titleOnly: true,
+      showSectionLabel: true,
+      refrainLabel: "All voices",
+      sectionStyles: {
+        refrain: { verseText: { color: "#d5f5cc" } },
+      },
+    },
+  },
+  {
+    presetId: "hymn-heritage-static",
+    name: "Heritage Hymnal (Static)",
+    group: "classical",
+    backgroundKind: "hymn-heritage",
+    colors: ["#eee4cd", "#e0cfad", "#cbb58c"],
+    accentColor: "#6a3e2c",
+    textColor: "#273a30",
+    fontFamily: HYMN_BOOK_SERIF,
+    motion: HYMN_MOTION,
+    animate: false,
+    verseText: { fontSize: 66, fontWeight: 400, lineHeight: 1.32 },
+    hymnPresentation: {
+      titleOnly: true,
+      showSectionLabel: true,
+      refrainLabel: "Refrain",
+      sectionStyles: {
+        refrain: { verseText: { color: "#6a3e2c" } },
+      },
+    },
+  },
   // ---- Worship scene: Desert Cloth (canvas port of worship_background HTML)
   {
     presetId: "desert-cloth",
@@ -370,7 +610,12 @@ export const KINETIC_THEME_PRESETS: KineticThemePreset[] = [
     fontFamily: GEORGIA,
     // No hue/saturation breathing in this design; 6.5s matches the slowest
     // fold loop so kinetic hosts keep animating continuously.
-    motion: { durationMs: 6500, driftAmount: 0.6, hueShiftDegrees: 0, saturationBoost: 0 },
+    motion: {
+      durationMs: 6500,
+      driftAmount: 0.6,
+      hueShiftDegrees: 0,
+      saturationBoost: 0,
+    },
   },
   // ---- KNFC verse-stage group ---------------------------------------------
   // colors = [stage-a, stage-b, glow].
@@ -436,7 +681,7 @@ export function kineticThemeId(presetId: string): string {
 }
 
 export const KINETIC_THEME_IDS: string[] = KINETIC_THEME_PRESETS.map((p) =>
-  kineticThemeId(p.presetId),
+  kineticThemeId(p.presetId)
 )
 
 function toKineticMetadata(preset: KineticThemePreset): BroadcastKineticTheme {
@@ -449,14 +694,18 @@ function toKineticMetadata(preset: KineticThemePreset): BroadcastKineticTheme {
     accentColor: preset.accentColor,
     motion: preset.motion,
     pattern: preset.pattern,
+    animate: preset.animate,
   }
 }
 
 // A diagonal gradient mirroring the prototype's 135deg mesh. This is the static
 // fallback background so the theme still renders if kinetic drawing is skipped
 // or fails, and so non-kinetic-aware consumers see a representative frame.
-function fallbackBackground(preset: KineticThemePreset): BroadcastTheme["background"] {
-  const colors = preset.colors.length > 0 ? preset.colors : ["#000000", "#111111"]
+function fallbackBackground(
+  preset: KineticThemePreset
+): BroadcastTheme["background"] {
+  const colors =
+    preset.colors.length > 0 ? preset.colors : ["#000000", "#111111"]
   const stops = colors.map((color, index) => ({
     color,
     position: Math.round((index / Math.max(1, colors.length - 1)) * 100),
@@ -470,7 +719,7 @@ function fallbackBackground(preset: KineticThemePreset): BroadcastTheme["backgro
 }
 
 export function buildKineticBroadcastTheme(
-  preset: KineticThemePreset,
+  preset: KineticThemePreset
 ): BroadcastTheme {
   const isLight =
     preset.presetId === "editorial" || preset.presetId === "parchment"
@@ -501,7 +750,9 @@ export function buildKineticBroadcastTheme(
       textDecoration: "none",
       lineHeight: 1.4,
       letterSpacing: 0,
-      shadow: isLight ? null : { color: "rgba(0,0,0,0.55)", blur: 16, x: 0, y: 4 },
+      shadow: isLight
+        ? null
+        : { color: "rgba(0,0,0,0.55)", blur: 16, x: 0, y: 4 },
       outline: null,
     },
     verseNumbers: {
@@ -511,7 +762,8 @@ export function buildKineticBroadcastTheme(
       superscript: true,
     },
     reference: {
-      fontFamily: preset.fontFamily === DISPLAY_SERIF ? SANS : preset.fontFamily,
+      fontFamily:
+        preset.fontFamily === DISPLAY_SERIF ? SANS : preset.fontFamily,
       fontSize: 36,
       fontWeight: 600,
       color: preset.accentColor,
@@ -542,7 +794,21 @@ export function buildKineticBroadcastTheme(
       direction: "up",
     },
     kinetic: toKineticMetadata(preset),
+    hymnPresentation: preset.hymnPresentation
+      ? {
+          slideCounter: {
+            position: "bottom-right",
+            format: "slash",
+            style: "plain",
+          },
+          ...preset.hymnPresentation,
+        }
+      : undefined,
   }
+
+  theme.verseText = { ...theme.verseText, ...preset.verseText }
+  theme.reference = { ...theme.reference, ...preset.reference }
+  theme.layout = { ...theme.layout, ...preset.layout }
 
   // Desert Cloth carries the HTML design's own typography: Georgia italic
   // cream verse text with ink shadow, then quiet bottom metadata so the

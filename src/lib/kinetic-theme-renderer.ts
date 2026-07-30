@@ -1,5 +1,7 @@
 import type { BroadcastKineticTheme, BroadcastTheme } from "@/types/broadcast"
+import type { HymnPresentationSectionKind } from "@/types/presentation"
 import worshipPortraitUrl from "@/assets/worship-portrait.webp"
+import { drawHymnThemeScene, isHymnThemeScene } from "@/lib/hymn-theme-scenes"
 
 // ---------------------------------------------------------------------------
 // Canvas-native kinetic background renderer
@@ -19,9 +21,9 @@ import worshipPortraitUrl from "@/assets/worship-portrait.webp"
 const TAU = Math.PI * 2
 
 export function isKineticTheme(
-  theme: BroadcastTheme,
+  theme: BroadcastTheme
 ): theme is BroadcastTheme & { kinetic: BroadcastKineticTheme } {
-  return Boolean(theme.kinetic)
+  return Boolean(theme.kinetic && theme.kinetic.animate !== false)
 }
 
 /** Normalized loop position in [0, 1). Stable at timeMs=0; 0 when no duration. */
@@ -40,7 +42,7 @@ function drawMeshBase(
   width: number,
   height: number,
   k: BroadcastKineticTheme,
-  phase: number,
+  phase: number
 ): void {
   const colors = colorsOf(k)
   // Rotate the gradient axis over the loop (the prototype shifts
@@ -55,7 +57,7 @@ function drawMeshBase(
     cx - Math.cos(angle) * len,
     cy - Math.sin(angle) * len,
     cx + Math.cos(angle) * len,
-    cy + Math.sin(angle) * len,
+    cy + Math.sin(angle) * len
   )
   for (let i = 0; i < colors.length; i++) {
     grad.addColorStop(i / Math.max(1, colors.length - 1), colors[i])
@@ -69,7 +71,7 @@ function drawDriftBlobs(
   width: number,
   height: number,
   k: BroadcastKineticTheme,
-  phase: number,
+  phase: number
 ): void {
   const colors = colorsOf(k)
   const drift = Math.max(0, k.motion.driftAmount)
@@ -89,7 +91,7 @@ function drawDriftBlobs(
     const t = phase * TAU + (i / blobs) * TAU
     const ox = Math.cos(t) * drift * width * 0.22
     const oy = Math.sin(t * 0.8 + i) * drift * height * 0.22
-    const baseX = width * (0.3 + 0.4 * ((i % 2) === 0 ? 0 : 1))
+    const baseX = width * (0.3 + 0.4 * (i % 2 === 0 ? 0 : 1))
     const baseY = height * (0.32 + 0.36 * (i < 2 ? 0 : 1))
     const grad = ctx.createRadialGradient(
       baseX + ox,
@@ -97,7 +99,7 @@ function drawDriftBlobs(
       0,
       baseX + ox,
       baseY + oy,
-      radius,
+      radius
     )
     grad.addColorStop(0, colors[i % colors.length])
     grad.addColorStop(1, "rgba(0,0,0,0)")
@@ -115,7 +117,7 @@ function drawDriftBlobs(
     0,
     glowX,
     glowY,
-    radius * 0.7,
+    radius * 0.7
   )
   glow.addColorStop(0, k.accentColor)
   glow.addColorStop(1, "rgba(0,0,0,0)")
@@ -133,7 +135,7 @@ function drawDotGrid(
   width: number,
   height: number,
   k: BroadcastKineticTheme,
-  phase: number,
+  phase: number
 ): void {
   const spacing = Math.max(24, Math.round(width / 48))
   const dotRadius = Math.max(1.5, spacing * 0.08)
@@ -157,7 +159,7 @@ function drawDiagonalStripes(
   width: number,
   height: number,
   k: BroadcastKineticTheme,
-  phase: number,
+  phase: number
 ): void {
   const band = Math.max(28, Math.round(width / 30))
   const period = band * 2
@@ -233,7 +235,7 @@ function drawNatureBackdrop(
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
-  k: BroadcastKineticTheme,
+  k: BroadcastKineticTheme
 ): void {
   const colors = colorsOf(k)
   const grad = ctx.createLinearGradient(0, 0, 0, height)
@@ -261,7 +263,13 @@ function paintRidge(
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
-  opts: { baseY: number; amp: number; seed: number; color: string; jagged?: boolean },
+  opts: {
+    baseY: number
+    amp: number
+    seed: number
+    color: string
+    jagged?: boolean
+  }
 ): void {
   const steps = opts.jagged ? 14 : 8
   ctx.beginPath()
@@ -271,8 +279,10 @@ function paintRidge(
   for (let s = 1; s <= steps; s++) {
     const x = (s / steps) * width
     const y = opts.baseY + (srand(opts.seed + s) - 0.5) * 2 * opts.amp
-    const peak = opts.jagged ? opts.amp * (0.5 + srand(opts.seed + s + 57)) : opts.amp * 0.4
-    ctx.quadraticCurveTo((x - width / steps / 2), Math.min(py, y) - peak, x, y)
+    const peak = opts.jagged
+      ? opts.amp * (0.5 + srand(opts.seed + s + 57))
+      : opts.amp * 0.4
+    ctx.quadraticCurveTo(x - width / steps / 2, Math.min(py, y) - peak, x, y)
     py = y
   }
   ctx.lineTo(width, height + 2)
@@ -286,7 +296,7 @@ function paintVignette(
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
-  strength: number,
+  strength: number
 ): void {
   const grad = ctx.createRadialGradient(
     width / 2,
@@ -294,7 +304,7 @@ function paintVignette(
     Math.min(width, height) * 0.42,
     width / 2,
     height / 2,
-    Math.max(width, height) * 0.78,
+    Math.max(width, height) * 0.78
   )
   grad.addColorStop(0, "rgba(0, 0, 0, 0)")
   grad.addColorStop(1, `rgba(0, 0, 0, ${strength})`)
@@ -307,7 +317,7 @@ function paintLightShafts(
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
-  tint: [number, number, number],
+  tint: [number, number, number]
 ): void {
   ctx.save()
   ctx.globalCompositeOperation = "screen"
@@ -340,7 +350,7 @@ function paintForestEnvironment(
   width: number,
   height: number,
   k: BroadcastKineticTheme,
-  warm: boolean,
+  warm: boolean
 ): void {
   const [r, g, b] = hexToRgb(k.accentColor)
   // Far-to-near tree layers: farther layers are lighter and hazier.
@@ -355,13 +365,24 @@ function paintForestEnvironment(
     for (let i = 0; i < count; i++) {
       const seed = layer * 37 + i
       const x = ((i + 0.18 + srand(seed) * 0.66) / count) * width
-      const trunkW = width * (0.006 + near * 0.011) * (0.8 + srand(seed + 3) * 0.5)
+      const trunkW =
+        width * (0.006 + near * 0.011) * (0.8 + srand(seed + 3) * 0.5)
       const lean = (srand(seed + 5) - 0.5) * width * 0.03
       ctx.beginPath()
       ctx.moveTo(x - trunkW, height)
-      ctx.quadraticCurveTo(x - trunkW * 0.5 + lean * 0.5, height * 0.4, x + lean - trunkW * 0.32, height * 0.04)
+      ctx.quadraticCurveTo(
+        x - trunkW * 0.5 + lean * 0.5,
+        height * 0.4,
+        x + lean - trunkW * 0.32,
+        height * 0.04
+      )
       ctx.lineTo(x + lean + trunkW * 0.32, height * 0.04)
-      ctx.quadraticCurveTo(x + trunkW * 0.6 + lean * 0.5, height * 0.42, x + trunkW, height)
+      ctx.quadraticCurveTo(
+        x + trunkW * 0.6 + lean * 0.5,
+        height * 0.42,
+        x + trunkW,
+        height
+      )
       ctx.closePath()
       ctx.fillStyle = trunkColor
       ctx.fill()
@@ -377,16 +398,24 @@ function paintForestEnvironment(
           x + dir * width * 0.03,
           by - height * 0.04,
           x + dir * width * (0.05 + srand(seed + 19 + br) * 0.03),
-          by - height * (0.06 + srand(seed + 23 + br) * 0.04),
+          by - height * (0.06 + srand(seed + 23 + br) * 0.04)
         )
         ctx.stroke()
       }
     }
     // Canopy mass hanging from the top of this layer.
-    const canopy = ctx.createLinearGradient(0, 0, 0, height * (0.3 + near * 0.1))
-    canopy.addColorStop(0, warm
-      ? rgba(r * 0.5, g * 0.3, b * 0.16, 0.2 + near * 0.16)
-      : rgba(r * 0.2, g * 0.34, b * 0.2, 0.2 + near * 0.16))
+    const canopy = ctx.createLinearGradient(
+      0,
+      0,
+      0,
+      height * (0.3 + near * 0.1)
+    )
+    canopy.addColorStop(
+      0,
+      warm
+        ? rgba(r * 0.5, g * 0.3, b * 0.16, 0.2 + near * 0.16)
+        : rgba(r * 0.2, g * 0.34, b * 0.2, 0.2 + near * 0.16)
+    )
     canopy.addColorStop(1, "rgba(0, 0, 0, 0)")
     ctx.fillStyle = canopy
     ctx.fillRect(0, 0, width, height * (0.3 + near * 0.1))
@@ -395,7 +424,10 @@ function paintForestEnvironment(
   // Dappled ground shading.
   const ground = ctx.createLinearGradient(0, height * 0.82, 0, height)
   ground.addColorStop(0, "rgba(0, 0, 0, 0)")
-  ground.addColorStop(1, warm ? rgba(r * 0.34, g * 0.2, b * 0.1, 0.4) : "rgba(6, 14, 8, 0.42)")
+  ground.addColorStop(
+    1,
+    warm ? rgba(r * 0.34, g * 0.2, b * 0.1, 0.4) : "rgba(6, 14, 8, 0.42)"
+  )
   ctx.fillStyle = ground
   ctx.fillRect(0, height * 0.82, width, height * 0.18)
 }
@@ -405,7 +437,7 @@ function paintLeafCarpet(
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
-  k: BroadcastKineticTheme,
+  k: BroadcastKineticTheme
 ): void {
   const [r, g, b] = hexToRgb(k.accentColor)
   for (let i = 0; i < 46; i++) {
@@ -425,7 +457,7 @@ function paintBlossomBranches(
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
-  k: BroadcastKineticTheme,
+  k: BroadcastKineticTheme
 ): void {
   const [r, g, b] = hexToRgb(k.accentColor)
   const branchColor = "rgba(52, 34, 38, 0.85)"
@@ -454,11 +486,15 @@ function paintBlossomBranches(
       // Small twigs with tight blossom tufts hugging the branch line.
       for (let c = 0; c < 9; c++) {
         const p = 0.24 + (c / 9) * 0.76
-        const bx = sx + (ex - sx) * p + (srand(seed + c + 11) - 0.5) * width * 0.008
-        const by = sy + (ey - sy) * p * p + (srand(seed + c + 13) - 0.5) * height * 0.014
+        const bx =
+          sx + (ex - sx) * p + (srand(seed + c + 11) - 0.5) * width * 0.008
+        const by =
+          sy + (ey - sy) * p * p + (srand(seed + c + 13) - 0.5) * height * 0.014
         for (let petal = 0; petal < 3; petal++) {
-          const px = bx + (srand(seed + c * 3 + petal + 29) - 0.5) * width * 0.007
-          const py = by + (srand(seed + c * 3 + petal + 31) - 0.5) * width * 0.007
+          const px =
+            bx + (srand(seed + c * 3 + petal + 29) - 0.5) * width * 0.007
+          const py =
+            by + (srand(seed + c * 3 + petal + 31) - 0.5) * width * 0.007
           const cr = width * 0.0016 * (1 + srand(seed + c + petal + 17))
           ctx.beginPath()
           ctx.arc(px, py, cr, 0, TAU)
@@ -466,7 +502,7 @@ function paintBlossomBranches(
             Math.min(255, r * 1.1 + 40),
             g * 0.92 + 30,
             b * 0.95 + 30,
-            0.32 + srand(seed + c + petal + 19) * 0.3,
+            0.32 + srand(seed + c + petal + 19) * 0.3
           )
           ctx.fill()
         }
@@ -480,7 +516,7 @@ function paintRainEnvironment(
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
-  k: BroadcastKineticTheme,
+  k: BroadcastKineticTheme
 ): void {
   const [r, g, b] = hexToRgb(k.accentColor)
   // Layered cloud bank: overlapping soft ellipses across the top.
@@ -490,7 +526,10 @@ function paintRainEnvironment(
     const rw = width * (0.14 + srand(i + 307) * 0.12)
     const shade = 0.06 + srand(i + 311) * 0.08
     const cloud = ctx.createRadialGradient(x, y, 0, x, y, rw)
-    cloud.addColorStop(0, rgba(r * 0.3 + 14, g * 0.3 + 16, b * 0.3 + 22, 0.3 + shade))
+    cloud.addColorStop(
+      0,
+      rgba(r * 0.3 + 14, g * 0.3 + 16, b * 0.3 + 22, 0.3 + shade)
+    )
     cloud.addColorStop(1, "rgba(0, 0, 0, 0)")
     ctx.beginPath()
     ctx.ellipse(x, y, rw, rw * 0.36, 0, 0, TAU)
@@ -522,11 +561,18 @@ function paintRainEnvironment(
 function paintSnowEnvironment(
   ctx: CanvasRenderingContext2D,
   width: number,
-  height: number,
+  height: number
 ): void {
   const moonX = width * 0.76
   const moonY = height * 0.16
-  const glow = ctx.createRadialGradient(moonX, moonY, 0, moonX, moonY, width * 0.24)
+  const glow = ctx.createRadialGradient(
+    moonX,
+    moonY,
+    0,
+    moonX,
+    moonY,
+    width * 0.24
+  )
   glow.addColorStop(0, "rgba(232, 240, 255, 0.3)")
   glow.addColorStop(0.14, "rgba(226, 236, 255, 0.14)")
   glow.addColorStop(1, "rgba(0, 0, 0, 0)")
@@ -555,15 +601,23 @@ function paintNightEnvironment(
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
-  k: BroadcastKineticTheme,
+  k: BroadcastKineticTheme
 ): void {
   const [r, g, b] = hexToRgb(k.accentColor)
   // Diagonal milky-way glow.
   ctx.save()
   ctx.globalCompositeOperation = "screen"
-  const bandGrad = ctx.createLinearGradient(width * 0.1, height * 0.9, width * 0.9, 0)
+  const bandGrad = ctx.createLinearGradient(
+    width * 0.1,
+    height * 0.9,
+    width * 0.9,
+    0
+  )
   bandGrad.addColorStop(0, "rgba(0, 0, 0, 0)")
-  bandGrad.addColorStop(0.5, rgba(r * 0.4 + 40, g * 0.4 + 44, b * 0.4 + 60, 0.09))
+  bandGrad.addColorStop(
+    0.5,
+    rgba(r * 0.4 + 40, g * 0.4 + 44, b * 0.4 + 60, 0.09)
+  )
   bandGrad.addColorStop(1, "rgba(0, 0, 0, 0)")
   ctx.fillStyle = bandGrad
   ctx.fillRect(0, 0, width, height)
@@ -595,7 +649,7 @@ function paintNightEnvironment(
 function paintFirefliesEnvironment(
   ctx: CanvasRenderingContext2D,
   width: number,
-  height: number,
+  height: number
 ): void {
   paintRidge(ctx, width, height, {
     baseY: height * 0.72,
@@ -620,7 +674,12 @@ function paintFirefliesEnvironment(
     ctx.lineWidth = 0.8 + srand(i + 619) * 1.6
     ctx.beginPath()
     ctx.moveTo(x, height + 2)
-    ctx.quadraticCurveTo(x + bend * 0.4, height - bladeH * 0.55, x + bend, height - bladeH)
+    ctx.quadraticCurveTo(
+      x + bend * 0.4,
+      height - bladeH * 0.55,
+      x + bend,
+      height - bladeH
+    )
     ctx.stroke()
   }
 }
@@ -630,10 +689,17 @@ function paintMeadowEnvironment(
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
-  k: BroadcastKineticTheme,
+  k: BroadcastKineticTheme
 ): void {
   const [r, g, b] = hexToRgb(k.accentColor)
-  const sun = ctx.createRadialGradient(width * 0.22, height * 0.1, 0, width * 0.22, height * 0.1, width * 0.4)
+  const sun = ctx.createRadialGradient(
+    width * 0.22,
+    height * 0.1,
+    0,
+    width * 0.22,
+    height * 0.1,
+    width * 0.4
+  )
   sun.addColorStop(0, "rgba(255, 244, 214, 0.26)")
   sun.addColorStop(1, "rgba(0, 0, 0, 0)")
   ctx.fillStyle = sun
@@ -657,9 +723,10 @@ function paintMeadowEnvironment(
     const fr = 1.2 + srand(i + 727) * 2
     ctx.beginPath()
     ctx.arc(x, y, fr, 0, TAU)
-    ctx.fillStyle = srand(i + 729) > 0.5
-      ? "rgba(255, 240, 210, 0.5)"
-      : rgba(Math.min(255, r * 1.2 + 40), g, b, 0.45)
+    ctx.fillStyle =
+      srand(i + 729) > 0.5
+        ? "rgba(255, 240, 210, 0.5)"
+        : rgba(Math.min(255, r * 1.2 + 40), g, b, 0.45)
     ctx.fill()
   }
 }
@@ -669,7 +736,7 @@ function paintNatureEnvironment(
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
-  k: BroadcastKineticTheme,
+  k: BroadcastKineticTheme
 ): void {
   drawNatureBackdrop(ctx, width, height, k)
   switch (k.backgroundKind) {
@@ -722,10 +789,13 @@ const ENV_LAYER_CACHE_MAX = 6
 export function getNatureEnvironmentLayer(
   k: BroadcastKineticTheme,
   width: number,
-  height: number,
+  height: number
 ): HTMLCanvasElement | null {
   if (!(width > 0) || !(height > 0)) return null
-  if (typeof document === "undefined" || typeof document.createElement !== "function") {
+  if (
+    typeof document === "undefined" ||
+    typeof document.createElement !== "function"
+  ) {
     return null
   }
   const key = `${k.backgroundKind}|${width}x${height}|${colorsOf(k).join(",")}|${k.accentColor}`
@@ -753,7 +823,7 @@ function drawFallingLeaves(
   height: number,
   k: BroadcastKineticTheme,
   t: number,
-  opts: { count: number; size: number; petal: boolean },
+  opts: { count: number; size: number; petal: boolean }
 ): void {
   const [r, g, b] = hexToRgb(k.accentColor)
   const speed = 0.12 * driftSpeed(k)
@@ -761,7 +831,8 @@ function drawFallingLeaves(
   for (let i = 0; i < opts.count; i++) {
     const phase = srand(i + 31) * TAU
     const swayAmp = 20 + srand(i + 17) * 30
-    const fall = (srand(i + 3) * range + t * speed * (0.6 + srand(i + 5) * 0.8)) % range
+    const fall =
+      (srand(i + 3) * range + t * speed * (0.6 + srand(i + 5) * 0.8)) % range
     const y = fall - 40
     // Periodic wind gusts slide leaves sideways in coherent pushes; nearer
     // (larger) leaves are pushed harder for parallax.
@@ -800,7 +871,7 @@ function drawFallingLeaves(
     const grad = ctx.createLinearGradient(-s * 0.65, -s, s * 0.7, s)
     grad.addColorStop(
       0,
-      `rgba(${Math.min(255, Math.round(lr * 1.18))}, ${Math.min(255, Math.round(lg * 1.14))}, ${Math.min(255, Math.round(lb * 1.08))}, ${alpha})`,
+      `rgba(${Math.min(255, Math.round(lr * 1.18))}, ${Math.min(255, Math.round(lg * 1.14))}, ${Math.min(255, Math.round(lb * 1.08))}, ${alpha})`
     )
     grad.addColorStop(0.56, `rgba(${lr}, ${lg}, ${lb}, ${alpha})`)
     grad.addColorStop(1, `rgba(${darkR}, ${darkG}, ${darkB}, ${alpha})`)
@@ -813,12 +884,7 @@ function drawFallingLeaves(
       ctx.moveTo(0, -s * 0.5)
       ctx.quadraticCurveTo(petalW, -s * 0.28, petalW * 0.66, s * 0.18)
       ctx.quadraticCurveTo(petalW * 0.3, s * 0.58, 0, s * 0.5)
-      ctx.quadraticCurveTo(
-        -petalW * 0.72,
-        s * 0.28,
-        -petalW * 0.56,
-        -s * 0.16,
-      )
+      ctx.quadraticCurveTo(-petalW * 0.72, s * 0.28, -petalW * 0.56, -s * 0.16)
       ctx.quadraticCurveTo(-petalW * 0.35, -s * 0.42, 0, -s * 0.5)
     } else {
       const rightW = s * (0.42 + srand(i + 37) * 0.2)
@@ -873,7 +939,7 @@ function drawRain(
   width: number,
   height: number,
   k: BroadcastKineticTheme,
-  t: number,
+  t: number
 ): void {
   const [r, g, b] = hexToRgb(k.accentColor)
   const speed = 0.7 * driftSpeed(k)
@@ -895,7 +961,7 @@ function drawRain(
       const len = 8 + layer * 8 + srand(seed + 7) * (12 + layer * 7)
       const drift = t * speed * (0.35 + layer * 0.25)
       const x =
-        (srand(seed) * (width + 80) + drift * 0.22) % (width + 80) - 40
+        ((srand(seed) * (width + 80) + drift * 0.22) % (width + 80)) - 40
       const y =
         (srand(seed + 3) * range +
           t * speed * (0.55 + layer * 0.32 + srand(seed + 9) * 0.45)) %
@@ -913,7 +979,7 @@ function drawSnow(
   width: number,
   height: number,
   k: BroadcastKineticTheme,
-  t: number,
+  t: number
 ): void {
   const speed = 0.06 * driftSpeed(k)
   const range = height + 20
@@ -963,7 +1029,7 @@ function drawGlowMotes(
   height: number,
   k: BroadcastKineticTheme,
   t: number,
-  count: number,
+  count: number
 ): void {
   const [r, g, b] = hexToRgb(k.accentColor)
   const isMeadow = k.backgroundKind === "meadow"
@@ -979,8 +1045,7 @@ function drawGlowMotes(
       ? 0.55 + 0.25 * Math.sin(t * 0.0012 + phase)
       : Math.pow(0.5 + 0.5 * Math.sin(t * 0.003 + phase), 3)
     const raw =
-      (srand(i + 3) * range + t * speed * (0.45 + srand(i + 5) * 0.8)) %
-      range
+      (srand(i + 3) * range + t * speed * (0.45 + srand(i + 5) * 0.8)) % range
     const yBase = height - raw
     // Fireflies wander on Lissajous-like paths (two incommensurate sines per
     // axis) rather than rising in straight lanes.
@@ -998,7 +1063,7 @@ function drawGlowMotes(
       0,
       x,
       y,
-      radius * (isMeadow ? 4.2 : 5.6),
+      radius * (isMeadow ? 4.2 : 5.6)
     )
     halo.addColorStop(0, `rgba(${fr}, ${fg}, ${fb}, ${0.2 * pulse})`)
     halo.addColorStop(1, `rgba(${fr}, ${fg}, ${fb}, 0)`)
@@ -1023,7 +1088,7 @@ function drawMeadowGrass(
   width: number,
   height: number,
   k: BroadcastKineticTheme,
-  t: number,
+  t: number
 ): void {
   const [r, g, b] = hexToRgb(k.accentColor)
   ctx.save()
@@ -1044,7 +1109,7 @@ function drawMeadowGrass(
       x + bend * 0.35,
       height - bladeH * 0.55,
       x + bend,
-      height - bladeH,
+      height - bladeH
     )
     ctx.stroke()
   }
@@ -1056,7 +1121,7 @@ function drawStars(
   width: number,
   height: number,
   k: BroadcastKineticTheme,
-  t: number,
+  t: number
 ): void {
   const [r, g, b] = hexToRgb(k.accentColor)
   for (let i = 0; i < 90; i++) {
@@ -1099,7 +1164,7 @@ function drawAurora(
   width: number,
   height: number,
   k: BroadcastKineticTheme,
-  t: number,
+  t: number
 ): void {
   drawStars(ctx, width, height, k, t)
   const [r, g, b] = hexToRgb(k.accentColor)
@@ -1119,15 +1184,17 @@ function drawAurora(
     const phase = band * 1.7
     // Start the fade well above the wandering top edge so the curtain has no
     // hard contour and reads as glow, not a painted hill.
-    const grad = ctx.createLinearGradient(0, baseY - amp * 1.9, 0, baseY + bandH)
-    grad.addColorStop(0, `rgba(${br}, ${bg}, ${bb}, 0)`)
-    grad.addColorStop(
-      0.55,
-      `rgba(${br}, ${bg}, ${bb}, ${0.05 + band * 0.012})`,
+    const grad = ctx.createLinearGradient(
+      0,
+      baseY - amp * 1.9,
+      0,
+      baseY + bandH
     )
+    grad.addColorStop(0, `rgba(${br}, ${bg}, ${bb}, 0)`)
+    grad.addColorStop(0.55, `rgba(${br}, ${bg}, ${bb}, ${0.05 + band * 0.012})`)
     grad.addColorStop(
       1,
-      `rgba(${Math.round(br * 0.45)}, ${bg}, ${Math.min(255, Math.round(bb * 1.2))}, 0)`,
+      `rgba(${Math.round(br * 0.45)}, ${bg}, ${Math.min(255, Math.round(bb * 1.2))}, 0)`
     )
     // Feather the curtain: three offset passes at low alpha blur the top edge
     // so it reads as glow, not a hard contour.
@@ -1165,7 +1232,7 @@ function drawAurora(
         x + Math.sin(t * 0.0004 + fold) * 18,
         top + bandH * 0.45,
         x + Math.cos(t * 0.0005 + fold) * 10,
-        top + bandH,
+        top + bandH
       )
       ctx.stroke()
     }
@@ -1179,7 +1246,7 @@ function drawRainRipples(
   width: number,
   height: number,
   k: BroadcastKineticTheme,
-  t: number,
+  t: number
 ): void {
   const [r, g, b] = hexToRgb(k.accentColor)
   for (let i = 0; i < 16; i++) {
@@ -1188,7 +1255,12 @@ function drawRainRipples(
     const x = srand(i + 55) * width
     const y = height * (0.9 + srand(i + 57) * 0.08)
     const radius = (2 + p * 15) * (0.6 + srand(i + 59) * 0.8)
-    ctx.strokeStyle = rgba(r * 0.7 + 60, g * 0.7 + 64, b * 0.7 + 74, 0.2 * (1 - p))
+    ctx.strokeStyle = rgba(
+      r * 0.7 + 60,
+      g * 0.7 + 64,
+      b * 0.7 + 74,
+      0.2 * (1 - p)
+    )
     ctx.lineWidth = 0.8
     ctx.beginPath()
     ctx.ellipse(x, y, radius, radius * 0.3, 0, 0, TAU)
@@ -1202,12 +1274,15 @@ function drawSnowBokeh(
   width: number,
   height: number,
   k: BroadcastKineticTheme,
-  t: number,
+  t: number
 ): void {
   const speed = 0.09 * driftSpeed(k)
   const range = height + 60
   for (let i = 0; i < 6; i++) {
-    const y = (srand(i + 81) * range + t * speed * (0.8 + srand(i + 83) * 0.5)) % range - 30
+    const y =
+      ((srand(i + 81) * range + t * speed * (0.8 + srand(i + 83) * 0.5)) %
+        range) -
+      30
     const x =
       srand(i + 85) * width + Math.sin(t * 0.0004 + srand(i + 87) * TAU) * 40
     const radius = 7 + srand(i + 89) * 8
@@ -1227,7 +1302,7 @@ function drawShootingStar(
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
-  t: number,
+  t: number
 ): void {
   const period = 9000
   const p = (t % period) / period
@@ -1251,7 +1326,7 @@ function drawNatureScene(
   width: number,
   height: number,
   k: BroadcastKineticTheme,
-  t: number,
+  t: number
 ): void {
   const layer = getNatureEnvironmentLayer(k, width, height)
   if (layer) {
@@ -1261,16 +1336,32 @@ function drawNatureScene(
   }
   switch (k.backgroundKind) {
     case "foliage":
-      drawFallingLeaves(ctx, width, height, k, t, { count: 30, size: 15, petal: false })
+      drawFallingLeaves(ctx, width, height, k, t, {
+        count: 30,
+        size: 15,
+        petal: false,
+      })
       break
     case "forest":
-      drawFallingLeaves(ctx, width, height, k, t, { count: 22, size: 20, petal: false })
+      drawFallingLeaves(ctx, width, height, k, t, {
+        count: 22,
+        size: 20,
+        petal: false,
+      })
       break
     case "autumn":
-      drawFallingLeaves(ctx, width, height, k, t, { count: 40, size: 16, petal: false })
+      drawFallingLeaves(ctx, width, height, k, t, {
+        count: 40,
+        size: 16,
+        petal: false,
+      })
       break
     case "blossom":
-      drawFallingLeaves(ctx, width, height, k, t, { count: 40, size: 12, petal: true })
+      drawFallingLeaves(ctx, width, height, k, t, {
+        count: 40,
+        size: 12,
+        petal: true,
+      })
       break
     case "rain":
       drawRain(ctx, width, height, k, t)
@@ -1366,12 +1457,54 @@ interface ClothFold {
 }
 
 const CLOTH_FOLDS: ClothFold[] = [
-  { top: 0.02, light: true, durationMs: 6500, delayMs: 0, gust: 0, easing: [0.45, 0.05, 0.35, 1] },
-  { top: 0.2, light: false, durationMs: 7800, delayMs: -2200, gust: 1, easing: [0.5, 0.1, 0.3, 1] },
-  { top: 0.38, light: true, durationMs: 5900, delayMs: -1100, gust: 2, easing: [0.45, 0.05, 0.35, 1] },
-  { top: 0.55, light: false, durationMs: 8400, delayMs: -3600, gust: 0, easing: [0.5, 0.1, 0.3, 1] },
-  { top: 0.72, light: true, durationMs: 6200, delayMs: -4400, gust: 1, easing: [0.45, 0.05, 0.35, 1] },
-  { top: 0.88, light: false, durationMs: 7100, delayMs: -800, gust: 2, easing: [0.5, 0.1, 0.3, 1] },
+  {
+    top: 0.02,
+    light: true,
+    durationMs: 6500,
+    delayMs: 0,
+    gust: 0,
+    easing: [0.45, 0.05, 0.35, 1],
+  },
+  {
+    top: 0.2,
+    light: false,
+    durationMs: 7800,
+    delayMs: -2200,
+    gust: 1,
+    easing: [0.5, 0.1, 0.3, 1],
+  },
+  {
+    top: 0.38,
+    light: true,
+    durationMs: 5900,
+    delayMs: -1100,
+    gust: 2,
+    easing: [0.45, 0.05, 0.35, 1],
+  },
+  {
+    top: 0.55,
+    light: false,
+    durationMs: 8400,
+    delayMs: -3600,
+    gust: 0,
+    easing: [0.5, 0.1, 0.3, 1],
+  },
+  {
+    top: 0.72,
+    light: true,
+    durationMs: 6200,
+    delayMs: -4400,
+    gust: 1,
+    easing: [0.45, 0.05, 0.35, 1],
+  },
+  {
+    top: 0.88,
+    light: false,
+    durationMs: 7100,
+    delayMs: -800,
+    gust: 2,
+    easing: [0.5, 0.1, 0.3, 1],
+  },
 ]
 
 /** y of a CSS cubic-bezier timing function at progress t (Newton refinement). */
@@ -1380,7 +1513,7 @@ function cubicBezierEase(
   p1y: number,
   p2x: number,
   p2y: number,
-  t: number,
+  t: number
 ): number {
   if (t <= 0) return 0
   if (t >= 1) return 1
@@ -1405,7 +1538,7 @@ function cubicBezierEase(
 function gustTransform(
   gust: 0 | 1 | 2,
   easing: CubicBezier,
-  phase: number,
+  phase: number
 ): { ty: number; rot: number; sy: number; skx: number } {
   const frames = GUSTS[gust]
   const [x1, y1, x2, y2] = easing
@@ -1433,7 +1566,7 @@ function drawClothFolds(
   width: number,
   height: number,
   t: number,
-  scale: number,
+  scale: number
 ): void {
   const bandW = width * 1.6
   const bandH = height * 0.34
@@ -1472,7 +1605,7 @@ function drawClothFolds(
 function drawClothSheen(
   ctx: CanvasRenderingContext2D,
   width: number,
-  height: number,
+  height: number
 ): void {
   ctx.save()
   ctx.globalCompositeOperation = "soft-light"
@@ -1484,7 +1617,7 @@ function drawClothSheen(
     cx - Math.cos(angle) * len,
     cy - Math.sin(angle) * len,
     cx + Math.cos(angle) * len,
-    cy + Math.sin(angle) * len,
+    cy + Math.sin(angle) * len
   )
   grad.addColorStop(0.3, "rgba(255,244,220,0)")
   grad.addColorStop(0.5, "rgba(255,244,220,0.18)")
@@ -1501,7 +1634,7 @@ function drawClothWeave(
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
-  scale: number,
+  scale: number
 ): void {
   try {
     const key = `${width}x${height}`
@@ -1531,7 +1664,7 @@ function drawClothWeave(
 function drawClothVignette(
   ctx: CanvasRenderingContext2D,
   width: number,
-  height: number,
+  height: number
 ): void {
   const grad = ctx.createRadialGradient(
     width * 0.42,
@@ -1539,7 +1672,7 @@ function drawClothVignette(
     0,
     width * 0.42,
     height * 0.46,
-    Math.max(width, height) * 0.72,
+    Math.max(width, height) * 0.72
   )
   grad.addColorStop(0.55, "rgba(61,43,23,0)")
   grad.addColorStop(1, "rgba(61,43,23,0.28)")
@@ -1552,7 +1685,7 @@ function drawClothCross(
   width: number,
   height: number,
   t: number,
-  scale: number,
+  scale: number
 ): void {
   void width
   const phase = kineticLoopPhase(t, 6000)
@@ -1587,7 +1720,7 @@ function drawClothCross(
     cx - Math.sin(angle) * len,
     cy + Math.cos(angle) * len,
     cx + Math.sin(angle) * len,
-    cy - Math.cos(angle) * len,
+    cy - Math.cos(angle) * len
   )
   grad.addColorStop(0, "#f3e3c2")
   grad.addColorStop(0.7, "#caa76e")
@@ -1599,7 +1732,8 @@ function drawClothCross(
   ]
   for (const [bx, by, bw, bh] of bars) {
     ctx.beginPath()
-    if (typeof ctx.roundRect === "function") ctx.roundRect(bx, by, bw, bh, clothPx(scale, 3))
+    if (typeof ctx.roundRect === "function")
+      ctx.roundRect(bx, by, bw, bh, clothPx(scale, 3))
     else ctx.rect(bx, by, bw, bh)
     ctx.fill()
   }
@@ -1653,7 +1787,9 @@ function requestPortrait(): HTMLImageElement | null {
 }
 
 /** Left-edge alpha fade (transparent → .85 @22% → 1 @40%), cached once. */
-function maskedPortrait(img: HTMLImageElement): HTMLCanvasElement | HTMLImageElement {
+function maskedPortrait(
+  img: HTMLImageElement
+): HTMLCanvasElement | HTMLImageElement {
   if (portraitMasked) return portraitMasked
   try {
     const c = document.createElement("canvas")
@@ -1681,7 +1817,7 @@ function drawClothPortrait(
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
-  scale: number,
+  scale: number
 ): void {
   const img = requestPortrait()
   if (!img || img.naturalHeight === 0) return
@@ -1701,7 +1837,7 @@ function drawClothScene(
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
-  t: number,
+  t: number
 ): void {
   const scale = clothScale(width, height)
   // Base: linear-gradient(135deg, sand-mid 0%, sand 45%, sand-deep 100%).
@@ -1713,7 +1849,7 @@ function drawClothScene(
     cx - Math.cos(angle) * len,
     cy - Math.sin(angle) * len,
     cx + Math.cos(angle) * len,
-    cy + Math.sin(angle) * len,
+    cy + Math.sin(angle) * len
   )
   grad.addColorStop(0, CLOTH.base[0])
   grad.addColorStop(0.45, CLOTH.base[1])
@@ -1751,7 +1887,7 @@ function drawStageDots(
   offsetX: number,
   offsetY: number,
   radius: number,
-  alpha: number,
+  alpha: number
 ): void {
   for (let y = offsetY; y < height; y += spacing) {
     const fade = Math.sin((y / height) * Math.PI)
@@ -1770,7 +1906,7 @@ function drawStageScene(
   width: number,
   height: number,
   k: BroadcastKineticTheme,
-  timeMs: number,
+  timeMs: number
 ): void {
   const colors = colorsOf(k)
   const angle = (135 * Math.PI) / 180
@@ -1781,7 +1917,7 @@ function drawStageScene(
     cx - Math.cos(angle) * len,
     cy - Math.sin(angle) * len,
     cx + Math.cos(angle) * len,
-    cy + Math.sin(angle) * len,
+    cy + Math.sin(angle) * len
   )
   grad.addColorStop(0, colors[0])
   grad.addColorStop(1, colors[1] ?? colors[0])
@@ -1812,8 +1948,26 @@ function drawStageScene(
   }
 
   const scale = Math.min(width, height) / 540
-  drawStageDots(ctx, width, height, 40 * scale, 8 * scale, 8 * scale, 1.2 * scale, 0.05)
-  drawStageDots(ctx, width, height, 56 * scale, 39 * scale, 22 * scale, 1.2 * scale, 0.038)
+  drawStageDots(
+    ctx,
+    width,
+    height,
+    40 * scale,
+    8 * scale,
+    8 * scale,
+    1.2 * scale,
+    0.05
+  )
+  drawStageDots(
+    ctx,
+    width,
+    height,
+    56 * scale,
+    39 * scale,
+    22 * scale,
+    1.2 * scale,
+    0.038
+  )
 }
 
 /**
@@ -1826,29 +1980,35 @@ export function drawKineticBackground(
   ctx: CanvasRenderingContext2D,
   theme: BroadcastTheme,
   timeMs = 0,
+  sectionKind?: HymnPresentationSectionKind
 ): boolean {
   const k = theme.kinetic
   if (!k) return false
 
   try {
     const { width, height } = theme.resolution
+    const sceneTime = k.animate === false ? 0 : timeMs
+
+    if (isHymnThemeScene(k)) {
+      return drawHymnThemeScene(ctx, width, height, k, sceneTime, sectionKind)
+    }
 
     if (k.backgroundKind === "cloth") {
-      drawClothScene(ctx, width, height, timeMs)
+      drawClothScene(ctx, width, height, sceneTime)
       return true
     }
 
     if (k.backgroundKind === "stage") {
-      drawStageScene(ctx, width, height, k, timeMs)
+      drawStageScene(ctx, width, height, k, sceneTime)
       return true
     }
 
     if (NATURE_KINDS.has(k.backgroundKind)) {
-      drawNatureScene(ctx, width, height, k, timeMs)
+      drawNatureScene(ctx, width, height, k, sceneTime)
       return true
     }
 
-    const phase = kineticLoopPhase(timeMs, k.motion.durationMs)
+    const phase = kineticLoopPhase(sceneTime, k.motion.durationMs)
 
     drawMeshBase(ctx, width, height, k, phase)
     drawDriftBlobs(ctx, width, height, k, phase)

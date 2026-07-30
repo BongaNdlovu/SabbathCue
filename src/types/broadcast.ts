@@ -45,7 +45,7 @@ export interface RenderOptions {
   opacity?: number
   offsetX?: number
   offsetY?: number
-  scale?: number               // Scale factor for rendering at display size (e.g., 0.42 for 400px panel)
+  scale?: number // Scale factor for rendering at display size (e.g., 0.42 for 400px panel)
   imageCache?: Map<string, HTMLImageElement>
   /**
    * Animation clock in milliseconds for kinetic themes. `0` (or omitted)
@@ -82,6 +82,14 @@ export type KineticBackgroundKind =
   | "cloth"
   // KNFC premium-light verse stage: gradient, glow, conic shimmer, and stars.
   | "stage"
+  // Full-fidelity ports of the seven premium hymn HTML scenes.
+  | "hymn-midnight"
+  | "hymn-dawn"
+  | "hymn-minimal"
+  | "hymn-glass"
+  | "hymn-water"
+  | "hymn-heritage"
+  | "hymn-upper-room"
 
 export type KineticPattern = "dot-grid" | "diagonal-stripes"
 
@@ -106,6 +114,8 @@ export interface BroadcastKineticTheme {
   /** Accent color used for dot-grid / stripe overlays and glow. */
   accentColor: string
   motion: KineticMotion
+  /** False renders the procedural scene at time zero without scheduling frames. */
+  animate?: boolean
   /** Optional overlay pattern drawn on top of the moving base. */
   pattern?: KineticPattern
 }
@@ -116,10 +126,7 @@ export type TextTransform = "none" | "uppercase" | "lowercase" | "capitalize"
 export type TextDecoration = "none" | "underline" | "line-through"
 export type BroadcastTransitionType = "fade" | "slide" | "scale" | "none"
 export type BroadcastTransitionEasing =
-  | "linear"
-  | "ease-in"
-  | "ease-out"
-  | "ease-in-out"
+  "linear" | "ease-in" | "ease-out" | "ease-in-out"
 export type BroadcastTransitionDirection = "up" | "down" | "left" | "right"
 
 export interface BroadcastTransition {
@@ -138,6 +145,26 @@ export interface HymnPresentationStyle {
     format?: "of" | "slash"
     style?: "badge" | "plain"
   }
+  /** Render the authored section label above the lyrics. */
+  showSectionLabel?: boolean
+  /** Text shown for refrain/chorus pages in place of their source label. */
+  refrainLabel?: string
+  /** Per-section typography layered over the base theme without mutating it. */
+  sectionStyles?: Partial<
+    Record<
+      "verse" | "refrain" | "chorus" | "bridge" | "ending" | "custom",
+      {
+        verseText?: {
+          fontStyle?: "normal" | "italic"
+          fontSize?: number
+          fontWeight?: number
+          color?: string
+          lineHeight?: number
+          letterSpacing?: number
+        }
+      }
+    >
+  >
 }
 
 export interface BroadcastTheme {

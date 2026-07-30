@@ -18,11 +18,13 @@ import {
 import {
   drawBackground,
   drawReference,
+  drawHymnSectionLabel,
   drawHymnSlideCounter,
   drawSlideDeckImage,
   drawVerseText,
   roundRect,
 } from "@/lib/verse-draw"
+import { resolveHymnSectionTheme } from "@/lib/hymn-theme-style"
 
 export type { VerseLayoutMetrics, VerseLayoutRect }
 export {
@@ -66,9 +68,12 @@ function renderPresentationImpl(
   data: VerseRenderData | PresentationRenderData | null,
   options?: RenderOptions
 ): VerseLayoutMetrics {
+  const presentationData =
+    data && "kind" in data ? (data as PresentationRenderData) : null
+  const resolvedTheme = resolveHymnSectionTheme(theme, presentationData)
   const metrics = computeVerseLayoutMetrics(
     ctx,
-    theme,
+    resolvedTheme,
     data as VerseRenderData | null,
     options
   )
@@ -80,7 +85,13 @@ function renderPresentationImpl(
     ctx.globalAlpha = options.opacity
   }
 
-  drawBackground(ctx, scaledTheme, options?.imageCache, options?.timeMs)
+  drawBackground(
+    ctx,
+    scaledTheme,
+    options?.imageCache,
+    options?.timeMs,
+    presentationData?.hymnSlide?.sectionKind
+  )
 
   if (scaledTheme.textBox.enabled) {
     ctx.save()
@@ -134,6 +145,14 @@ function renderPresentationImpl(
       maxAvailableVerseHeight
     )
 
+    drawHymnSectionLabel(
+      ctx,
+      scaledTheme,
+      data as PresentationRenderData,
+      metrics.textRect.x,
+      metrics.textRect.width,
+      verseRect.y
+    )
     drawVerseText(
       ctx,
       scaledTheme,

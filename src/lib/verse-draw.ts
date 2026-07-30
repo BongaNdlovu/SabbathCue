@@ -1,5 +1,6 @@
 import type {
   BroadcastTheme,
+  HymnPresentationSectionKind,
   VerseRenderData,
   PresentationRenderData,
 } from "@/types"
@@ -63,7 +64,13 @@ export function roundRect(
   ctx.lineTo(x + width - cornerRadius, y)
   ctx.arcTo(x + width, y, x + width, y + cornerRadius, cornerRadius)
   ctx.lineTo(x + width, y + height - cornerRadius)
-  ctx.arcTo(x + width, y + height, x + width - cornerRadius, y + height, cornerRadius)
+  ctx.arcTo(
+    x + width,
+    y + height,
+    x + width - cornerRadius,
+    y + height,
+    cornerRadius
+  )
   ctx.lineTo(x + cornerRadius, y + height)
   ctx.arcTo(x, y + height, x, y + height - cornerRadius, cornerRadius)
   ctx.lineTo(x, y + cornerRadius)
@@ -187,7 +194,8 @@ export function drawBackground(
   ctx: CanvasRenderingContext2D,
   theme: BroadcastTheme,
   imageCache?: Map<string, HTMLImageElement>,
-  timeMs?: number
+  timeMs?: number,
+  hymnSectionKind?: HymnPresentationSectionKind
 ): void {
   const { width, height } = theme.resolution
   const bg = theme.background
@@ -196,7 +204,7 @@ export function drawBackground(
   // renderer returns false and we fall through to the static background below,
   // so a kinetic preset always has the gradient/solid fallback to rely on.
   if (theme.kinetic) {
-    if (drawKineticBackground(ctx, theme, timeMs ?? 0)) return
+    if (drawKineticBackground(ctx, theme, timeMs ?? 0, hymnSectionKind)) return
   }
 
   switch (bg.type) {
@@ -276,13 +284,50 @@ export function drawReference(
   return ref.fontSize * 1.5
 }
 
+export function drawHymnSectionLabel(
+  ctx: CanvasRenderingContext2D,
+  theme: BroadcastTheme,
+  data: PresentationRenderData,
+  textRectX: number,
+  textRectWidth: number,
+  verseY: number
+): void {
+  const slide = data.hymnSlide
+  if (!theme.hymnPresentation?.showSectionLabel || !slide?.sectionLabel) return
+
+  const isRefrain =
+    slide.sectionKind === "refrain" || slide.sectionKind === "chorus"
+  const label =
+    isRefrain && theme.hymnPresentation.refrainLabel
+      ? theme.hymnPresentation.refrainLabel
+      : slide.sectionLabel
+  const fontSize = Math.max(18, Math.round(theme.reference.fontSize * 0.72))
+  const y = Math.max(theme.layout.padding.top, verseY - fontSize * 2.15)
+  const align = theme.layout.textAlign
+  const x = alignX(align, textRectX, textRectWidth)
+
+  ctx.save()
+  ctx.font = `600 ${fontSize}px "${theme.reference.fontFamily}", sans-serif`
+  ctx.fillStyle = theme.reference.color
+  ctx.textAlign = align
+  ctx.textBaseline = "top"
+  ctx.globalAlpha *= 0.92
+  ctx.fillText(label.toUpperCase(), x, y)
+  ctx.restore()
+}
+
 export function drawHymnSlideCounter(
   ctx: CanvasRenderingContext2D,
   theme: BroadcastTheme,
   data: PresentationRenderData
 ): void {
   const slide = data.hymnSlide
-  if (!["hymn", "slideDeck"].includes(data.kind ?? "") || !slide || slide.slideCount <= 0) return
+  if (
+    !["hymn", "slideDeck"].includes(data.kind ?? "") ||
+    !slide ||
+    slide.slideCount <= 0
+  )
+    return
 
   const counter = theme.hymnPresentation?.slideCounter
   const format = counter?.format ?? "of"
@@ -296,7 +341,9 @@ export function drawHymnSlideCounter(
   if (position === "bottom-right" && style === "plain") {
     const fontSize = Math.max(
       18,
-      Math.round(theme.verseText.fontSize * 0.65 * (theme.resolution.width / 1920))
+      Math.round(
+        theme.verseText.fontSize * 0.65 * (theme.resolution.width / 1920)
+      )
     )
     const margin = Math.round(theme.resolution.width * 0.05)
 
@@ -345,7 +392,7 @@ export function drawSlideDeckImage(
   theme: BroadcastTheme,
   data: PresentationRenderData,
   imageCache?: Map<string, HTMLImageElement>,
-  targetRect?: VerseLayoutRect,
+  targetRect?: VerseLayoutRect
 ): boolean {
   if (data.kind !== "slideDeck" || !data.slideImageUrl) return false
   const img = imageCache?.get(data.slideImageUrl)
@@ -353,9 +400,7 @@ export function drawSlideDeckImage(
 
   const { width, height } = theme.resolution
   const bounds =
-    data.applyTheme && targetRect
-      ? targetRect
-      : { x: 0, y: 0, width, height }
+    data.applyTheme && targetRect ? targetRect : { x: 0, y: 0, width, height }
   const targetWidth = Math.max(1, bounds.width)
   const targetHeight = Math.max(1, bounds.height)
   const imgRatio = img.naturalWidth / img.naturalHeight
