@@ -22,6 +22,7 @@ interface SettingsState {
   gain: number
   autoMode: boolean
   autoPreviewDetections: boolean
+  bibleDetectionEnabled: boolean
   semanticDetectionEnabled: boolean
   confidenceThreshold: number
   semanticConfidenceThreshold: number
@@ -42,6 +43,7 @@ interface SettingsState {
   setGain: (gain: number) => void
   setAutoMode: (auto: boolean) => void
   setAutoPreviewDetections: (enabled: boolean) => void
+  setBibleDetectionEnabled: (enabled: boolean) => void
   setSemanticDetectionEnabled: (enabled: boolean) => void
   setConfidenceThreshold: (threshold: number) => void
   setSemanticConfidenceThreshold: (threshold: number) => void
@@ -63,6 +65,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   gain: 1.0,
   autoMode: false,
   autoPreviewDetections: true,
+  bibleDetectionEnabled: true,
   semanticDetectionEnabled: true,
   confidenceThreshold: DEFAULT_CONFIDENCE_THRESHOLD,
   semanticConfidenceThreshold: DEFAULT_SEMANTIC_CONFIDENCE_THRESHOLD,
@@ -82,6 +85,8 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   setAutoMode: (autoMode) => set({ autoMode }),
   setAutoPreviewDetections: (autoPreviewDetections) =>
     set({ autoPreviewDetections }),
+  setBibleDetectionEnabled: (bibleDetectionEnabled) =>
+    set({ bibleDetectionEnabled }),
   setSemanticDetectionEnabled: (semanticDetectionEnabled) =>
     set({ semanticDetectionEnabled }),
   setConfidenceThreshold: (confidenceThreshold) =>
@@ -104,6 +109,7 @@ const PERSISTED_KEYS = [
   "gain",
   "autoMode",
   "autoPreviewDetections",
+  "bibleDetectionEnabled",
   "semanticDetectionEnabled",
   "confidenceThreshold",
   "semanticConfidenceThreshold",

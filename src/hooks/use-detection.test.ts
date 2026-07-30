@@ -95,6 +95,7 @@ describe("useDetection manual detection failures", () => {
       has_direct: true,
       has_semantic: true,
       paraphrase_enabled: false,
+      bible_detection_enabled: true,
       semantic_detection_enabled: true,
     })
     const { detectionActions } = await import("./use-detection")
@@ -103,6 +104,7 @@ describe("useDetection manual detection failures", () => {
       has_direct: true,
       has_semantic: true,
       paraphrase_enabled: false,
+      bible_detection_enabled: true,
       semantic_detection_enabled: true,
     })
     expect(invokeMock).toHaveBeenCalledWith("detection_status")

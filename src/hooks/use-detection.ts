@@ -38,6 +38,7 @@ async function getDetectionStatus() {
       has_direct: false,
       has_semantic: false,
       paraphrase_enabled: false,
+      bible_detection_enabled: false,
       semantic_detection_enabled: false,
     }
   }
@@ -46,6 +47,7 @@ async function getDetectionStatus() {
     has_direct: boolean
     has_semantic: boolean
     paraphrase_enabled: boolean
+    bible_detection_enabled: boolean
     semantic_detection_enabled: boolean
   }>("detection_status")
 }

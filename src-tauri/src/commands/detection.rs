@@ -42,6 +42,12 @@ pub(crate) const FTS5_MIN_CONFIDENCE: f64 = 0.50;
 /// Auto-live/auto-queue uses the UI threshold separately.
 pub(crate) const OPERATOR_DETECTION_THRESHOLD: f64 = 0.70;
 
+fn apply_bible_mode_to_reading_mode(enabled: bool, reading_mode: &mut ReadingMode) {
+    if !enabled {
+        reading_mode.deactivate();
+    }
+}
+
 /// Run the detection pipeline on a piece of transcript text
 #[tauri::command]
 pub fn detect_verses(
@@ -75,15 +81,19 @@ pub fn detection_status(
     state: State<'_, Mutex<AppState>>,
     pipeline_state: State<'_, Mutex<DetectionPipeline>>,
 ) -> Result<DetectionStatusResult, String> {
-    let semantic_detection_enabled = {
+    let (bible_detection_enabled, semantic_detection_enabled) = {
         let app_state = state.lock().map_err(|e| e.to_string())?;
-        app_state.semantic_detection_enabled.load(Ordering::Relaxed)
+        (
+            app_state.bible_detection_enabled.load(Ordering::Relaxed),
+            app_state.semantic_detection_enabled.load(Ordering::Relaxed),
+        )
     };
     let pipeline = pipeline_state.lock().map_err(|e| e.to_string())?;
     Ok(DetectionStatusResult {
         has_direct: true,
         has_semantic: pipeline.has_semantic(),
         paraphrase_enabled: pipeline.use_synonyms(),
+        bible_detection_enabled,
         semantic_detection_enabled,
     })
 }
@@ -109,6 +119,7 @@ pub struct DetectionStatusResult {
     pub has_direct: bool,
     pub has_semantic: bool,
     pub paraphrase_enabled: bool,
+    pub bible_detection_enabled: bool,
     pub semantic_detection_enabled: bool,
 }
 
@@ -229,9 +240,11 @@ pub fn set_reading_mode_reference(
 )]
 pub fn update_detection_settings(
     state: State<'_, Mutex<AppState>>,
+    reading_mode_state: State<'_, Mutex<ReadingMode>>,
     merger_state: State<'_, Mutex<rhema_detection::DetectionMerger>>,
     pipeline_state: State<'_, Mutex<DetectionPipeline>>,
     auto_mode: bool,
+    bible_detection_enabled: Option<bool>,
     semantic_detection_enabled: Option<bool>,
     confidence_threshold: f64,
     semantic_confidence_threshold: Option<f64>,
@@ -249,14 +262,25 @@ pub fn update_detection_settings(
     let semantic_threshold = semantic_confidence_threshold
         .unwrap_or(DEFAULT_SEMANTIC_VISIBILITY_THRESHOLD)
         .clamp(0.0, 1.0);
+    let bible_enabled = bible_detection_enabled.unwrap_or(true);
     let semantic_enabled = semantic_detection_enabled.unwrap_or(true);
     let auto_threshold = auto_mode.then_some(threshold);
 
     {
         let app_state = state.lock().map_err(|e| e.to_string())?;
         app_state
+            .bible_detection_enabled
+            .store(bible_enabled, Ordering::SeqCst);
+        app_state
             .semantic_detection_enabled
             .store(semantic_enabled, Ordering::SeqCst);
+    }
+
+    if !bible_enabled {
+        let mut reading_mode = reading_mode_state
+            .lock()
+            .map_err(|error| error.to_string())?;
+        apply_bible_mode_to_reading_mode(bible_enabled, &mut reading_mode);
     }
 
     {
@@ -282,7 +306,7 @@ pub fn update_detection_settings(
     }
 
     log::info!(
-        "[DET] Settings updated: auto_mode={auto_mode}, operator_threshold={OPERATOR_DETECTION_THRESHOLD:.2}, semantic_enabled={semantic_enabled}, semantic_threshold={semantic_threshold:.2}, auto_threshold={}, cooldown_ms={}",
+        "[DET] Settings updated: auto_mode={auto_mode}, operator_threshold={OPERATOR_DETECTION_THRESHOLD:.2}, bible_enabled={bible_enabled}, semantic_enabled={semantic_enabled}, semantic_threshold={semantic_threshold:.2}, auto_threshold={}, cooldown_ms={}",
         auto_threshold.map_or_else(|| "disabled".to_string(), |value| format!("{value:.2}")),
         cooldown_ms.clamp(250, 60_000)
     );
@@ -579,6 +603,27 @@ mod tests {
         assert_eq!(advance.book_name, "John");
         assert_eq!(advance.chapter, 3);
         assert_eq!(advance.verse, 17);
+    }
+
+    #[test]
+    fn disabling_bible_mode_deactivates_reading_mode() {
+        let mut reading_mode = ReadingMode::new();
+        reading_mode.start(
+            43,
+            "John",
+            3,
+            16,
+            vec![
+                (16, "For God so loved the world".to_string()),
+                (17, "For God sent not his Son".to_string()),
+            ],
+        );
+        assert!(reading_mode.is_active());
+
+        apply_bible_mode_to_reading_mode(false, &mut reading_mode);
+
+        assert!(!reading_mode.is_active());
+        assert!(!reading_mode.has_verses());
     }
 
     #[test]

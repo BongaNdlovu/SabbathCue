@@ -62,6 +62,7 @@ describe("settings store", () => {
       if (key === "gain") return 2.5
       if (key === "sttProvider") return "deepgram"
       if (key === "autoPreviewDetections") return false
+      if (key === "bibleDetectionEnabled") return false
       if (key === "semanticDetectionEnabled") return true
       return null
     })
@@ -74,6 +75,7 @@ describe("settings store", () => {
     expect(state.gain).toBe(2.5)
     expect(state.sttProvider).toBe("deepgram")
     expect(state.autoPreviewDetections).toBe(false)
+    expect(state.bibleDetectionEnabled).toBe(false)
     expect(state.semanticDetectionEnabled).toBe(true)
     // Defaults remain for keys with null
     expect(state.autoMode).toBe(false)
@@ -93,6 +95,7 @@ describe("settings store", () => {
     expect(after.sttProvider).toBe("vosk")
     expect(after.autoMode).toBe(false)
     expect(after.autoPreviewDetections).toBe(true)
+    expect(after.bibleDetectionEnabled).toBe(true)
     expect(after.semanticDetectionEnabled).toBe(true)
   })
 

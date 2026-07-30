@@ -30,9 +30,9 @@ use rhema_detection::DirectDetector;
 use rhema_stt::TranscriptEvent;
 
 use self::detection::{
-    is_detection_paused, is_semantic_detection_enabled, LIVE_DETECTION_WINDOW_WORDS,
-    PARTIAL_SEMANTIC_DEBOUNCE, PARTIAL_SEMANTIC_MIN_WORDS, SEMANTIC_WINDOW_SEGMENTS,
-    WINDOW_RESET_GAP,
+    is_bible_detection_enabled, is_detection_paused, is_semantic_detection_enabled,
+    LIVE_DETECTION_WINDOW_WORDS, PARTIAL_SEMANTIC_DEBOUNCE, PARTIAL_SEMANTIC_MIN_WORDS,
+    SEMANTIC_WINDOW_SEGMENTS, WINDOW_RESET_GAP,
 };
 use self::detection_jobs::{
     enqueue_direct_detection_job, enqueue_final_semantic_job, enqueue_partial_semantic_job,
@@ -345,7 +345,9 @@ pub async fn start_transcription(
             let _ = tokio::task::spawn_blocking(move || {
                 let direct_candidates =
                     run_direct_detection(&app_clone, seq, &latest_seq, &transcript);
-                check_reading_mode(&app_clone, &transcript, direct_candidates);
+                if is_bible_detection_enabled(&app_clone) {
+                    check_reading_mode(&app_clone, &transcript, direct_candidates);
+                }
             })
             .await;
         }

@@ -18,6 +18,15 @@ pub(crate) fn is_detection_paused(app: &AppHandle) -> bool {
     paused
 }
 
+pub(crate) fn is_bible_detection_enabled(app: &AppHandle) -> bool {
+    let state: State<'_, Mutex<AppState>> = app.state();
+    let enabled = match state.lock() {
+        Ok(state) => state.bible_detection_enabled.load(Ordering::Relaxed),
+        Err(_) => false,
+    };
+    enabled
+}
+
 pub(crate) fn is_semantic_detection_enabled(app: &AppHandle) -> bool {
     let state: State<'_, Mutex<AppState>> = app.state();
     let enabled = match state.lock() {
@@ -528,6 +537,28 @@ mod tests {
         app_state
             .detection_paused
             .store(false, std::sync::atomic::Ordering::SeqCst);
+        assert!(!app_state
+            .detection_paused
+            .load(std::sync::atomic::Ordering::Relaxed));
+    }
+
+    #[test]
+    fn bible_detection_defaults_on_and_can_be_toggled_independently() {
+        let app_state = crate::state::AppState::new();
+        assert!(app_state
+            .bible_detection_enabled
+            .load(std::sync::atomic::Ordering::Relaxed));
+        assert!(!app_state
+            .detection_paused
+            .load(std::sync::atomic::Ordering::Relaxed));
+
+        app_state
+            .bible_detection_enabled
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+
+        assert!(!app_state
+            .bible_detection_enabled
+            .load(std::sync::atomic::Ordering::Relaxed));
         assert!(!app_state
             .detection_paused
             .load(std::sync::atomic::Ordering::Relaxed));

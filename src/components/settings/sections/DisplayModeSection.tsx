@@ -10,6 +10,8 @@ export function DisplayModeSection() {
     setAutoMode,
     confidenceThreshold,
     setConfidenceThreshold,
+    bibleDetectionEnabled,
+    setBibleDetectionEnabled,
     semanticDetectionEnabled,
     setSemanticDetectionEnabled,
     semanticConfidenceThreshold,
@@ -78,6 +80,25 @@ export function DisplayModeSection() {
         <div className="flex items-start justify-between gap-3">
           <div className="flex flex-col gap-1">
             <label className="text-xs font-medium tracking-wider text-muted-foreground uppercase">
+              Bible mode
+            </label>
+            <p className="text-[0.625rem] text-muted-foreground">
+              Detect spoken Bible references and quotations. Transcription and
+              voice-controlled queue items keep working when this is off.
+            </p>
+          </div>
+          <Switch
+            aria-label="Bible mode"
+            checked={bibleDetectionEnabled}
+            onCheckedChange={setBibleDetectionEnabled}
+          />
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium tracking-wider text-muted-foreground uppercase">
               Auto-live reading mode
             </label>
             <p className="text-[0.625rem] text-muted-foreground">
@@ -106,6 +127,7 @@ export function DisplayModeSection() {
           <Switch
             aria-label="Semantic detection"
             checked={semanticDetectionEnabled}
+            disabled={!bibleDetectionEnabled}
             onCheckedChange={setSemanticDetectionEnabled}
           />
         </div>
@@ -115,7 +137,9 @@ export function DisplayModeSection() {
             Semantic match strength
           </label>
           <span className="text-xs text-muted-foreground tabular-nums">
-            {semanticDetectionEnabled ? `${semanticThresholdPercent}%` : "Off"}
+            {bibleDetectionEnabled && semanticDetectionEnabled
+              ? `${semanticThresholdPercent}%`
+              : "Off"}
           </span>
         </div>
         <Slider
@@ -123,11 +147,13 @@ export function DisplayModeSection() {
           max={100}
           step={1}
           value={[semanticThresholdPercent]}
-          disabled={!semanticDetectionEnabled}
+          disabled={!bibleDetectionEnabled || !semanticDetectionEnabled}
           onValueChange={([v]) => setSemanticConfidenceThreshold(v / 100)}
         />
         <p className="text-[0.625rem] text-muted-foreground">
-          {semanticDetectionEnabled
+          {!bibleDetectionEnabled
+            ? "Bible mode is off. Transcription continues without Bible suggestions."
+            : semanticDetectionEnabled
             ? "Semantic verse suggestions below this match strength stay hidden."
             : "Only direct spoken references will appear in detections."}
         </p>

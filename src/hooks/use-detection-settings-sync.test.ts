@@ -62,6 +62,8 @@ describe("useDetectionSettingsSync", () => {
 
     expect(invokeMock).toHaveBeenCalledWith("update_detection_settings", {
       autoMode: useSettingsStore.getState().autoMode,
+      bibleDetectionEnabled:
+        useSettingsStore.getState().bibleDetectionEnabled,
       semanticDetectionEnabled:
         useSettingsStore.getState().semanticDetectionEnabled,
       confidenceThreshold: useSettingsStore.getState().confidenceThreshold,
@@ -101,6 +103,8 @@ describe("useDetectionSettingsSync", () => {
 
     expect(invokeMock).toHaveBeenCalledWith("update_detection_settings", {
       autoMode: useSettingsStore.getState().autoMode,
+      bibleDetectionEnabled:
+        useSettingsStore.getState().bibleDetectionEnabled,
       semanticDetectionEnabled:
         useSettingsStore.getState().semanticDetectionEnabled,
       confidenceThreshold: useSettingsStore.getState().confidenceThreshold,
@@ -134,7 +138,43 @@ describe("useDetectionSettingsSync", () => {
 
     expect(invokeMock).toHaveBeenCalledWith("update_detection_settings", {
       autoMode: useSettingsStore.getState().autoMode,
+      bibleDetectionEnabled:
+        useSettingsStore.getState().bibleDetectionEnabled,
       semanticDetectionEnabled: true,
+      confidenceThreshold: useSettingsStore.getState().confidenceThreshold,
+      semanticConfidenceThreshold:
+        useSettingsStore.getState().semanticConfidenceThreshold,
+      cooldownMs: useSettingsStore.getState().cooldownMs,
+    })
+  })
+
+  it("syncs Bible mode changes without changing transcription settings", async () => {
+    const { useSettingsStore } = await import("@/stores/settings-store")
+    const { useDetectionSettingsSync } =
+      await import("./use-detection-settings-sync")
+
+    function Probe() {
+      useDetectionSettingsSync()
+      return null
+    }
+
+    await act(async () => {
+      root.render(React.createElement(Probe))
+      await Promise.resolve()
+    })
+
+    invokeMock.mockClear()
+
+    await act(async () => {
+      useSettingsStore.getState().setBibleDetectionEnabled(false)
+      await Promise.resolve()
+    })
+
+    expect(invokeMock).toHaveBeenCalledWith("update_detection_settings", {
+      autoMode: useSettingsStore.getState().autoMode,
+      bibleDetectionEnabled: false,
+      semanticDetectionEnabled:
+        useSettingsStore.getState().semanticDetectionEnabled,
       confidenceThreshold: useSettingsStore.getState().confidenceThreshold,
       semanticConfidenceThreshold:
         useSettingsStore.getState().semanticConfidenceThreshold,

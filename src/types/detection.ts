@@ -41,6 +41,7 @@ export interface DetectionStatus {
   has_direct: boolean
   has_semantic: boolean
   paraphrase_enabled: boolean
+  bible_detection_enabled: boolean
   semantic_detection_enabled: boolean
 }
 

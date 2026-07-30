@@ -8,7 +8,9 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use crate::state::AppState;
 use rhema_detection::{DetectionMerger, DirectDetector, ReadingMode};
 
-use super::detection::{is_semantic_detection_enabled, FINAL_SEMANTIC_MIN_WORDS};
+use super::detection::{
+    is_bible_detection_enabled, is_semantic_detection_enabled, FINAL_SEMANTIC_MIN_WORDS,
+};
 use super::detection_jobs::finalize_live_semantic_results;
 use super::detection_logic::{
     choose_reading_candidate, direct_reading_candidates, filter_direct_results_to_scope_if_present,
@@ -199,6 +201,54 @@ fn emit_egw_direct_detections(
     let _ = app.emit("verse_detections", &results);
 }
 
+fn detect_live_egw_quotes(
+    app: &AppHandle,
+    egw_cue_at_ms: &AtomicU64,
+    transcript: &str,
+    stt_confidence: f64,
+) -> Vec<crate::commands::detection::DetectionResult> {
+    let app_managed: State<'_, Mutex<AppState>> = app.state();
+    let mut results = if let Ok(app_state) = app_managed.lock() {
+        let books = app_state
+            .bible_db
+            .as_ref()
+            .and_then(|db| db.list_egw_books().ok())
+            .unwrap_or_default();
+        if books.is_empty() {
+            Vec::new()
+        } else {
+            let now_ms = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |elapsed| {
+                    u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX)
+                });
+            let cue_active = crate::commands::detection::note_and_check_egw_cue(
+                &books,
+                transcript,
+                now_ms,
+                egw_cue_at_ms,
+            );
+            crate::commands::detection::detect_egw_quotes(&app_state, transcript, cue_active)
+        }
+    } else {
+        log::warn!("[DET-EGW-QUOTE] AppState busy; skipping EGW quote pass");
+        Vec::new()
+    };
+
+    crate::commands::detection::dampen_egw_for_low_stt_confidence(&mut results, stt_confidence);
+    mark_egw_auto_queue(app, &mut results);
+    results
+}
+
+fn retain_results_allowed_by_bible_mode(
+    results: &mut Vec<crate::commands::detection::DetectionResult>,
+    bible_detection_enabled: bool,
+) {
+    if !bible_detection_enabled {
+        results.retain(|result| result.content_type != "bible");
+    }
+}
+
 /// Run direct (regex/pattern) detection only. Instant, no ONNX.
 /// Uses SEPARATE Mutex<DirectDetector> and Mutex<DetectionMerger> so it
 /// never blocks on the semantic worker, and cooldown state persists across calls.
@@ -224,6 +274,10 @@ pub(crate) fn run_direct_detection(
         log::debug!("[DET-DIRECT] Skipping stale job seq={seq}");
         return Vec::new();
     }
+    if !is_bible_detection_enabled(app) {
+        emit_egw_direct_detections(app, seq, latest_seq, transcript);
+        return Vec::new();
+    }
     let t0 = std::time::Instant::now();
     let detector_state: State<'_, Mutex<DirectDetector>> = app.state();
     let mut detector = match detector_state.lock() {
@@ -235,6 +289,11 @@ pub(crate) fn run_direct_detection(
     };
     let direct_results = detector.detect(transcript);
     drop(detector); // Release immediately
+
+    if !is_bible_detection_enabled(app) {
+        emit_egw_direct_detections(app, seq, latest_seq, transcript);
+        return Vec::new();
+    }
 
     if direct_results.is_empty() {
         emit_egw_direct_detections(app, seq, latest_seq, transcript);
@@ -253,7 +312,7 @@ pub(crate) fn run_direct_detection(
     };
     let merged = merger.merge(direct_results, vec![]);
     drop(merger);
-    let reading_candidates = direct_reading_candidates(&merged);
+    let mut reading_candidates = direct_reading_candidates(&merged);
     if merged.is_empty() {
         emit_egw_direct_detections(app, seq, latest_seq, transcript);
         return reading_candidates;
@@ -269,6 +328,9 @@ pub(crate) fn run_direct_detection(
         // Check for stale sequence BEFORE emitting in fallback path
         if seq < latest_seq.load(Ordering::Acquire) {
             log::debug!("[DET-DIRECT] Skipping stale emission in fallback path seq={seq}");
+            return Vec::new();
+        }
+        if !is_bible_detection_enabled(app) {
             return Vec::new();
         }
 
@@ -323,7 +385,11 @@ pub(crate) fn run_direct_detection(
     if results.len() > egw_start {
         mark_egw_auto_queue(app, &mut results[egw_start..]);
     }
-    let results = filter_live_direct_results_to_reading_scope(app, results);
+    if !is_bible_detection_enabled(app) {
+        retain_results_allowed_by_bible_mode(&mut results, false);
+        reading_candidates.clear();
+    }
+    let mut results = filter_live_direct_results_to_reading_scope(app, results);
 
     for r in &results {
         log::info!(
@@ -345,6 +411,13 @@ pub(crate) fn run_direct_detection(
         results.first().map_or("-", |r| r.verse_ref.as_str()),
         t0.elapsed()
     );
+    if !is_bible_detection_enabled(app) {
+        retain_results_allowed_by_bible_mode(&mut results, false);
+        reading_candidates.clear();
+    }
+    if results.is_empty() {
+        return reading_candidates;
+    }
     let _ = app.emit("verse_detections", &results);
     if transcript_logging_enabled() {
         log::info!(
@@ -414,6 +487,19 @@ pub(crate) fn run_semantic_detection(
             );
         }
         let _ = app.emit("verse_detections", &egw_explicit);
+        return;
+    }
+
+    if !is_bible_detection_enabled(app) {
+        let results = detect_live_egw_quotes(app, egw_cue_at_ms, transcript, stt_confidence);
+        if results.is_empty() || seq < latest_seq.load(Ordering::Acquire) {
+            return;
+        }
+        let _ = app.emit("verse_detections", &results);
+        log::info!(
+            "[DET-TRACE] seq={seq} decision=bible_mode_off emitted_egw={}",
+            results.len()
+        );
         return;
     }
 
@@ -522,44 +608,16 @@ pub(crate) fn run_semantic_detection(
         }
     }
 
-    let mut egw_quotes = if let Ok(app_state) = app_managed.lock() {
-        let books = app_state
-            .bible_db
-            .as_ref()
-            .and_then(|db| db.list_egw_books().ok())
-            .unwrap_or_default();
-        if books.is_empty() {
-            Vec::new()
-        } else {
-            let now_ms = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map_or(0, |elapsed| {
-                    u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX)
-                });
-            let cue_active = crate::commands::detection::note_and_check_egw_cue(
-                &books,
-                transcript,
-                now_ms,
-                egw_cue_at_ms,
-            );
-            // Raw transcript, not `query`. `query` exists to keep reference words
-            // and digits from poisoning BM25 *rank*, and EGW confidence ignores
-            // rank entirely. Worse, stripping deletes tokens mid-window, splicing
-            // two non-adjacent spans into one apparent run: "in the fold verse 12
-            // waiting for the wandering sheep" scores 4 raw but 8 stripped, which
-            // with a cue would auto-queue a quote nobody spoke contiguously.
-            crate::commands::detection::detect_egw_quotes(&app_state, transcript, cue_active)
-        }
-    } else {
-        log::warn!("[DET-EGW-QUOTE] AppState busy; skipping EGW quote pass");
-        Vec::new()
-    };
-    // Same low-STT-confidence dampening the Bible results got above. It runs
-    // here rather than in that loop because these results do not exist yet at
-    // that point, and because EGW additionally loses `auto_queued`.
-    crate::commands::detection::dampen_egw_for_low_stt_confidence(&mut egw_quotes, stt_confidence);
-    mark_egw_auto_queue(app, &mut egw_quotes);
-    results.extend(egw_quotes);
+    results.extend(detect_live_egw_quotes(
+        app,
+        egw_cue_at_ms,
+        transcript,
+        stt_confidence,
+    ));
+
+    if !is_bible_detection_enabled(app) {
+        retain_results_allowed_by_bible_mode(&mut results, false);
+    }
 
     if results.is_empty() {
         log::info!(
@@ -584,6 +642,12 @@ pub(crate) fn run_semantic_detection(
             r.source,
             r.auto_queued
         );
+    }
+    if !is_bible_detection_enabled(app) {
+        retain_results_allowed_by_bible_mode(&mut results, false);
+    }
+    if results.is_empty() {
+        return;
     }
     let _ = app.emit("verse_detections", &results);
     log::info!(
@@ -813,4 +877,48 @@ pub(crate) fn check_reading_mode(
     }
 
     false
+}
+
+#[cfg(test)]
+mod bible_mode_tests {
+    use super::retain_results_allowed_by_bible_mode;
+    use crate::commands::detection::DetectionResult;
+
+    fn result(content_type: &str) -> DetectionResult {
+        DetectionResult {
+            content_type: content_type.to_string(),
+            verse_ref: "reference".to_string(),
+            verse_text: "text".to_string(),
+            book_name: "book".to_string(),
+            book_number: 1,
+            chapter: 1,
+            verse: 1,
+            confidence: 1.0,
+            rank_score: 1.0,
+            source: "direct".to_string(),
+            auto_queued: false,
+            transcript_snippet: "spoken words".to_string(),
+            is_chapter_only: false,
+            egw_paragraph: None,
+        }
+    }
+
+    #[test]
+    fn bible_mode_off_filters_bible_but_preserves_egw_results() {
+        let mut results = vec![result("bible"), result("egw")];
+
+        retain_results_allowed_by_bible_mode(&mut results, false);
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].content_type, "egw");
+    }
+
+    #[test]
+    fn bible_mode_on_preserves_all_detection_results() {
+        let mut results = vec![result("bible"), result("egw")];
+
+        retain_results_allowed_by_bible_mode(&mut results, true);
+
+        assert_eq!(results.len(), 2);
+    }
 }
