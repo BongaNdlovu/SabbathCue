@@ -14,6 +14,7 @@ vi.mock("sonner", () => ({
 }))
 
 const handleHymnVoiceControlMock = vi.fn()
+const handleQueueItemVoiceControlMock = vi.fn()
 
 vi.mock("@/hooks/use-tauri-event", () => ({
   useTauriEvent: () => {},
@@ -22,6 +23,11 @@ vi.mock("@/hooks/use-tauri-event", () => ({
 vi.mock("@/services/hymnal/hymn-voice-control", () => ({
   handleHymnVoiceControl: (...args: unknown[]) =>
     handleHymnVoiceControlMock(...args),
+}))
+
+vi.mock("@/services/queue/queue-voice-control", () => ({
+  handleQueueItemVoiceControl: (...args: unknown[]) =>
+    handleQueueItemVoiceControlMock(...args),
 }))
 
 async function loadModules() {
@@ -44,6 +50,8 @@ describe("use-transcription", () => {
     mockToastError.mockReset()
     handleHymnVoiceControlMock.mockReset()
     handleHymnVoiceControlMock.mockResolvedValue(false)
+    handleQueueItemVoiceControlMock.mockReset()
+    handleQueueItemVoiceControlMock.mockReturnValue(false)
   })
 
   describe("transcriptionActions.start", () => {
@@ -580,6 +588,32 @@ describe("use-transcription", () => {
       })
       expect(state.currentPartial).toBe("")
       expect(handleHymnVoiceControlMock).toHaveBeenCalledWith("hymn 12")
+    })
+
+    it("stores and handles queue commands while Bible mode is off", async () => {
+      handleQueueItemVoiceControlMock.mockReturnValue(true)
+      const {
+        useSettingsStore,
+        useTranscriptStore,
+        handleTranscriptFinalPayload,
+      } = await loadModules()
+      useSettingsStore.getState().setBibleDetectionEnabled(false)
+
+      await handleTranscriptFinalPayload({
+        text: "item number 2",
+        is_final: true,
+        confidence: 0.95,
+        words: [],
+      })
+
+      expect(useTranscriptStore.getState().segments.at(-1)).toMatchObject({
+        text: "item number 2",
+        is_final: true,
+      })
+      expect(handleQueueItemVoiceControlMock).toHaveBeenCalledWith(
+        "item number 2"
+      )
+      expect(handleHymnVoiceControlMock).not.toHaveBeenCalled()
     })
 
     it("invokes hymn voice control for Adventist hymnal cue variants", async () => {

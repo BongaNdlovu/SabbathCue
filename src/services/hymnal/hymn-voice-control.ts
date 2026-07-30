@@ -8,6 +8,7 @@ import {
 } from "@/services/hymnal/hymn-presentation"
 import { addRecentHymn } from "@/services/hymnal/hymnal-history"
 import { getHymnByNumber } from "@/services/hymnal/hymnal-repository"
+import { parsePositiveSpokenNumber } from "@/lib/spoken-number"
 import { getBroadcastLiveStore } from "@/stores/broadcast/live-store"
 import { useDetectionStore } from "@/stores/detection-store"
 import { useHymnSlideStore } from "@/stores/hymn-slide-store"
@@ -31,71 +32,6 @@ const HYMN_CUE_PATTERN = new RegExp(
   "i"
 )
 
-const ONES: Record<string, number> = {
-  zero: 0,
-  one: 1,
-  two: 2,
-  three: 3,
-  four: 4,
-  five: 5,
-  six: 6,
-  seven: 7,
-  eight: 8,
-  nine: 9,
-  ten: 10,
-  eleven: 11,
-  twelve: 12,
-  thirteen: 13,
-  fourteen: 14,
-  fifteen: 15,
-  sixteen: 16,
-  seventeen: 17,
-  eighteen: 18,
-  nineteen: 19,
-  nul: 0,
-  een: 1,
-  twee: 2,
-  drie: 3,
-  vier: 4,
-  vyf: 5,
-  ses: 6,
-  sewe: 7,
-  agt: 8,
-  nege: 9,
-  tien: 10,
-  elf: 11,
-  twaalf: 12,
-  dertien: 13,
-  veertien: 14,
-  vyftien: 15,
-  sestien: 16,
-  sewentien: 17,
-  agtien: 18,
-  negentien: 19,
-}
-
-const TENS: Record<string, number> = {
-  twenty: 20,
-  thirty: 30,
-  forty: 40,
-  fifty: 50,
-  sixty: 60,
-  seventy: 70,
-  eighty: 80,
-  ninety: 90,
-  twintig: 20,
-  dertig: 30,
-  veertig: 40,
-  vyftig: 50,
-  sestig: 60,
-  sewentig: 70,
-  tagtig: 80,
-  negentig: 90,
-}
-
-const NUMBER_CONNECTORS = new Set(["and", "en"])
-const HUNDRED_WORDS = new Set(["hundred", "honderd"])
-
 let lastHandled: { hymnNumber: number; at: number } | null = null
 
 function normalizeTranscript(text: string): string {
@@ -110,60 +46,8 @@ function isValidHymnNumber(number: number): boolean {
   return Number.isInteger(number) && number > 0 && VALID_HYMN_NUMBERS.has(number)
 }
 
-function parseSpokenNumber(words: string[]): number | null {
-  let total = 0
-  let current = 0
-
-  for (let index = 0; index < words.length; index += 1) {
-    const word = words[index]
-    if (NUMBER_CONNECTORS.has(word)) continue
-
-    if (HUNDRED_WORDS.has(word)) {
-      current = (current === 0 ? 1 : current) * 100
-      continue
-    }
-
-    if (word in TENS) {
-      current += TENS[word]
-      continue
-    }
-
-    if (word in ONES) {
-      const ones = ONES[word]
-      const next = words[index + 1]
-      const afterNext = words[index + 2]
-      if (
-        next !== undefined &&
-        afterNext !== undefined &&
-        NUMBER_CONNECTORS.has(next) &&
-        afterNext in TENS
-      ) {
-        current += TENS[afterNext] + ones
-        index += 2
-        continue
-      }
-      current += ones
-      continue
-    }
-
-    return null
-  }
-
-  total += current
-  return total > 0 ? total : null
-}
-
 function parseNumberPhrase(phrase: string): number | null {
-  const trimmed = phrase.trim().toLowerCase()
-  if (!trimmed) return null
-
-  if (/^\d+$/.test(trimmed)) {
-    const digits = Number.parseInt(trimmed, 10)
-    return Number.isFinite(digits) && digits > 0 ? digits : null
-  }
-
-  const words = trimmed.replace(/-/g, " ").split(/\s+/).filter(Boolean)
-  return parseSpokenNumber(words)
+  return parsePositiveSpokenNumber(phrase)
 }
 
 export function parseHymnCommand(text: string): number | null {

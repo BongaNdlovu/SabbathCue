@@ -19,6 +19,7 @@ import {
   type TranscriptionIssue,
 } from "@/stores/transcript-store"
 import { handleSermonSlideVoiceControl } from "@/services/slides/sermon-slide-voice-control"
+import { handleQueueItemVoiceControl } from "@/services/queue/queue-voice-control"
 import { loadHymnVoiceControl } from "@/services/hymnal/hymn-voice-control-loader"
 import {
   recordWorkflowTrace,
@@ -268,6 +269,7 @@ export async function handleTranscriptFinalPayload(
     provider: payload.provider,
   })
   if (handleSermonSlideVoiceControl(payload.text)) return
+  if (handleQueueItemVoiceControl(payload.text)) return
   if (!MAYBE_HYMN_CUE_PATTERN.test(payload.text)) return
 
   const { handleHymnVoiceControl } = await loadHymnVoiceControl()

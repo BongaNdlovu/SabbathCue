@@ -633,12 +633,38 @@ fn is_hymn_or_song_number_command(text: &str) -> bool {
     false
 }
 
+fn is_queue_item_number_command(text: &str) -> bool {
+    let normalized = text
+        .to_lowercase()
+        .chars()
+        .map(|ch| if ch.is_alphanumeric() { ch } else { ' ' })
+        .collect::<String>();
+    let tokens: Vec<&str> = normalized.split_whitespace().collect();
+    let mut index = usize::from(tokens.first() == Some(&"please"));
+
+    if matches!(tokens.get(index), Some(&("show" | "present" | "display"))) {
+        index += 1;
+    } else if tokens.get(index) == Some(&"go") && tokens.get(index + 1) == Some(&"to") {
+        index += 2;
+    }
+
+    if tokens.get(index) != Some(&"item") {
+        return false;
+    }
+    index += 1;
+    if tokens.get(index) == Some(&"number") {
+        index += 1;
+    }
+
+    hymn_command_number_end(&tokens, index).is_some_and(|number_end| number_end == tokens.len())
+}
+
 /// True when an utterance is a voice command the dedicated command/reading
-/// paths already handle: a translation switch, a hymn/song number, or reading
-/// navigation. Live semantic paraphrase search skips these so spoken commands
-/// don't flood the detections panel with keyword noise.
+/// paths already handle: a translation switch, a hymn/song or queue-item
+/// number, or reading navigation. Live semantic paraphrase search skips these
+/// so spoken commands don't flood the detections panel with keyword noise.
 pub fn is_voice_command_utterance(text: &str) -> bool {
-    if is_hymn_or_song_number_command(text) {
+    if is_hymn_or_song_number_command(text) || is_queue_item_number_command(text) {
         return true;
     }
     let lower = text.to_lowercase();
@@ -2060,6 +2086,10 @@ mod tests {
         assert!(is_voice_command_utterance("let's go to the next verse"));
         assert!(is_voice_command_utterance("go back to the previous verse"));
         assert!(is_voice_command_utterance("in the same chapter verse 17"));
+        assert!(is_voice_command_utterance("item 2"));
+        assert!(is_voice_command_utterance("item number two"));
+        assert!(is_voice_command_utterance("please display item three"));
+        assert!(is_voice_command_utterance("go to item four"));
     }
 
     #[test]
@@ -2071,6 +2101,10 @@ mod tests {
         // A bare scripture reference is a reference, not a voice command; the
         // reference path (not this predicate) is responsible for it.
         assert!(!is_voice_command_utterance("Genesis chapter 3 verse 15"));
+        assert!(!is_voice_command_utterance(
+            "item one in our discussion is faith"
+        ));
+        assert!(!is_voice_command_utterance("the first item is prayer"));
     }
 
     #[test]
