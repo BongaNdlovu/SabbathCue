@@ -27,6 +27,14 @@ function loadDesireOfAges(): EgwSource {
   ) as EgwSource
 }
 
+function requireChapter(source: EgwSource, chapterNumber: number) {
+  const chapter = source.chapters.find(
+    (entry) => entry.chapter === chapterNumber
+  )
+  if (!chapter) throw new Error(`Missing chapter ${chapterNumber}`)
+  return chapter
+}
+
 describe("The Desire of Ages source", () => {
   test("chapter 1 follows the PDF folio pages on canonical EGW Writings paragraph boundaries", () => {
     // Paragraph boundaries: https://m.egwwritings.org/en/book/130.21#21.
@@ -116,35 +124,34 @@ describe("The Desire of Ages source", () => {
     // Boundaries verified against the published text (DA 56.3, 123.3, 246.2,
     // 285.2 on EGW Writings).
     const source = loadDesireOfAges()
-    const chapter = (num: number) =>
-      source.chapters.find((entry) => entry.chapter === num)
+    const chapter = (num: number) => requireChapter(source, num)
 
     const ch5 = chapter(5)
-    expect(ch5?.paragraphs[19]?.page).toBe(35)
-    expect(ch5?.paragraphs[19]?.page_paragraph).toBe(2)
-    expect(ch5?.paragraphs[19]?.text).toMatch(
+    expect(ch5.paragraphs[19].page).toBe(35)
+    expect(ch5.paragraphs[19].page_paragraph).toBe(2)
+    expect(ch5.paragraphs[19].text).toMatch(
       /^Yet Mary did not understand Christ's mission/
     )
 
     const ch12 = chapter(12)
-    expect(ch12?.paragraphs[31]?.page).toBe(93)
-    expect(ch12?.paragraphs[31]?.text).toMatch(
+    expect(ch12.paragraphs[31].page).toBe(93)
+    expect(ch12.paragraphs[31].text).toMatch(
       /^And how this is accomplished, Christ has shown us/
     )
 
     const ch25 = chapter(25)
-    expect(ch25?.paragraphs[14]?.page).toBe(199)
-    expect(ch25?.paragraphs[14]?.text).toMatch(/^But Peter was unmindful now/)
+    expect(ch25.paragraphs[14].page).toBe(199)
+    expect(ch25.paragraphs[14].text).toMatch(/^But Peter was unmindful now/)
 
     const ch29 = chapter(29)
-    expect(ch29?.paragraphs[18]?.text).toContain(
+    expect(ch29.paragraphs[18].text).toContain(
       "was in the service of God. They were performing"
     )
 
     // Running headers must not leak into paragraph text.
     const ch8 = chapter(8)
-    expect(ch8?.paragraphs[4]?.text).toBe("Psalm 122:2-7.")
-    expect(ch29?.paragraphs[11]?.text).toMatch(/^The Sabbath was not for Israel/)
+    expect(ch8.paragraphs[4].text).toBe("Psalm 122:2-7.")
+    expect(ch29.paragraphs[11].text).toMatch(/^The Sabbath was not for Israel/)
   })
 
   test("tracks the pages of merged chapter 1 continuation fragments", () => {

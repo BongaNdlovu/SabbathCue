@@ -22,9 +22,17 @@ function loadStepsToChrist(): EgwSource {
   return JSON.parse(
     readFileSync(
       join(import.meta.dir, "sources", "egw", "steps-to-christ.json"),
-      "utf-8",
-    ),
+      "utf-8"
+    )
   ) as EgwSource
+}
+
+function requireChapter(source: EgwSource, chapterNumber: number) {
+  const chapter = source.chapters.find(
+    (entry) => entry.chapter === chapterNumber
+  )
+  if (!chapter) throw new Error(`Missing chapter ${chapterNumber}`)
+  return chapter
 }
 
 describe("Steps to Christ source", () => {
@@ -337,40 +345,40 @@ describe("Steps to Christ source", () => {
 
     for (const chapter of source.chapters) {
       expect(
-        chapter.paragraphs.map((p) => `${p.page}.${p.page_paragraph}`),
+        chapter.paragraphs.map((p) => `${p.page}.${p.page_paragraph}`)
       ).toEqual(expectedLabels[chapter.chapter])
     }
 
     expect(
       source.chapters.reduce(
         (count, chapter) => count + chapter.paragraphs.length,
-        0,
-      ),
+        0
+      )
     ).toBe(273)
   })
 
   test("keeps poetry blocks on the EGW Writings paragraph boundaries", () => {
     const source = loadStepsToChrist()
-    const chapter1 = source.chapters.find((entry) => entry.chapter === 1)
-    const chapter3 = source.chapters.find((entry) => entry.chapter === 3)
+    const chapter1 = requireChapter(source, 1)
+    const chapter3 = requireChapter(source, 3)
 
-    expect(chapter1?.paragraphs).toHaveLength(17)
-    expect(chapter1?.paragraphs[1]?.text).toContain(
-      "The eyes of all wait upon Thee",
+    expect(chapter1.paragraphs).toHaveLength(17)
+    expect(chapter1.paragraphs[1].text).toContain(
+      "The eyes of all wait upon Thee"
     )
-    expect(chapter1?.paragraphs[1]?.text).toContain("Psalm 145:15, 16")
-    expect(chapter1?.paragraphs[3]?.text).toMatch(/^"God is love"/)
+    expect(chapter1.paragraphs[1].text).toContain("Psalm 145:15, 16")
+    expect(chapter1.paragraphs[3].text).toMatch(/^"God is love"/)
 
-    expect(chapter3?.paragraphs[5]?.text).toContain(
-      "This was the language of his soul:",
+    expect(chapter3.paragraphs[5].text).toContain(
+      "This was the language of his soul:"
     )
-    expect(chapter3?.paragraphs[6]?.page).toBe(25)
-    expect(chapter3?.paragraphs[6]?.page_paragraph).toBe(1)
-    expect(chapter3?.paragraphs[6]?.text).toContain("Psalm 32:1, 2")
-    expect(chapter3?.paragraphs[7]?.page_paragraph).toBe(2)
-    expect(chapter3?.paragraphs[7]?.text).toContain("Psalm 51:1-14")
-    expect(chapter3?.paragraphs[8]?.page_paragraph).toBe(3)
-    expect(chapter3?.paragraphs[8]?.text).toMatch(/^A repentance such as this/)
+    expect(chapter3.paragraphs[6].page).toBe(25)
+    expect(chapter3.paragraphs[6].page_paragraph).toBe(1)
+    expect(chapter3.paragraphs[6].text).toContain("Psalm 32:1, 2")
+    expect(chapter3.paragraphs[7].page_paragraph).toBe(2)
+    expect(chapter3.paragraphs[7].text).toContain("Psalm 51:1-14")
+    expect(chapter3.paragraphs[8].page_paragraph).toBe(3)
+    expect(chapter3.paragraphs[8].text).toMatch(/^A repentance such as this/)
   })
 
   test("does not keep continued page metadata on the isolated chapter 3 prose fragment", () => {
@@ -418,7 +426,7 @@ describe("Steps to Christ source", () => {
           {
             paragraph: 2,
             page: 9,
-            text: "Thou openest Thine hand, and satisfiest the desire of every living thing.\"",
+            text: 'Thou openest Thine hand, and satisfiest the desire of every living thing."',
           },
           {
             paragraph: 3,

@@ -549,6 +549,24 @@ function pageFromNextFolioMarkerAfter(
 }
 
 type PageSource = NonNullable<EgwBookConfig["pageSource"]>
+type ExtractedPage = {
+  page: number
+  text: string
+  continuesFromPreviousPage: boolean
+  folioPage?: number
+}
+
+type ChapterPosition = {
+  chapter: number
+  title: string
+  anchor: string
+  pos: number
+  anchorLength: number
+  folioPos?: number
+  folioAnchorLength?: number
+  tocPage?: number
+  folioPage?: number
+}
 
 function assignPageParagraphNumbers(
   chapters: DraftChapter[],
@@ -588,22 +606,10 @@ async function extractPages(
   pdfPath: string,
   layout: ParagraphLayoutOptions | undefined,
   pageSource: PageSource
-): Promise<
-  Array<{
-    page: number
-    text: string
-    continuesFromPreviousPage: boolean
-    folioPage?: number
-  }>
-> {
+): Promise<ExtractedPage[]> {
   const loadingTask = getDocument(pdfPath)
   const pdf = await loadingTask.promise
-  const pages: Array<{
-    page: number
-    text: string
-    continuesFromPreviousPage: boolean
-    folioPage?: number
-  }> = []
+  const pages: ExtractedPage[] = []
 
   for (let i = 1; i <= pdf.numPages; i += 1) {
     const page = await pdf.getPage(i)
@@ -640,23 +646,10 @@ async function extractPages(
   return pages
 }
 
-export async function importEgwPdf(config: EgwBookConfig): Promise<void> {
-  if (!existsSync(config.pdfPath)) {
-    throw new Error(`Source PDF not found: ${config.pdfPath}`)
-  }
-
-  const root = repoRoot()
-  const debugDir = join(root, "tmp", "egw", config.debugSlug)
-  const debugPagesJson = join(debugDir, "pages.json")
-  const debugTextTxt = join(debugDir, "extracted.txt")
-
-  mkdirSync(debugDir, { recursive: true })
-  mkdirSync(dirname(config.outputJsonPath), { recursive: true })
-
-  const pageSource = config.pageSource ?? "legacy"
-  const pages = await extractPages(config.pdfPath, config.layout, pageSource)
-  writeFileSync(debugPagesJson, `${JSON.stringify(pages, null, 2)}\n`)
-
+function combineExtractedPages(
+  pages: ExtractedPage[],
+  pageSource: PageSource
+): { rawFullText: string; rawFolioFullText: string } {
   let rawFullText = ""
   let rawFolioFullText = ""
   for (const page of pages) {
@@ -680,28 +673,17 @@ export async function importEgwPdf(config: EgwBookConfig): Promise<void> {
       }
     }
   }
-  writeFileSync(
-    debugTextTxt,
-    pageSource === "folios" ? rawFolioFullText : rawFullText
-  )
 
-  ensureUsableText(rawFullText, config.requiredTokens)
-  const normalized = normalizeFullText(rawFullText)
-  const folioNormalized =
-    pageSource === "folios" ? normalizeFullText(rawFolioFullText) : normalized
+  return { rawFullText, rawFolioFullText }
+}
 
-  const chapterPositions: Array<{
-    chapter: number
-    title: string
-    anchor: string
-    pos: number
-    anchorLength: number
-    folioPos?: number
-    folioAnchorLength?: number
-    tocPage?: number
-    folioPage?: number
-  }> = []
-
+function collectChapterPositions(
+  config: EgwBookConfig,
+  normalized: string,
+  folioNormalized: string,
+  pageSource: PageSource
+): ChapterPosition[] {
+  const chapterPositions: ChapterPosition[] = []
   for (const chapter of config.chapters) {
     const anchor = normalizeFullText(
       chapterAnchor(
@@ -731,7 +713,13 @@ export async function importEgwPdf(config: EgwBookConfig): Promise<void> {
       folioAnchorLength: folioFound?.length,
     })
   }
+  return chapterPositions
+}
 
+function assertChapterOrder(
+  chapterPositions: ChapterPosition[],
+  pageSource: PageSource
+): void {
   for (let i = 1; i < chapterPositions.length; i += 1) {
     if (chapterPositions[i].pos <= chapterPositions[i - 1].pos) {
       throw new Error(
@@ -751,8 +739,25 @@ export async function importEgwPdf(config: EgwBookConfig): Promise<void> {
       )
     }
   }
+}
 
+function resolveMainTexts(
+  config: EgwBookConfig,
+  chapterPositions: ChapterPosition[],
+  normalized: string,
+  folioNormalized: string,
+  pageSource: PageSource
+): {
+  mainText: string
+  folioMainText: string
+  tocText: string
+  folioTocText: string
+} {
   const lastChapter = chapterPositions[chapterPositions.length - 1]
+  const firstChapter = chapterPositions[0]
+  if (!lastChapter || !firstChapter) {
+    throw new Error("At least one chapter is required")
+  }
   const searchStart = lastChapter.pos + lastChapter.anchorLength
   const appendixIdx = config.appendixMarker
     ? normalized.indexOf(config.appendixMarker, searchStart)
@@ -773,11 +778,22 @@ export async function importEgwPdf(config: EgwBookConfig): Promise<void> {
       ? folioNormalized.slice(0, folioAppendixIdx)
       : folioNormalized
 
-  const tocText = normalized.slice(0, chapterPositions[0].pos)
+  const tocText = normalized.slice(0, firstChapter.pos)
   const folioTocText =
-    pageSource === "folios" && chapterPositions[0].folioPos != null
-      ? folioNormalized.slice(0, chapterPositions[0].folioPos)
+    pageSource === "folios" && firstChapter.folioPos != null
+      ? folioNormalized.slice(0, firstChapter.folioPos)
       : tocText
+  return { mainText, folioMainText, tocText, folioTocText }
+}
+
+function assignChapterStartPages(
+  chapterPositions: ChapterPosition[],
+  normalized: string,
+  folioNormalized: string,
+  tocText: string,
+  folioTocText: string,
+  pageSource: PageSource
+): void {
   for (const chapter of chapterPositions) {
     if (pageSource === "brackets" || pageSource === "folios") {
       // TOC page numbers are the PDF's own pagination, not citation pages.
@@ -814,9 +830,16 @@ export async function importEgwPdf(config: EgwBookConfig): Promise<void> {
         nearestPageMarkerBefore(normalized, chapter.pos)
     }
   }
+}
 
+function extractDraftChapters(
+  config: EgwBookConfig,
+  chapterPositions: ChapterPosition[],
+  mainText: string,
+  folioMainText: string,
+  pageSource: PageSource
+): DraftChapter[] {
   const chapters: DraftChapter[] = []
-
   for (let i = 0; i < chapterPositions.length; i += 1) {
     const current = chapterPositions[i]
     const next =
@@ -891,16 +914,16 @@ export async function importEgwPdf(config: EgwBookConfig): Promise<void> {
       ),
     })
   }
+  return chapters
+}
 
-  const processedChapters = config.postprocessChapters?.(chapters) ?? chapters
-
-  const outputChapters = assignPageParagraphNumbers(processedChapters, {
-    countContinuedPages: config.countContinuedPagesForPageParagraphs ?? true,
-  })
-
-  if (outputChapters.length !== config.expectedChapterCount) {
+function assertOutputIntegrity(
+  outputChapters: OutputChapter[],
+  expectedChapterCount: number
+): void {
+  if (outputChapters.length !== expectedChapterCount) {
     throw new Error(
-      `Expected ${config.expectedChapterCount} chapters, got ${outputChapters.length}`
+      `Expected ${expectedChapterCount} chapters, got ${outputChapters.length}`
     )
   }
 
@@ -917,6 +940,71 @@ export async function importEgwPdf(config: EgwBookConfig): Promise<void> {
       }
     }
   }
+}
+
+export async function importEgwPdf(config: EgwBookConfig): Promise<void> {
+  if (!existsSync(config.pdfPath)) {
+    throw new Error(`Source PDF not found: ${config.pdfPath}`)
+  }
+
+  const debugDir = join(repoRoot(), "tmp", "egw", config.debugSlug)
+  const debugPagesJson = join(debugDir, "pages.json")
+  const debugTextTxt = join(debugDir, "extracted.txt")
+  mkdirSync(debugDir, { recursive: true })
+  mkdirSync(dirname(config.outputJsonPath), { recursive: true })
+
+  const pageSource = config.pageSource ?? "legacy"
+  const pages = await extractPages(config.pdfPath, config.layout, pageSource)
+  writeFileSync(debugPagesJson, `${JSON.stringify(pages, null, 2)}\n`)
+
+  const { rawFullText, rawFolioFullText } = combineExtractedPages(
+    pages,
+    pageSource
+  )
+  writeFileSync(
+    debugTextTxt,
+    pageSource === "folios" ? rawFolioFullText : rawFullText
+  )
+  ensureUsableText(rawFullText, config.requiredTokens)
+
+  const normalized = normalizeFullText(rawFullText)
+  const folioNormalized =
+    pageSource === "folios" ? normalizeFullText(rawFolioFullText) : normalized
+  const chapterPositions = collectChapterPositions(
+    config,
+    normalized,
+    folioNormalized,
+    pageSource
+  )
+  assertChapterOrder(chapterPositions, pageSource)
+
+  const { mainText, folioMainText, tocText, folioTocText } = resolveMainTexts(
+    config,
+    chapterPositions,
+    normalized,
+    folioNormalized,
+    pageSource
+  )
+  assignChapterStartPages(
+    chapterPositions,
+    normalized,
+    folioNormalized,
+    tocText,
+    folioTocText,
+    pageSource
+  )
+  const chapters = extractDraftChapters(
+    config,
+    chapterPositions,
+    mainText,
+    folioMainText,
+    pageSource
+  )
+  const processedChapters = config.postprocessChapters?.(chapters) ?? chapters
+  const outputChapters = assignPageParagraphNumbers(processedChapters, {
+    countContinuedPages: config.countContinuedPagesForPageParagraphs ?? true,
+  })
+  assertOutputIntegrity(outputChapters, config.expectedChapterCount)
 
   const output = {
     title: config.title,
