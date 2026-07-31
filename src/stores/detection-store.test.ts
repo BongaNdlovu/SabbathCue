@@ -1004,3 +1004,18 @@ describe("detection store", () => {
     ])
   })
 })
+
+describe("aiSuggested marker", () => {
+  it("stores and clears the suggested key", () => {
+    useDetectionStore.getState().markAiSuggested("44:16:25")
+    expect(useDetectionStore.getState().aiSuggestedKey).toBe("44:16:25")
+    useDetectionStore.getState().markAiSuggested(null)
+    expect(useDetectionStore.getState().aiSuggestedKey).toBeNull()
+  })
+
+  it("clearing detections also drops the marker", () => {
+    useDetectionStore.getState().markAiSuggested("44:16:25")
+    useDetectionStore.getState().clearDetections()
+    expect(useDetectionStore.getState().aiSuggestedKey).toBeNull()
+  })
+})

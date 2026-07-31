@@ -65,6 +65,7 @@ crossbeam-channel = "0.5"
 dotenvy = "0.15"
 base64 = "0.22"
 futures-util = "0.3"
+reqwest = { version = "0.13", features = ["json", "stream"] }
 sysinfo = { version = "0.36", default-features = false, features = ["system"] }
 tauri-plugin-dialog = "2"
 keyring = { version = "3", features = ["windows-native"] }

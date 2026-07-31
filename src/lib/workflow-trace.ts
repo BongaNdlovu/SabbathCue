@@ -14,6 +14,7 @@ export type WorkflowTraceStage =
   | "detection.preview.skipped"
   | "detection.queue.skipped"
   | "detection.queue.added"
+  | "detection.ai.suggested"
   | "reading.event"
   | "reading.ignored"
   | "reading.accepted"

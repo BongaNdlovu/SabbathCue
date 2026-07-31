@@ -4,6 +4,7 @@ import { useDashboardWorkspaceStore } from "@/stores/dashboard-workspace-store"
 export type SettingsSection =
   | "audio"
   | "speech"
+  | "ai-ranking"
   | "bible"
   | "display"
   | "broadcast"

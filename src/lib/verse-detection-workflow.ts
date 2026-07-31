@@ -21,6 +21,10 @@ import {
 } from "@/lib/workflow-trace"
 import { recordDetectionFeedback } from "@/lib/detection-feedback"
 import { recordAutoSelectionPerformance } from "@/lib/detection-profiler"
+import {
+  detectionCandidateId,
+  rankSemanticDetections,
+} from "@/lib/deepseek-ranker"
 import type {
   DetectionResult,
   EgwParagraph,
@@ -344,6 +348,52 @@ function confirmedSemanticHit(
   return null
 }
 
+let pendingAiSuggestion: Promise<void> = Promise.resolve()
+let aiSuggestionEpoch = 0
+
+/** Resolves once the in-flight AI suggestion for the last batch has settled.
+ *  Tests await this instead of racing the fire-and-forget call. */
+export function aiSuggestionSettledForTests(): Promise<void> {
+  return pendingAiSuggestion
+}
+
+/** Ask the AI ranker which semantic candidate best matches the speech and
+ *  record it as a display-only badge. Deliberately kept off the preview path:
+ *  a suggestion never decides what goes to preview or live. */
+async function maybeMarkAiSuggestion(
+  detections: DetectionResult[]
+): Promise<void> {
+  aiSuggestionEpoch += 1
+  const epoch = aiSuggestionEpoch
+  try {
+    const settings = useSettingsStore.getState()
+    const winner = await rankSemanticDetections(detections, {
+      deepseekRankingEnabled: settings.deepseekRankingEnabled,
+      hasDeepseekApiKey: settings.hasDeepseekApiKey,
+      confidenceThreshold: settings.confidenceThreshold,
+    })
+    // A newer batch owns the badge now; a stale flight must not overwrite it
+    // (e.g. after a strong direct hit made the newer batch clear the badge).
+    if (epoch !== aiSuggestionEpoch) return
+    useDetectionStore
+      .getState()
+      .markAiSuggested(winner ? detectionCandidateId(winner) : null)
+    if (winner) {
+      recordWorkflowTrace(
+        "detection.ai.suggested",
+        "AI ranker selected a candidate",
+        { detection: traceDetectionDetails(winner) }
+      )
+    }
+  } catch (error) {
+    // Drop any earlier badge rather than leaving a stale suggestion on screen.
+    if (epoch === aiSuggestionEpoch) {
+      useDetectionStore.getState().markAiSuggested(null)
+    }
+    console.warn("[ai-ranking] Suggestion pass failed", error)
+  }
+}
+
 function reportDetectionBatchError(error: unknown): void {
   useBroadcastOutputIssueStore.getState().reportOutputIssue({
     outputId: "global",
@@ -359,6 +409,11 @@ async function handleVerseDetectionsInternal(detections: DetectionResult[]) {
     detectionAllowedBySettings(detection, settings)
   )
   useDetectionStore.getState().addDetections(acceptedDetections)
+
+  // Fire-and-forget: AI ranking is a display-only suggestion and must never
+  // block or influence the preview/auto-live path below. maybeMarkAiSuggestion
+  // handles its own failures, so this promise never rejects.
+  pendingAiSuggestion = maybeMarkAiSuggestion(acceptedDetections)
 
   const autoPreview = settings.autoMode
   recordWorkflowTrace("detection.batch", "Detection batch entered workflow", {

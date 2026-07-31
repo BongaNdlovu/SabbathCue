@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import {
+  aiSuggestionSettledForTests,
   handleReadingAdvance,
   handleVerseDetections,
   pendingSemanticConfirmationCountForTests,
@@ -13,9 +14,17 @@ import { useQueueStore } from "@/stores/queue-store"
 import { useSettingsStore } from "@/stores/settings-store"
 import type { DetectionResult, QueueItem, ReadingAdvance } from "@/types"
 
-const { emitToMock, invokeMock } = vi.hoisted(() => ({
-  emitToMock: vi.fn(),
-  invokeMock: vi.fn(),
+const { emitToMock, invokeMock, rankSemanticDetectionsMock } = vi.hoisted(
+  () => ({
+    emitToMock: vi.fn(),
+    invokeMock: vi.fn(),
+    rankSemanticDetectionsMock: vi.fn(),
+  })
+)
+
+vi.mock("@/lib/deepseek-ranker", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/deepseek-ranker")>()),
+  rankSemanticDetections: rankSemanticDetectionsMock,
 }))
 
 vi.mock("@tauri-apps/api/event", () => ({
@@ -100,6 +109,8 @@ describe("verse detection workflow", () => {
     emitToMock.mockResolvedValue(undefined)
     invokeMock.mockReset()
     invokeMock.mockResolvedValue(null)
+    rankSemanticDetectionsMock.mockReset()
+    rankSemanticDetectionsMock.mockResolvedValue(null)
     resetSemanticConfirmationForTests()
 
     useBibleStore.setState({
@@ -115,6 +126,7 @@ describe("verse detection workflow", () => {
     })
     useDetectionStore.setState({
       detections: [],
+      aiSuggestedKey: null,
     })
     useQueueStore.setState({
       items: [],
@@ -1035,5 +1047,116 @@ describe("verse detection workflow", () => {
     expect(
       presentation.kind === "scripture" ? presentation.verse.text : null
     ).toBe("Loaded current chapter text")
+  })
+
+  describe("AI suggestion wiring", () => {
+    function makeSemantic(
+      overrides: Partial<DetectionResult> = {}
+    ): DetectionResult {
+      return makeDetection({
+        source: "semantic",
+        confidence: 0.78,
+        auto_queued: false,
+        verse_ref: "Acts 16:25",
+        verse_text: "And at midnight Paul and Silas prayed",
+        book_name: "Acts",
+        book_number: 44,
+        chapter: 16,
+        verse: 25,
+        transcript_snippet: "the passage where paul and silas sang in prison",
+        ...overrides,
+      })
+    }
+
+    it("marks the ranked detection as AI-suggested", async () => {
+      const winner = makeSemantic()
+      rankSemanticDetectionsMock.mockResolvedValue(winner)
+
+      await handleVerseDetections([
+        winner,
+        makeSemantic({ verse_ref: "Acts 12:5", chapter: 12, verse: 5 }),
+      ])
+      await aiSuggestionSettledForTests()
+
+      expect(useDetectionStore.getState().aiSuggestedKey).toBe("44:16:25")
+    })
+
+    it("clears the marker when ranking abstains", async () => {
+      useDetectionStore.getState().markAiSuggested("44:16:25")
+      rankSemanticDetectionsMock.mockResolvedValue(null)
+
+      await handleVerseDetections([
+        makeSemantic(),
+        makeSemantic({ verse_ref: "Acts 12:5", chapter: 12, verse: 5 }),
+      ])
+      await aiSuggestionSettledForTests()
+
+      expect(useDetectionStore.getState().aiSuggestedKey).toBeNull()
+    })
+
+    it("does not let a ranker failure break the detection batch", async () => {
+      rankSemanticDetectionsMock.mockRejectedValue(new Error("network down"))
+
+      await handleVerseDetections([makeDetection({ auto_queued: false })])
+      await aiSuggestionSettledForTests()
+
+      // The direct hit still reached preview despite the ranker throwing.
+      expect(useBibleStore.getState().selectedVerse).toMatchObject({
+        book_number: 43,
+        chapter: 3,
+        verse: 16,
+      })
+      expect(useDetectionStore.getState().aiSuggestedKey).toBeNull()
+    })
+
+    it("a stale in-flight ranking cannot overwrite a newer batch's badge", async () => {
+      const winner = makeSemantic()
+      let resolveFirstFlight: (value: DetectionResult | null) => void = () => {}
+      rankSemanticDetectionsMock.mockReturnValueOnce(
+        new Promise<DetectionResult | null>((resolve) => {
+          resolveFirstFlight = resolve
+        })
+      )
+
+      // Batch A: ranking flight hangs (network in progress).
+      await handleVerseDetections([
+        winner,
+        makeSemantic({ verse_ref: "Acts 12:5", chapter: 12, verse: 5 }),
+      ])
+      // Batch B: ranker abstains immediately, clearing the badge.
+      await handleVerseDetections([
+        makeSemantic({ verse_ref: "Acts 16:31", verse: 31 }),
+      ])
+      await aiSuggestionSettledForTests()
+      expect(useDetectionStore.getState().aiSuggestedKey).toBeNull()
+
+      // Batch A's flight finally resolves with a winner computed from older
+      // speech — it must not resurrect the badge batch B cleared.
+      resolveFirstFlight(winner)
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+
+      expect(useDetectionStore.getState().aiSuggestedKey).toBeNull()
+    })
+
+    it("does not influence which detection is previewed", async () => {
+      // Ranker picks the semantic Acts hit, but a strong direct John hit is
+      // present: preview must still follow the deterministic direct path.
+      rankSemanticDetectionsMock.mockResolvedValue(makeSemantic())
+
+      await handleVerseDetections([
+        makeDetection({ auto_queued: false }),
+        makeSemantic(),
+      ])
+      await aiSuggestionSettledForTests()
+
+      expect(useBibleStore.getState().selectedVerse).toMatchObject({
+        book_number: 43,
+        chapter: 3,
+        verse: 16,
+      })
+      expect(useDetectionStore.getState().aiSuggestedKey).toBe("44:16:25")
+    })
   })
 })

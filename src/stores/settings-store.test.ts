@@ -14,9 +14,15 @@ const mockGet = vi.fn()
 const mockSet = vi.fn()
 const mockSave = vi.fn()
 const mockLoad = vi.fn()
+const mockInvoke = vi.fn()
 
 vi.mock("@tauri-apps/plugin-store", () => ({
   load: (...args: unknown[]) => mockLoad(...args),
+}))
+
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: (...args: unknown[]) => mockInvoke(...args),
+  convertFileSrc: (path: string) => path,
 }))
 
 async function flushSave(): Promise<void> {
@@ -54,6 +60,10 @@ describe("settings store", () => {
       set: mockSet,
       save: mockSave,
     })
+    // Keychain-presence commands are unavailable by default, matching the
+    // web/dev behavior existing tests were written against.
+    mockInvoke.mockReset()
+    mockInvoke.mockRejectedValue(new Error("IPC unavailable in tests"))
     vi.resetModules()
   })
 
@@ -370,5 +380,38 @@ describe("settings store", () => {
       })
     )
     warnSpy.mockRestore()
+  })
+
+  it("hydrates DeepSeek key presence from the keychain, not from disk", async () => {
+    mockGet.mockResolvedValue(null)
+    mockInvoke.mockImplementation(async (command: string) => {
+      if (command === "has_deepseek_api_key") return true
+      throw new Error("unavailable")
+    })
+
+    const { hydrateSettings, useSettingsStore } =
+      await import("./settings-store")
+    await hydrateSettings()
+
+    expect(useSettingsStore.getState().hasDeepseekApiKey).toBe(true)
+    expect(mockGet).not.toHaveBeenCalledWith("hasDeepseekApiKey")
+  })
+
+  it("deepseek ranking defaults off with no key configured", async () => {
+    mockGet.mockResolvedValue(null)
+
+    const { useSettingsStore } = await import("./settings-store")
+    const state = useSettingsStore.getState()
+
+    expect(state.deepseekRankingEnabled).toBe(false)
+    expect(state.hasDeepseekApiKey).toBe(false)
+  })
+
+  it("deepseek ranking toggle setter updates state", async () => {
+    const { useSettingsStore } = await import("./settings-store")
+
+    useSettingsStore.getState().setDeepseekRankingEnabled(true)
+
+    expect(useSettingsStore.getState().deepseekRankingEnabled).toBe(true)
   })
 })

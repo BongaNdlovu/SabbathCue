@@ -32,6 +32,9 @@ interface SettingsState {
   sttLanguage: SttLanguage
   hasSonioxApiKey: boolean
   hasSpeechmaticsApiKey: boolean
+  hasDeepseekApiKey: boolean
+  /** Cloud AI candidate ranking for indirect (semantic) references. */
+  deepseekRankingEnabled: boolean
   /** Reduce CPU/RAM use on weaker machines (semantic detection runs on
    *  finished sentences only). */
   lowPowerMode: boolean
@@ -53,6 +56,8 @@ interface SettingsState {
   setSttLanguage: (language: SttLanguage) => void
   setHasSonioxApiKey: (has: boolean) => void
   setHasSpeechmaticsApiKey: (has: boolean) => void
+  setHasDeepseekApiKey: (has: boolean) => void
+  setDeepseekRankingEnabled: (enabled: boolean) => void
   setLowPowerMode: (enabled: boolean) => void
   setActionNotificationsEnabled: (enabled: boolean) => void
 }
@@ -61,6 +66,8 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   hasDeepgramApiKey: false,
   hasSonioxApiKey: false,
   hasSpeechmaticsApiKey: false,
+  hasDeepseekApiKey: false,
+  deepseekRankingEnabled: false,
   audioDeviceId: null,
   gain: 1.0,
   autoMode: false,
@@ -80,6 +87,9 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   setHasSonioxApiKey: (hasSonioxApiKey) => set({ hasSonioxApiKey }),
   setHasSpeechmaticsApiKey: (hasSpeechmaticsApiKey) =>
     set({ hasSpeechmaticsApiKey }),
+  setHasDeepseekApiKey: (hasDeepseekApiKey) => set({ hasDeepseekApiKey }),
+  setDeepseekRankingEnabled: (deepseekRankingEnabled) =>
+    set({ deepseekRankingEnabled }),
   setAudioDeviceId: (audioDeviceId) => set({ audioDeviceId }),
   setGain: (gain) => set({ gain }),
   setAutoMode: (autoMode) => set({ autoMode }),
@@ -119,6 +129,7 @@ const PERSISTED_KEYS = [
   "sttLanguage",
   "lowPowerMode",
   "actionNotificationsEnabled",
+  "deepseekRankingEnabled",
 ] as const satisfies readonly (keyof SettingsState)[]
 
 function parseSttProvider(value: unknown): SttProvider {
@@ -210,17 +221,19 @@ export function hydrateSettings(): Promise<void> {
 
       // Resolve keyring-backed secret presence and write only boolean flags.
       // Best-effort and independent: if a command isn't available (web/dev), keep the default.
-      const [deepgram, soniox, speechmatics] = await Promise.all([
+      const [deepgram, soniox, speechmatics, deepseek] = await Promise.all([
         invokeTauri<boolean>("has_deepgram_api_key").catch(() => undefined),
         invokeTauri<boolean>("has_soniox_api_key").catch(() => undefined),
         invokeTauri<boolean>("has_speechmatics_api_key").catch(
           () => undefined
         ),
+        invokeTauri<boolean>("has_deepseek_api_key").catch(() => undefined),
       ])
       if (deepgram !== undefined) patch.hasDeepgramApiKey = deepgram
       if (soniox !== undefined) patch.hasSonioxApiKey = soniox
       if (speechmatics !== undefined)
         patch.hasSpeechmaticsApiKey = speechmatics
+      if (deepseek !== undefined) patch.hasDeepseekApiKey = deepseek
 
       if (Object.keys(patch).length > 0) {
         useSettingsStore.setState(patch)

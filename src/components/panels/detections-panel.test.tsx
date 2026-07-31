@@ -9,6 +9,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { DetectionsPanel } from "./detections-panel"
 import { CollectedDetectionsPanel } from "./collected-detections-panel"
+import { useDetectionStore } from "@/stores/detection-store"
 import { useSettingsStore } from "@/stores/settings-store"
 import { useCollectedDetectionsStore } from "@/stores/collected-detections-store"
 import type { DetectionResult, Verse } from "@/types"
@@ -129,6 +130,7 @@ describe("DetectionsPanel", () => {
     previewHymnMock.mockClear()
     queueHymnMock.mockClear()
     useCollectedDetectionsStore.getState().clear()
+    useDetectionStore.setState({ aiSuggestedKey: null })
     useSettingsStore.setState({ autoMode: true })
   })
 
@@ -291,6 +293,36 @@ describe("DetectionsPanel", () => {
 
     await waitFor(() => expect(presentHymnMock).toHaveBeenCalledWith(46))
     expect(presentVerseMock).not.toHaveBeenCalled()
+  })
+
+  it("shows the AI suggested badge only on the matching card", () => {
+    const actsDetection: DetectionResult = {
+      ...detection,
+      verse_ref: "Acts 16:25",
+      book_name: "Acts",
+      book_number: 44,
+      chapter: 16,
+      verse: 25,
+      confidence: 0.78,
+      source: "semantic",
+    }
+    detectionsRef.current = [detection, actsDetection]
+    // Key format must match detectionCandidateId's "book:chapter:verse".
+    useDetectionStore.setState({ aiSuggestedKey: "44:16:25" })
+
+    render(<DetectionsPanel />)
+
+    expect(screen.getAllByText("AI suggested")).toHaveLength(1)
+    const badge = screen.getByText("AI suggested")
+    const actsCard = screen.getByText("Acts 16:25").closest(".queue-item")
+    expect(actsCard).toBeTruthy()
+    expect(actsCard?.contains(badge)).toBe(true)
+  })
+
+  it("renders no AI badge when no suggestion is active", () => {
+    render(<DetectionsPanel />)
+
+    expect(screen.queryByText("AI suggested")).toBeNull()
   })
 
   it("shows context stack and held references for operator review", () => {

@@ -45,6 +45,7 @@ export type {
   ReadingAdvance,
   SemanticSearchResult,
 } from "./detection"
+export type { RankingCandidate } from "./ai-ranking"
 export type {
   BroadcastIssueOutputId,
   BroadcastOutputErrorEvent,

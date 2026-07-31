@@ -10,7 +10,12 @@ export interface ApiKeySettingsConfig {
   validate: () => Promise<{ valid: boolean; error?: string }>
   /** Optional side effect after a successful save (e.g. restart active STT). */
   onSaved?: () => Promise<void> | void
+  /** Shown after a successful key test. Defaults to the transcription wording. */
+  validationSuccessMessage?: string
 }
+
+const DEFAULT_VALIDATION_SUCCESS =
+  "Connection verified — this key is ready for live transcription."
 
 export function useApiKeySettings({
   hasKey,
@@ -19,6 +24,7 @@ export function useApiKeySettings({
   clear,
   validate,
   onSaved,
+  validationSuccessMessage = DEFAULT_VALIDATION_SUCCESS,
 }: ApiKeySettingsConfig) {
   const [keyValue, setKeyValue] = useState("")
   const [editingSavedKey, setEditingSavedKey] = useState(false)
@@ -81,13 +87,13 @@ export function useApiKeySettings({
       setKeyVerified(result.valid)
       setValidationMessage(
         result.valid
-          ? "Connection verified — this key is ready for live transcription."
+          ? validationSuccessMessage
           : result.error || "The provider could not verify this key."
       )
     } finally {
       setValidating(false)
     }
-  }, [validate])
+  }, [validate, validationSuccessMessage])
 
   return {
     keyValue,

@@ -10,6 +10,7 @@ import {
   BrainCircuitIcon,
   CastIcon,
   PaletteIcon,
+  SparklesIcon,
 } from "lucide-react"
 import {
   useSettingsNavigationStore,
@@ -24,6 +25,7 @@ import { BroadcastSection } from "@/components/settings/sections/BroadcastSectio
 import { ThemeSection } from "@/components/settings/sections/ThemeSection"
 import { RemoteControlSection } from "@/components/settings/sections/RemoteControlSection"
 import { ApiKeysSection } from "@/components/settings/sections/ApiKeysSection"
+import { AiRankingSection } from "@/components/settings/sections/AiRankingSection"
 import { AccountSection } from "@/components/settings/sections/AccountSection"
 import { HelpSection } from "@/components/settings/sections/HelpSection"
 
@@ -33,6 +35,11 @@ const navItems: { name: string; id: SettingsSection; icon: React.ReactNode }[] =
     name: "Speech Recognition",
     id: "speech",
     icon: <BrainCircuitIcon strokeWidth={2} />,
+  },
+  {
+    name: "AI Ranking",
+    id: "ai-ranking",
+    icon: <SparklesIcon strokeWidth={2} />,
   },
   { name: "Bible", id: "bible", icon: <BookOpenIcon strokeWidth={2} /> },
   { name: "Display Mode", id: "display", icon: <TvIcon strokeWidth={2} /> },
@@ -55,6 +62,7 @@ const navItems: { name: string; id: SettingsSection; icon: React.ReactNode }[] =
 const sectionTitles: Record<SettingsSection, string> = {
   audio: "Audio",
   speech: "Speech Recognition",
+  "ai-ranking": "AI Candidate Ranking",
   bible: "Bible Translation",
   display: "Display Mode",
   broadcast: "Broadcast Settings",
@@ -68,6 +76,7 @@ const sectionTitles: Record<SettingsSection, string> = {
 const sectionComponents: Record<SettingsSection, ComponentType> = {
   audio: AudioSection,
   speech: SpeechSection,
+  "ai-ranking": AiRankingSection,
   bible: BibleSection,
   display: DisplayModeSection,
   broadcast: BroadcastSection,
@@ -81,6 +90,7 @@ const sectionComponents: Record<SettingsSection, ComponentType> = {
 const sectionDataTour: Partial<Record<SettingsSection, string>> = {
   audio: "settings-section-audio",
   speech: "settings-section-speech",
+  "ai-ranking": "settings-section-ai-ranking",
   bible: "settings-section-bible",
   display: "settings-section-display",
   broadcast: "settings-section-broadcast",

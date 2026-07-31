@@ -34,12 +34,16 @@ const VERSE_REF_PATTERN = /(\d+)\s*:\s*(\d+)/g
 
 interface DetectionState {
   detections: DetectionResultWithMeta[]
+  /** Display-only: "book:chapter:verse" key of the detection the AI ranker
+   *  picked. Never consulted by preview/auto-live selection. */
+  aiSuggestedKey: string | null
 
   addDetection: (detection: DetectionResult) => void
   addDetections: (detections: DetectionResult[]) => void
   setDetections: (detections: DetectionResult[]) => void
   removeDetection: (verseRef: string) => void
   clearDetections: () => void
+  markAiSuggested: (key: string | null) => void
   evictStale: (now?: number) => void
 }
 
@@ -371,6 +375,7 @@ function removeSupersededChapterOnlyPlaceholders(
 
 export const useDetectionStore = create<DetectionState>((set) => ({
   detections: [],
+  aiSuggestedKey: null,
 
   addDetection: (detection) =>
     set((state) => {
@@ -470,7 +475,8 @@ export const useDetectionStore = create<DetectionState>((set) => ({
         ),
       }
     }),
-  clearDetections: () => set({ detections: [] }),
+  clearDetections: () => set({ detections: [], aiSuggestedKey: null }),
+  markAiSuggested: (aiSuggestedKey) => set({ aiSuggestedKey }),
   evictStale: (now = Date.now()) =>
     set((state) => {
       const fresh = state.detections.filter(

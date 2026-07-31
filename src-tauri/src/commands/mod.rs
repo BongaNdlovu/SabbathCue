@@ -2,6 +2,7 @@ pub mod assets;
 pub mod audio;
 pub mod bible;
 pub mod broadcast;
+pub mod deepseek;
 pub mod detection;
 pub mod egw;
 pub mod egw_semantic;

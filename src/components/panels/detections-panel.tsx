@@ -12,6 +12,7 @@ import {
   PlayIcon,
   PlusIcon,
   RadarIcon,
+  SparklesIcon,
 } from "lucide-react"
 import { useDetection, detectionActions } from "@/hooks/use-detection"
 import { useSettingsStore } from "@/stores/settings-store"
@@ -20,9 +21,11 @@ import { useQueueStore } from "@/stores/queue-store"
 import {
   buildDetectionContextStack,
   buildHeldReferenceCandidates,
+  useDetectionStore,
   type DetectionContextEntry,
   type HeldReferenceCandidate,
 } from "@/stores/detection-store"
+import { detectionCandidateId } from "@/lib/deepseek-ranker"
 import {
   detectionToVerse,
   presentVerse,
@@ -225,6 +228,24 @@ export function getDetectionActions(detection: DetectionResult): {
   }
 }
 
+/** Marks the candidate the AI ranker chose. Suggestion only — the operator
+ *  still decides what goes to preview or live. */
+function AiSuggestedBadge({ detection }: { detection: DetectionResult }) {
+  const aiSuggestedKey = useDetectionStore((s) => s.aiSuggestedKey)
+  if (!aiSuggestedKey || aiSuggestedKey !== detectionCandidateId(detection)) {
+    return null
+  }
+  return (
+    <span
+      className="flex items-center gap-1 rounded bg-violet-500/15 px-1.5 py-0.5 text-[0.5625rem] font-medium tracking-wider text-violet-700 uppercase dark:text-violet-300"
+      title="Suggested by AI ranking from locally detected candidates"
+    >
+      <SparklesIcon className="size-2.5" />
+      AI suggested
+    </span>
+  )
+}
+
 function DetectionCard({ detection }: { detection: DetectionResult }) {
   if (isHymnDetection(detection)) {
     return <HymnDetectionCard detection={detection} />
@@ -240,6 +261,7 @@ function DetectionCard({ detection }: { detection: DetectionResult }) {
           {Math.round(detection.confidence * 100)}%
         </span>
         <SourceBadge source={detection.source} />
+        <AiSuggestedBadge detection={detection} />
         <span className="text-sm font-semibold text-foreground">
           {detection.verse_ref}
         </span>
