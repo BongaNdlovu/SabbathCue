@@ -229,39 +229,11 @@ impl DetectionPipeline {
         let exact_phrase_keys = exact_quote_keys(text, fts_results);
 
         for (rank, fts) in fts_results.iter().enumerate() {
-            // Quote-overlap verification: a candidate whose verse text is
-            // substantially present in the fragment is a spoken quote, no
-            // matter which FTS tier surfaced it or how BM25 ranked it.
-            // Garbled STT breaks phrase/AND tiers, so genuine near-verbatim
-            // quotes routinely arrive as keyword-band OR hits.
-            let overlap_confidence = quote_overlap_confidence(text, &fts.text);
-            let exact_phrase_confidence = exact_quote_confidence(&exact_phrase_keys, fts);
-            let rank_confidence = fts_confidence(rank, fts.rank, fts.is_broad_match);
-            let confidence = cap_pastoral_prayer_address_confidence(
-                text,
-                overlap_confidence
-                    .into_iter()
-                    .chain(exact_phrase_confidence)
-                    .fold(rank_confidence, f64::max),
-            );
-            log::debug!(
-                "[DET-SEMANTIC] FTS5 candidate idx={rank} bm25={:.3} {} {}:{} conf={:.0}% overlap={:?}",
-                fts.rank,
-                fts.book_name,
-                fts.chapter,
-                fts.verse,
-                confidence * 100.0,
-                overlap_confidence
-            );
-            if confidence < FTS5_MIN_CONFIDENCE {
+            let Some((confidence, overlap_confidence)) =
+                live_fts_candidate_confidence(text, fts, rank, &exact_phrase_keys)
+            else {
                 continue;
-            }
-            if fts.rank > FTS5_LIVE_RANK_FLOOR
-                && overlap_confidence.is_none()
-                && exact_phrase_confidence.is_none()
-            {
-                continue;
-            }
+            };
             let key = (fts.book_number, fts.chapter, fts.verse);
             if vector_keys.contains(&key) {
                 if let Some(existing) = semantic_detections
@@ -320,6 +292,51 @@ impl DetectionPipeline {
     pub fn semantic_search(&mut self, query: &str, k: usize) -> Vec<(i64, f64)> {
         self.semantic.search_query(query, k)
     }
+}
+
+/// Score one live FTS candidate, or `None` when it fails the live gates.
+///
+/// Quote-overlap verification comes first: a candidate whose verse text is
+/// substantially present in the fragment is a spoken quote, no matter which
+/// FTS tier surfaced it or how BM25 ranked it. Garbled STT breaks phrase/AND
+/// tiers, so genuine near-verbatim quotes routinely arrive as keyword-band OR
+/// hits. Returns the candidate confidence alongside the overlap confidence,
+/// which the caller reuses when collapsing vector/FTS duplicates.
+fn live_fts_candidate_confidence(
+    text: &str,
+    fts: &Bm25Result,
+    rank: usize,
+    exact_phrase_keys: &HashSet<(i32, i32, i32)>,
+) -> Option<(f64, Option<f64>)> {
+    let overlap_confidence = quote_overlap_confidence(text, &fts.text);
+    let exact_phrase_confidence = exact_quote_confidence(exact_phrase_keys, fts);
+    let rank_confidence = fts_confidence(rank, fts.rank, fts.is_broad_match);
+    let confidence = cap_pastoral_prayer_address_confidence(
+        text,
+        overlap_confidence
+            .into_iter()
+            .chain(exact_phrase_confidence)
+            .fold(rank_confidence, f64::max),
+    );
+    log::debug!(
+        "[DET-SEMANTIC] FTS5 candidate idx={rank} bm25={:.3} {} {}:{} conf={:.0}% overlap={:?}",
+        fts.rank,
+        fts.book_name,
+        fts.chapter,
+        fts.verse,
+        confidence * 100.0,
+        overlap_confidence
+    );
+    if confidence < FTS5_MIN_CONFIDENCE {
+        return None;
+    }
+    if fts.rank > FTS5_LIVE_RANK_FLOOR
+        && overlap_confidence.is_none()
+        && exact_phrase_confidence.is_none()
+    {
+        return None;
+    }
+    Some((confidence, overlap_confidence))
 }
 
 /// Confidence earned by quote overlap: the fraction of the candidate verse's
