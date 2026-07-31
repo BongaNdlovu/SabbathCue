@@ -21,10 +21,7 @@ import {
 } from "@/lib/workflow-trace"
 import { recordDetectionFeedback } from "@/lib/detection-feedback"
 import { recordAutoSelectionPerformance } from "@/lib/detection-profiler"
-import {
-  detectionCandidateId,
-  scheduleRanking,
-} from "@/lib/deepseek-ranker"
+import { detectionCandidateId, scheduleRanking } from "@/lib/deepseek-ranker"
 import type {
   DetectionResult,
   EgwParagraph,
@@ -212,15 +209,28 @@ function selectPreviewHit(
     minConfidence,
     semanticMinConfidence
   )
-  return bestDetection(
-    detections.filter(
-      (d) =>
-        d.source === "semantic" &&
-        d.confidence >= semanticAutoLiveThreshold &&
-        !d.is_chapter_only &&
-        d.book_number > 0
-    )
+  const semanticHits = detections.filter(
+    (d) =>
+      d.source === "semantic" &&
+      d.confidence >= semanticAutoLiveThreshold &&
+      !d.is_chapter_only &&
+      d.book_number > 0
   )
+  semanticHits.sort(
+    (a, b) => (b.rank_score ?? b.confidence) - (a.rank_score ?? a.confidence)
+  )
+  const strongest = semanticHits[0]
+  const runnerUp = semanticHits[1]
+  if (
+    strongest &&
+    runnerUp &&
+    (strongest.rank_score ?? strongest.confidence) -
+      (runnerUp.rank_score ?? runnerUp.confidence) <
+      SEMANTIC_AUTO_LIVE_MIN_MARGIN
+  ) {
+    return null
+  }
+  return strongest ?? null
 }
 
 async function queueDetectedVerse(
@@ -304,6 +314,7 @@ async function queueDetectedVerse(
 
 let detectionHandlingChain: Promise<void> = Promise.resolve()
 const SEMANTIC_SINGLE_PASS_MATCH_STRENGTH = 0.95
+const SEMANTIC_AUTO_LIVE_MIN_MARGIN = 0.02
 const SEMANTIC_CONFIRMATION_WINDOW_MS = 8_000
 const pendingSemanticConfirmations = new Map<string, number>()
 

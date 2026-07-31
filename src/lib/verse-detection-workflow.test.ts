@@ -14,13 +14,11 @@ import { useQueueStore } from "@/stores/queue-store"
 import { useSettingsStore } from "@/stores/settings-store"
 import type { DetectionResult, QueueItem, ReadingAdvance } from "@/types"
 
-const { emitToMock, invokeMock, scheduleRankingMock } = vi.hoisted(
-  () => ({
-    emitToMock: vi.fn(),
-    invokeMock: vi.fn(),
-    scheduleRankingMock: vi.fn(),
-  })
-)
+const { emitToMock, invokeMock, scheduleRankingMock } = vi.hoisted(() => ({
+  emitToMock: vi.fn(),
+  invokeMock: vi.fn(),
+  scheduleRankingMock: vi.fn(),
+}))
 
 vi.mock("@/lib/deepseek-ranker", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/deepseek-ranker")>()),
@@ -325,6 +323,39 @@ describe("verse detection workflow", () => {
     )
   })
 
+  it("holds repeated semantic candidates when the runner-up is too close", async () => {
+    const strongest = makeDetection({
+      source: "semantic",
+      verse_ref: "Revelation 21:4",
+      verse_text: "And God shall wipe away all tears from their eyes.",
+      book_name: "Revelation",
+      book_number: 66,
+      chapter: 21,
+      verse: 4,
+      confidence: 0.92,
+      rank_score: 0.92,
+      auto_queued: false,
+    })
+    const runnerUp = makeDetection({
+      source: "semantic",
+      verse_ref: "Revelation 7:17",
+      verse_text: "God shall wipe away all tears from their eyes.",
+      book_name: "Revelation",
+      book_number: 66,
+      chapter: 7,
+      verse: 17,
+      confidence: 0.92,
+      rank_score: 0.92,
+      auto_queued: false,
+    })
+
+    await handleVerseDetections([strongest, runnerUp])
+    await handleVerseDetections([strongest, runnerUp])
+
+    expect(useBibleStore.getState().selectedVerse).toBeNull()
+    expect(useBroadcastStore.getState().liveItem).toBeNull()
+  })
+
   it("confirms a semantic verse after an intervening semantic candidate", async () => {
     const first = makeDetection({
       source: "semantic",
@@ -364,14 +395,43 @@ describe("verse detection workflow", () => {
 
   it("prunes expired pending semantic confirmations instead of accumulating them", async () => {
     const unconfirmed = [
-      { verse_ref: "Daniel 7:10", book_name: "Daniel", book_number: 27, chapter: 7, verse: 10 },
-      { verse_ref: "Romans 8:1", book_name: "Romans", book_number: 45, chapter: 8, verse: 1 },
-      { verse_ref: "Isaiah 40:8", book_name: "Isaiah", book_number: 23, chapter: 40, verse: 8 },
-      { verse_ref: "Psalm 46:1", book_name: "Psalms", book_number: 19, chapter: 46, verse: 1 },
+      {
+        verse_ref: "Daniel 7:10",
+        book_name: "Daniel",
+        book_number: 27,
+        chapter: 7,
+        verse: 10,
+      },
+      {
+        verse_ref: "Romans 8:1",
+        book_name: "Romans",
+        book_number: 45,
+        chapter: 8,
+        verse: 1,
+      },
+      {
+        verse_ref: "Isaiah 40:8",
+        book_name: "Isaiah",
+        book_number: 23,
+        chapter: 40,
+        verse: 8,
+      },
+      {
+        verse_ref: "Psalm 46:1",
+        book_name: "Psalms",
+        book_number: 19,
+        chapter: 46,
+        verse: 1,
+      },
     ]
     for (const v of unconfirmed) {
       await handleVerseDetections([
-        makeDetection({ source: "semantic", confidence: 0.85, auto_queued: false, ...v }),
+        makeDetection({
+          source: "semantic",
+          confidence: 0.85,
+          auto_queued: false,
+          ...v,
+        }),
       ])
     }
     expect(pendingSemanticConfirmationCountForTests()).toBe(unconfirmed.length)

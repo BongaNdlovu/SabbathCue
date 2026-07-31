@@ -311,7 +311,8 @@ previous-verse navigation requires short or explicitly commanded speech
   -> src-tauri/crates/detection/src/direct/detector.rs:276
 Low-confidence STT keeps suggestions visible but caps them below Auto-live
   -> src-tauri/src/commands/stt/live_session.rs:508
-Frontend prefers direct hits; semantic hits below 95% require repeated confirmation
+Frontend prefers direct hits; semantic hits below 95% require repeated confirmation,
+and every semantic auto-live winner must beat its runner-up by 2 points
   -> src/lib/verse-detection-workflow.ts:184
 Operator actions append privacy-safe local feedback without transcript content
   -> src/lib/detection-feedback.ts:25
@@ -859,3 +860,4 @@ Top risks (ranked): 1. STT provider removal can leave stale docs or tests if his
 | 2026-07-30 | Preserved authored hymn verse/refrain pages, retained section identity through presentation rendering, ported seven hymn scenes with bundled portable font alternatives, and added frozen Sacred Minimal/Heritage variants.                                                                                                 | 3, 5-7, 10-12, 14-15 |
 | 2026-07-31 | Hardened optional AI ranking with recent-direct and decisive-retrieval gates, a 400 ms stability debounce, canonical shortlist caching, newest-batch handoff, candidate-id request logging, spoken-book boosting before the live cap, and modern-to-KJV FTS name expansion. | 5-7, 10-12, 15 |
 | 2026-07-31 | Added generation-scoped STT fanout retirement before provider setup, resend-aware final command routing, explicit queue-item live identity for safe retries, and privacy-safe routing/queue outcome traces. | 4-7, 10-12, 15 |
+| 2026-07-31 | Required a two-point semantic winner margin before repeated evidence can auto-live, keeping ambiguous paraphrases visible for review while preserving direct-reference behavior. | 5-7, 10-11, 15 |

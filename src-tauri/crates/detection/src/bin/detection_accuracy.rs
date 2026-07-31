@@ -24,6 +24,7 @@ use rhema_detection::{
 };
 
 const DEFAULT_EXTERNAL_CASES: &str = "data/detection-fixtures/sermon-transcript-cases.json";
+const SEMANTIC_AUTO_LIVE_MIN_MARGIN: f64 = 0.02;
 
 /// One labeled case: (category, utterance, expected reference or None for noise).
 type Case = (&'static str, &'static str, Option<&'static str>);
@@ -973,6 +974,23 @@ impl AutoLiveSelector {
         }
 
         let semantic = best(false)?;
+        let runner_up_score = detections
+            .iter()
+            .filter(|candidate| {
+                matches!(
+                    candidate.detection.source,
+                    rhema_detection::types::DetectionSource::Semantic { .. }
+                ) && candidate.detection.confidence >= threshold
+                    && !candidate.detection.is_chapter_only
+                    && !std::ptr::eq(*candidate, semantic)
+            })
+            .map(|candidate| candidate.detection.rank_score())
+            .max_by(f64::total_cmp);
+        if runner_up_score.is_some_and(|runner_up| {
+            semantic.detection.rank_score() - runner_up < SEMANTIC_AUTO_LIVE_MIN_MARGIN
+        }) {
+            return None;
+        }
         if semantic.detection.confidence >= 0.95 {
             self.pending_semantic = None;
             return Some(semantic);
@@ -1438,5 +1456,42 @@ mod tests {
         );
 
         assert!(fired.is_some(), "stable replay must satisfy confirmation");
+    }
+
+    #[test]
+    fn stable_case_replay_holds_an_ambiguous_semantic_winner() {
+        let detection = |verse_start, confidence| MergedDetection {
+            detection: Detection {
+                verse_ref: VerseRef {
+                    book_number: 66,
+                    book_name: "Revelation".to_string(),
+                    chapter: 21,
+                    verse_start,
+                    verse_end: None,
+                },
+                verse_id: None,
+                confidence,
+                source: DetectionSource::Semantic {
+                    similarity: confidence,
+                },
+                transcript_snippet: "God shall wipe away all tears".to_string(),
+                detected_at: 0,
+                is_chapter_only: false,
+            },
+            auto_queued: false,
+        };
+        let detections = [detection(4, 0.92), detection(17, 0.92)];
+
+        let fired = select_stable_case(
+            &mut AutoLiveSelector::default(),
+            &detections,
+            0.90,
+            &HashMap::new(),
+        );
+
+        assert!(
+            fired.is_none(),
+            "ambiguous semantic results stay review-only"
+        );
     }
 }
