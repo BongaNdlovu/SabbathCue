@@ -152,6 +152,7 @@ describe("queued hymn deck presentation", () => {
 
     presentQueuedItem(videoItem)
     expect(useBroadcastStore.getState().isLive).toBe(true)
+    expect(useBroadcastStore.getState().liveQueueItemId).toBe("queue-video")
     expect(useBroadcastStore.getState().liveItem).toMatchObject({
       kind: "video",
       reference: "Welcome Video",

@@ -3,6 +3,7 @@ import { restorePresentationDeckForQueueItem } from "@/lib/queued-presentation-d
 import { useEgwSlideStore } from "@/stores/egw-slide-store"
 import { useHymnSlideStore } from "@/stores/hymn-slide-store"
 import { useSermonSlideStore } from "@/stores/sermon-slide-store"
+import { getBroadcastLiveStore } from "@/stores/broadcast/live-store"
 import type { QueueItem } from "@/types"
 
 export function previewQueuedItem(item: QueueItem): void {
@@ -13,6 +14,7 @@ export function previewQueuedItem(item: QueueItem): void {
 export function presentQueuedItem(item: QueueItem): void {
   restorePresentationDeckForQueueItem(item)
   presentItem(item.presentation)
+  getBroadcastLiveStore().setLiveQueueItemId(item.id)
 }
 
 export function previewQueuedItemAtEnd(item: QueueItem): void {
@@ -68,6 +70,7 @@ export function presentQueuedItemAtEnd(item: QueueItem): void {
     if (last) {
       store.setDeck(store.deck, store.deck.length - 1)
       presentItem(last)
+      getBroadcastLiveStore().setLiveQueueItemId(item.id)
       return
     }
   }
@@ -78,6 +81,7 @@ export function presentQueuedItemAtEnd(item: QueueItem): void {
     if (last) {
       store.setDeck(store.deck, store.deck.length - 1, store.activeItemId)
       presentItem(last)
+      getBroadcastLiveStore().setLiveQueueItemId(item.id)
       return
     }
   }
@@ -88,9 +92,11 @@ export function presentQueuedItemAtEnd(item: QueueItem): void {
     if (last) {
       store.setDeck(store.deck, store.deck.length - 1)
       presentItem(last)
+      getBroadcastLiveStore().setLiveQueueItemId(item.id)
       return
     }
   }
 
   presentItem(item.presentation)
+  getBroadcastLiveStore().setLiveQueueItemId(item.id)
 }

@@ -87,7 +87,8 @@ Core modules:
 | STT provider routing          | src-tauri/src/commands/stt/provider.rs:95                                                                                                                             | Selects Vosk, Deepgram, or Soniox and handles removed providers                                                                                                                                                       | Tauri STT commands                                                    |
 | Collected detections store    | src/stores/collected-detections-store.ts:48                                                                                                                           | Session-scoped reuse list of presented/queued detections                                                                                                                                                              | Detections panel                                                      |
 | Detection actions             | src/components/panels/detections-panel.tsx:144                                                                                                                        | Shared preview/present/queue closures for detection types                                                                                                                                                             | Detection cards, latest bar, collection UI                            |
-| Queue voice control           | src/services/queue/queue-voice-control.ts:19                                                                                                                          | Strictly parses one-based queue-item commands, resolves the current queue order, and presents through the common queue path with duplicate-final protection                                                           | Final transcript bridge                                               |
+| Queue voice control           | src/services/queue/queue-voice-control.ts:19                                                                                                                          | Strictly parses one-based queue-item commands, resolves the current queue order, and presents through the common queue path; explicit live queue-item identity only suppresses a command when that exact item is already live | Final transcript bridge                                               |
+| STT session lifetime guard    | src-tauri/src/commands/stt/session.rs:8                                                                                                                                | Claims a monotonic audio-capture generation before provider setup, retires stale fanout threads, and makes reconnect waits cancellable                                                                                  | STT start/stop lifecycle                                              |
 | Live Bible-mode policy        | src-tauri/src/commands/stt/live_session.rs:243, src-tauri/src/commands/detection.rs:241                                                                               | Separately gates live Bible direct/semantic/reading-mode output while preserving transcription, operator commands, queued scripture, and EGW detection                                                                | Detection settings sync and live STT workers                          |
 | Direct scripture scope        | src-tauri/crates/detection/src/direct/context.rs:3, src-tauri/crates/detection/src/direct/detector.rs:674                                                             | Keeps the active book/chapter until another resolved citation replaces it and promotes explicit in-scope verse phrases as direct citations                                                                            | Live STT scripture detection                                          |
 | Verse ranking and calibration | src-tauri/crates/detection/src/semantic/detector.rs:128, src-tauri/crates/detection/src/pipeline.rs:173, src-tauri/crates/detection/src/bin/detection_accuracy.rs:607 | Keeps rank evidence separate from displayed match strength, distinguishes unique exact quotes from ambiguous shared phrases, surfaces strong broad matches only for review, and evaluates policy-aware Auto selection | Live STT detection, frontend detection workflow, desktop CI           |
@@ -227,9 +228,10 @@ Deepgram, Soniox, Vosk, and Speechmatics spans after a longer pause remain separ
 Every final STT span is stored in transcript history first
   -> src/hooks/use-transcription.ts:252
 The strict queue grammar accepts complete commands such as "item 2" and
-"item number two", resolves the latest one-based queue position, and guards duplicates
+"item number two", resolves the latest one-based queue position, and suppresses only
+the exact queue item already known to be live; an earlier preview cannot block a retry
   -> src/services/queue/queue-voice-control.ts:19
-  -> src/services/queue/queue-voice-control.ts:31
+  -> src/stores/broadcast/live-slice.ts:24
 The selected item becomes active and uses the same presentation path as a queue click,
 so scripture, hymn, media, slide deck, EGW, and video items share one implementation
   -> src/services/queue/queue-voice-control.ts:48
@@ -521,29 +523,48 @@ operator has opted in, an external model picks among them — but only as a
 suggestion, and only from passages already found locally.
 
 1. A detection batch reaches `handleVerseDetectionsInternal`, which stores
-   the detections and then fires the ranking pass without awaiting it, so
-   the preview/auto-live path below is never blocked. Receipt:
-   src/lib/verse-detection-workflow.ts:416.
+   the detections and schedules the display-only ranking pass without
+   awaiting it, so the preview/auto-live path below is never blocked. A
+   400 ms quiet-period debounce keeps growing STT snippets from producing
+   flickering badges; a newer batch is retained if an older cloud request is
+   still in flight. Receipts: src/lib/verse-detection-workflow.ts:416 and
+   src/lib/deepseek-ranker.ts:257.
 2. `shouldRankDetections` gates the call: the toggle must be on, a key must
-   be configured, the batch must hold two or more rankable semantic
-   candidates, and no direct hit may already have cleared the operator's
-   confidence threshold. Explicit references therefore never trigger a
-   network call. Receipt: src/lib/deepseek-ranker.ts:60.
+   be configured, the batch must hold two or more ambiguous semantic
+   candidates, no direct hit may already have cleared the operator's
+   confidence threshold, no strong direct hit may have arrived in the last
+   four seconds, and local retrieval must not already have a decisive
+   confidence or margin. Direct and semantic workers emit separate events,
+   so the recent-direct timestamp bridges those batches. Receipt:
+   src/lib/deepseek-ranker.ts:201.
 3. The frontend builds up to five candidates keyed `book:chapter:verse` with
    80-character summaries, picks the longest semantic transcript snippet
-   (capped at 500 characters), and invokes the Rust command. It is
-   single-flight and opens a circuit breaker after three consecutive
-   failures. Receipts: src/lib/deepseek-ranker.ts:8, src/lib/deepseek-ranker.ts:87.
+   (capped at 500 characters), and invokes the Rust command. Successful
+   selections and abstentions are cached by transcript plus the canonical
+   candidate-id set; failures are not cached. It remains single-flight and
+   opens a circuit breaker after three consecutive failures. Receipts:
+   src/lib/deepseek-ranker.ts:8, src/lib/deepseek-ranker.ts:199,
+   src/lib/deepseek-ranker.ts:250.
 4. Rust labels the candidates `A`-`E`, sends a fixed system prompt plus the
-   transcript as quoted data, and streams the reply, cancelling as soon as
-   one letter arrives. The whole call sits under a hard 1800 ms timeout with
-   no retries. Receipts: src-tauri/src/commands/deepseek.rs:43,
-   src-tauri/src/commands/deepseek.rs:13, src-tauri/src/commands/deepseek.rs:154.
+   transcript as quoted data, logs the bounded candidate-id shortlist, and
+   streams the reply, cancelling as soon as one letter arrives. The whole
+   call sits under a hard 1800 ms timeout with no retries. Receipts:
+   src-tauri/src/commands/deepseek.rs:43,
+   src-tauri/src/commands/deepseek.rs:181,
+   src-tauri/src/commands/deepseek.rs:168.
 5. The letter maps back to a supplied candidate id; anything else — an
    out-of-range letter, `N`, prose, or a malformed frame — resolves to an
    abstention rather than an error or content. Receipts:
    src-tauri/src/commands/deepseek.rs:72, src-tauri/src/commands/deepseek.rs:93.
-6. The winning id is written to `aiSuggestedKey` in the detection store,
+6. Before the five-candidate cap, the Rust hybrid detector boosts candidates
+   from one unambiguous spoken book while retaining other books for
+   cross-reference speech. Its FTS OR query also expands modern names to
+   curated KJV spellings (`Noah` -> `Noe`, `Elijah` -> `Elias`, and related
+   aliases), so lexical retrieval can recover KJV-only wording. Receipts:
+   src-tauri/crates/detection/src/pipeline.rs:175,
+   src-tauri/crates/bible/src/search.rs:117,
+   src-tauri/crates/bible/src/kjv_names.rs:1.
+7. The winning id is written to `aiSuggestedKey` in the detection store,
    guarded by an epoch counter so a slow flight cannot overwrite a newer
    batch's state. It renders as a badge and is read nowhere else. Receipts:
    src/lib/verse-detection-workflow.ts:363, src/components/panels/detections-panel.tsx:233.
@@ -836,3 +857,5 @@ Top risks (ranked): 1. STT provider removal can leave stale docs or tests if his
 | 2026-07-29 | Preserved high-overlap quote quality for deterministic verse ranking, made explicitly named books preempt stale pending context, and expanded the permanent Auto Live corpus with a 30-case blessed-hope sermon.                                                                                                            | 6, 10, 11, 15        |
 | 2026-07-30 | Added deterministic voice presentation for every queue item kind and a persisted Bible-only detection mode that leaves transcription, operator commands, manual/queued scripture, and EGW active.                                                                                                                           | 5-7, 10-12, 14-15    |
 | 2026-07-30 | Preserved authored hymn verse/refrain pages, retained section identity through presentation rendering, ported seven hymn scenes with bundled portable font alternatives, and added frozen Sacred Minimal/Heritage variants.                                                                                                 | 3, 5-7, 10-12, 14-15 |
+| 2026-07-31 | Hardened optional AI ranking with recent-direct and decisive-retrieval gates, a 400 ms stability debounce, canonical shortlist caching, newest-batch handoff, candidate-id request logging, spoken-book boosting before the live cap, and modern-to-KJV FTS name expansion. | 5-7, 10-12, 15 |
+| 2026-07-31 | Added generation-scoped STT fanout retirement before provider setup, resend-aware final command routing, explicit queue-item live identity for safe retries, and privacy-safe routing/queue outcome traces. | 4-7, 10-12, 15 |

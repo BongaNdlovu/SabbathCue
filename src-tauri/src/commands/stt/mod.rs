@@ -8,26 +8,16 @@ mod detection_jobs;
 mod detection_logic;
 mod live_session;
 mod provider;
+mod session;
 mod tasks;
 mod utils;
 mod voice;
-
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::Notify;
-
-use crate::events::{
-    AudioLevelPayload, TranscriptPayload, EVENT_AUDIO_LEVEL, EVENT_AUDIO_SOURCE_LOST,
-    EVENT_AUDIO_SOURCE_RECOVERED, EVENT_TRANSCRIPT_FINAL, EVENT_TRANSCRIPT_PARTIAL,
-};
-use crate::state::AppState;
-use rhema_audio::{set_gain, AudioConfig, AudioFrame};
-use rhema_detection::DirectDetector;
-use rhema_stt::TranscriptEvent;
 
 use self::detection::{
     is_bible_detection_enabled, is_detection_paused, is_semantic_detection_enabled,
@@ -43,6 +33,7 @@ use self::detection_logic::{
 };
 use self::live_session::{check_reading_mode, run_direct_detection};
 use self::provider::build_stt_provider;
+use self::session::AudioSessionGuard;
 use self::tasks::{live_input_gain, spawn_latest_wins_semantic_worker, spawn_stt_task};
 use self::utils::{
     average_word_confidence, final_semantic_detection_allowed_by_settings,
@@ -53,7 +44,14 @@ use self::voice::{check_stt_voice_command, check_translation_command};
 use crate::commands::transcript_router::{
     TranscriptEventKind, TranscriptRouteInput, TranscriptRouter,
 };
-
+use crate::events::{
+    AudioLevelPayload, TranscriptPayload, EVENT_AUDIO_LEVEL, EVENT_AUDIO_SOURCE_LOST,
+    EVENT_AUDIO_SOURCE_RECOVERED, EVENT_TRANSCRIPT_FINAL, EVENT_TRANSCRIPT_PARTIAL,
+};
+use crate::state::AppState;
+use rhema_audio::{set_gain, AudioConfig, AudioFrame};
+use rhema_detection::DirectDetector;
+use rhema_stt::TranscriptEvent;
 /// Start the audio-capture-to-transcription pipeline: mic capture, STT provider,
 /// transcript events, and background detection workers.
 #[expect(
@@ -71,9 +69,13 @@ pub async fn start_transcription(
     low_power: Option<bool>,
 ) -> Result<(), String> {
     // Guard: already running?
-    let (stt_active, audio_active) = {
+    let (stt_active, audio_active, session_generation) = {
         let app_state = state.lock().map_err(|e| e.to_string())?;
-        (app_state.stt_active.clone(), app_state.audio_active.clone())
+        (
+            app_state.stt_active.clone(),
+            app_state.audio_active.clone(),
+            app_state.audio_session_generation.clone(),
+        )
     };
 
     if stt_active
@@ -92,6 +94,10 @@ pub async fn start_transcription(
             detector.set_stt_language(stt_language);
         };
     }
+
+    // Claim before provider setup so an old native fanout cannot resume while
+    // a replacement provider is still being built.
+    let fan_session = AudioSessionGuard::claim(session_generation);
 
     // Build the STT provider.
     let stt_provider = match build_stt_provider(
@@ -139,7 +145,7 @@ pub async fn start_transcription(
             // and reappears. Exits only when `fan_active` is cleared by
             // `stop_transcription`.
             'outer: loop {
-                if !fan_active.load(Ordering::SeqCst) {
+                if !fan_active.load(Ordering::SeqCst) || !fan_session.is_current() {
                     break 'outer;
                 }
 
@@ -180,7 +186,12 @@ pub async fn start_transcription(
                                 },
                             );
                         }
-                        std::thread::sleep(Duration::from_millis(750));
+                        if !fan_session.sleep_interruptible(
+                            Duration::from_millis(750),
+                            Duration::from_millis(50),
+                        ) {
+                            break 'outer;
+                        }
                         continue 'outer;
                     }
                 };
@@ -191,7 +202,7 @@ pub async fn start_transcription(
 
                 // Inner loop: pump frames until loss is detected or stop is requested.
                 loop {
-                    if !fan_active.load(Ordering::SeqCst) {
+                    if !fan_active.load(Ordering::SeqCst) || !fan_session.is_current() {
                         capture.stop();
                         break 'outer;
                     }
@@ -241,11 +252,19 @@ pub async fn start_transcription(
 
                             // (b) Forward all audio to STT provider. A short timeout avoids
                             // silently dropping speech during transient provider backpressure.
-                            if audio_send_tx
+                            match audio_send_tx
                                 .send_timeout(frame.samples, Duration::from_millis(20))
-                                .is_err()
                             {
-                                log::warn!("[AUDIO] Dropped STT frame: provider queue full");
+                                Ok(()) => {}
+                                Err(crossbeam_channel::SendTimeoutError::Timeout(_)) => {
+                                    log::warn!("[AUDIO] Dropped STT frame: provider queue full");
+                                }
+                                Err(crossbeam_channel::SendTimeoutError::Disconnected(_)) => {
+                                    log::info!(
+                                        "[AUDIO] Provider channel disconnected; stopping fanout"
+                                    );
+                                    break 'outer;
+                                }
                             }
                         }
                         Err(crossbeam_channel::RecvTimeoutError::Timeout) => {}
@@ -260,7 +279,10 @@ pub async fn start_transcription(
                 capture.stop();
             }
 
-            log::info!("Audio capture stopped on fanout thread");
+            log::info!(
+                "[AUDIO] Capture stopped on fanout thread (session_retired={})",
+                !fan_session.is_current()
+            );
         })
         .map_err(|e| {
             stt_active.store(false, Ordering::SeqCst);
@@ -394,7 +416,12 @@ pub async fn start_transcription(
                         });
 
                         if let Some(reason) = &route.suppress_reason {
-                            log::debug!("[ROUTER] Suppressed partial ({reason})");
+                            log::info!(
+                                "[ROUTER] seq={seq} kind=partial provider={provider_log_name} chars={} emit={} dispatch={} outcome={reason}",
+                                transcript.chars().count(),
+                                route.emit_transcript,
+                                route.authoritative_detection.is_some(),
+                            );
                         }
 
                         if route.emit_transcript {
@@ -476,9 +503,13 @@ pub async fn start_transcription(
                             confidence: Some(confidence),
                         });
 
-                        if let Some(reason) = &route.suppress_reason {
-                            log::debug!("[ROUTER] Suppressed final ({reason})");
-                        }
+                        log::info!(
+                            "[ROUTER] seq={seq} kind=final provider={provider_log_name} chars={} emit={} dispatch={} outcome={}",
+                            transcript.chars().count(),
+                            route.emit_transcript,
+                            route.authoritative_detection.is_some(),
+                            route.suppress_reason.as_deref().unwrap_or("routed"),
+                        );
 
                         // Emit as permanent transcript segment IMMEDIATELY
                         // (never blocked by detection work)
@@ -705,6 +736,7 @@ pub fn stop_transcription(state: State<'_, Mutex<AppState>>) -> Result<(), Strin
 
     // Setting these flags causes the background threads/tasks to exit.
     app_state.audio_active.store(false, Ordering::SeqCst);
+    app_state.invalidate_audio_session();
     let task_handles = app_state.take_stt_task_handles();
     drop(app_state);
 

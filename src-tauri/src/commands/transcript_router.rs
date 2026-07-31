@@ -97,10 +97,12 @@ impl TranscriptRouter {
         let command_pending = std::mem::take(&mut self.command_dispatched_on_partial);
         let saw_partial = std::mem::take(&mut self.saw_partial_since_final);
 
-        if rhema_detection::is_complete_verse_navigation_command(cleaned) {
+        let is_repeatable_command = rhema_detection::is_complete_verse_navigation_command(cleaned)
+            || rhema_detection::is_voice_command_utterance(cleaned);
+        if is_repeatable_command {
             // Command finals bypass the 12-deep text dedupe: each spoken
-            // repeat must advance again. A provider re-send (identical final,
-            // no partials in between) is still dropped.
+            // repeat with a new partial must act again. A provider re-send
+            // (identical final, no partials in between) is still dropped.
             if !command_pending && !saw_partial && self.last_final.as_deref() == Some(&normalized) {
                 return suppressed("duplicate_final");
             }
@@ -641,6 +643,70 @@ mod tests {
             second.authoritative_detection.is_some(),
             "a repeated spoken command is a new utterance, not a duplicate"
         );
+    }
+
+    #[test]
+    fn repeated_queue_command_dispatches_again_after_a_new_partial() {
+        let mut router = TranscriptRouter::default();
+
+        router.route(input(TranscriptEventKind::Partial, "item 2"));
+        let first = router.route(input(TranscriptEventKind::Final, "item 2"));
+        assert!(first.authoritative_detection.is_some());
+
+        router.route(input(TranscriptEventKind::Partial, "item 2"));
+        let second = router.route(input(TranscriptEventKind::Final, "item 2"));
+
+        assert_eq!(second.suppress_reason, None);
+        assert_eq!(second.authoritative_detection.as_deref(), Some("item 2"));
+    }
+
+    #[test]
+    fn provider_resend_of_a_queue_command_final_is_still_dropped() {
+        let mut router = TranscriptRouter::default();
+
+        router.route(input(TranscriptEventKind::Partial, "item 2"));
+        router.route(input(TranscriptEventKind::Final, "item 2"));
+        let resend = router.route(input(TranscriptEventKind::Final, "item 2"));
+
+        assert_eq!(resend.suppress_reason.as_deref(), Some("duplicate_final"));
+        assert!(resend.authoritative_detection.is_none());
+    }
+
+    #[test]
+    fn repeated_hymn_command_dispatches_again_after_a_new_partial() {
+        let mut router = TranscriptRouter::default();
+
+        router.route(input(TranscriptEventKind::Partial, "hymn 46"));
+        router.route(input(TranscriptEventKind::Final, "hymn 46"));
+        router.route(input(TranscriptEventKind::Partial, "hymn 46"));
+        let second = router.route(input(TranscriptEventKind::Final, "hymn 46"));
+
+        assert_eq!(second.suppress_reason, None);
+        assert_eq!(second.authoritative_detection.as_deref(), Some("hymn 46"));
+    }
+
+    #[test]
+    fn repeated_ordinary_speech_is_still_deduped() {
+        let mut router = TranscriptRouter::default();
+
+        router.route(input(
+            TranscriptEventKind::Partial,
+            "we are talking about grace",
+        ));
+        router.route(input(
+            TranscriptEventKind::Final,
+            "we are talking about grace",
+        ));
+        router.route(input(
+            TranscriptEventKind::Partial,
+            "we are talking about grace",
+        ));
+        let second = router.route(input(
+            TranscriptEventKind::Final,
+            "we are talking about grace",
+        ));
+
+        assert_eq!(second.suppress_reason.as_deref(), Some("duplicate_final"));
     }
 
     #[test]

@@ -63,12 +63,15 @@ export interface LiveSlice {
   isLive: boolean
   previewItem: PresentationRenderData | null
   liveItem: PresentationRenderData | null
+  /** Queue item identity when the live output was presented from the queue. */
+  liveQueueItemId: string | null
   readingModeAutoLive: boolean
   liveTransitionType: BroadcastTransitionType
   opacity: number
   setLive: (live: boolean, options?: BroadcastSyncOptions) => void
   setPreviewItem: (item: PresentationRenderData | null) => void
   setLiveItem: (item: PresentationRenderData | null) => void
+  setLiveQueueItemId: (itemId: string | null) => void
   commitLiveItem: (
     item: PresentationRenderData,
     options?: { makeLive?: boolean; transitionType?: BroadcastTransitionType }
@@ -92,6 +95,7 @@ export const createLiveSlice: StateCreator<
   isLive: false,
   previewItem: null,
   liveItem: null,
+  liveQueueItemId: null,
   readingModeAutoLive: true,
   liveTransitionType: "fade",
   opacity: 1,
@@ -131,7 +135,7 @@ export const createLiveSlice: StateCreator<
   },
   setLive: (isLive, options) => {
     const shouldStopVideo = !isLive && get().liveItem?.kind === "video"
-    set({ isLive })
+    set({ isLive, liveQueueItemId: isLive ? get().liveQueueItemId : null })
     recordWorkflowTrace(
       "live.state",
       isLive ? "Live screen shown" : "Live screen hidden",
@@ -151,13 +155,14 @@ export const createLiveSlice: StateCreator<
     })
   },
   setLiveItem: (liveItem) => {
-    set({ liveItem })
+    set({ liveItem, liveQueueItemId: null })
     recordWorkflowTrace("live.state", "Live item state updated", {
       isLive: get().isLive,
       live: tracePresentationDetails(liveItem),
     })
     get().syncBroadcastOutput()
   },
+  setLiveQueueItemId: (liveQueueItemId) => set({ liveQueueItemId }),
   commitLiveItem: (liveItem, options) => {
     const makeLive = options?.makeLive ?? true
     const previousWasVideo = get().liveItem?.kind === "video"
@@ -167,17 +172,31 @@ export const createLiveSlice: StateCreator<
     if (liveItem.kind === "video") {
       set(
         makeLive
-          ? { liveItem, isLive: true, videoTransport: null }
-          : { liveItem, videoTransport: null }
+          ? {
+              liveItem,
+              isLive: true,
+              videoTransport: null,
+              liveQueueItemId: null,
+            }
+          : { liveItem, videoTransport: null, liveQueueItemId: null }
       )
     } else if (previousWasVideo) {
       set(
         makeLive
-          ? { liveItem, isLive: true, videoTransport: null }
-          : { liveItem, videoTransport: null }
+          ? {
+              liveItem,
+              isLive: true,
+              videoTransport: null,
+              liveQueueItemId: null,
+            }
+          : { liveItem, videoTransport: null, liveQueueItemId: null }
       )
     } else {
-      set(makeLive ? { liveItem, isLive: true } : { liveItem })
+      set(
+        makeLive
+          ? { liveItem, isLive: true, liveQueueItemId: null }
+          : { liveItem, liveQueueItemId: null }
+      )
     }
     recordWorkflowTrace("live.state", "Live commit state applied", {
       makeLive,

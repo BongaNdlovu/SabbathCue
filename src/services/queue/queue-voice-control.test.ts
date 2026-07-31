@@ -6,6 +6,7 @@ import {
   resetQueueVoiceControlState,
 } from "./queue-voice-control"
 import { presentQueuedItem } from "@/lib/queue-presentation"
+import { useBroadcastStore } from "@/stores/broadcast-store"
 import { useQueueStore } from "@/stores/queue-store"
 import type { PresentationItem, QueueItem } from "@/types"
 
@@ -108,6 +109,7 @@ describe("queue item voice control", () => {
       ),
       activeIndex: null,
     })
+    useBroadcastStore.setState({ isLive: false, liveQueueItemId: null })
   })
 
   it.each([
@@ -136,7 +138,11 @@ describe("queue item voice control", () => {
   })
 
   it("presents every supported queue presentation kind by current position", () => {
-    for (let itemNumber = 1; itemNumber <= PRESENTATIONS.length; itemNumber += 1) {
+    for (
+      let itemNumber = 1;
+      itemNumber <= PRESENTATIONS.length;
+      itemNumber += 1
+    ) {
       resetQueueVoiceControlState()
       expect(handleQueueItemVoiceControl(`item ${itemNumber}`)).toBe(true)
       expect(useQueueStore.getState().activeIndex).toBe(itemNumber - 1)
@@ -159,12 +165,28 @@ describe("queue item voice control", () => {
     expect(presentQueuedItem).not.toHaveBeenCalled()
   })
 
-  it("suppresses duplicate provider finals inside the guard window", () => {
-    expect(handleQueueItemVoiceControl("item 2", 1000)).toBe(true)
-    expect(handleQueueItemVoiceControl("item number two", 2000)).toBe(true)
+  it("honors an immediate retry when the first presentation did not reach live", () => {
+    expect(handleQueueItemVoiceControl("item 2")).toBe(true)
     expect(presentQueuedItem).toHaveBeenCalledTimes(1)
 
-    expect(handleQueueItemVoiceControl("item 2", 7000)).toBe(true)
+    expect(handleQueueItemVoiceControl("item number two")).toBe(true)
     expect(presentQueuedItem).toHaveBeenCalledTimes(2)
+  })
+
+  it("does not re-present the same queue item already on live output", () => {
+    useBroadcastStore.setState({ isLive: true, liveQueueItemId: "item-2" })
+
+    expect(handleQueueItemVoiceControl("item 2")).toBe(true)
+    expect(presentQueuedItem).not.toHaveBeenCalled()
+  })
+
+  it("presents an active preview item when a different queue item is live", () => {
+    useQueueStore.getState().setActive(1)
+    useBroadcastStore.setState({ isLive: true, liveQueueItemId: "item-1" })
+
+    expect(handleQueueItemVoiceControl("item 2")).toBe(true)
+    expect(presentQueuedItem).toHaveBeenCalledWith(
+      useQueueStore.getState().items[1]
+    )
   })
 })

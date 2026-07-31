@@ -1,4 +1,4 @@
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 
 use rhema_bible::{BibleDb, Translation};
@@ -8,6 +8,7 @@ pub struct AppState {
     pub active_translation_id: i64,
     pub audio_active: Arc<AtomicBool>,
     pub stt_active: Arc<AtomicBool>,
+    pub audio_session_generation: Arc<AtomicU64>,
     pub detection_paused: Arc<AtomicBool>,
     pub bible_detection_enabled: Arc<AtomicBool>,
     pub semantic_detection_enabled: Arc<AtomicBool>,
@@ -21,6 +22,7 @@ impl AppState {
             active_translation_id: 1, // Default to first translation (KJV)
             audio_active: Arc::new(AtomicBool::new(false)),
             stt_active: Arc::new(AtomicBool::new(false)),
+            audio_session_generation: Arc::new(AtomicU64::new(0)),
             detection_paused: Arc::new(AtomicBool::new(false)),
             bible_detection_enabled: Arc::new(AtomicBool::new(true)),
             semantic_detection_enabled: Arc::new(AtomicBool::new(true)),
@@ -43,6 +45,11 @@ impl AppState {
             task_handles.push(handle);
         }
         task_handles
+    }
+
+    /// Retire the current native audio fanout session.
+    pub fn invalidate_audio_session(&self) {
+        self.audio_session_generation.fetch_add(1, Ordering::SeqCst);
     }
 }
 

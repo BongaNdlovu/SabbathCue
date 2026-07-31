@@ -1,4 +1,9 @@
-import type { DetectionResult, PresentationRenderData, ReadingAdvance, Verse } from "@/types"
+import type {
+  DetectionResult,
+  PresentationRenderData,
+  ReadingAdvance,
+  Verse,
+} from "@/types"
 
 export const WORKFLOW_TRACE_LIMIT = 500
 
@@ -8,6 +13,7 @@ export type WorkflowTraceStage =
   | "transcription.error"
   | "transcription.partial"
   | "transcription.final"
+  | "queue.voice"
   | "detection.event"
   | "detection.batch"
   | "detection.preview.selected"
@@ -126,16 +132,13 @@ export function traceTranscriptDetails(input: {
     confidence: input.confidence,
     isFinal: input.isFinal,
     wordCount:
-      input.wordCount ??
-      input.text
-        ?.split(/\s+/)
-        .filter(Boolean)
-        .length ??
-      0,
+      input.wordCount ?? input.text?.split(/\s+/).filter(Boolean).length ?? 0,
   }
 }
 
-export function traceDetectionDetails(detection: DetectionResult): Record<string, unknown> {
+export function traceDetectionDetails(
+  detection: DetectionResult
+): Record<string, unknown> {
   return {
     reference: detection.verse_ref,
     source: detection.source,
