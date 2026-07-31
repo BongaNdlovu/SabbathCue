@@ -28,6 +28,20 @@ pub struct CandidateInput {
     pub summary: String,
 }
 
+/// Render the candidate IDs sent to the ranker as a compact, searchable log field.
+pub fn format_candidate_ids(candidates: &[CandidateInput]) -> String {
+    let ids: Vec<&str> = candidates
+        .iter()
+        .take(MAX_CANDIDATES)
+        .map(|candidate| candidate.id.as_str())
+        .collect();
+    if ids.is_empty() {
+        "none".to_string()
+    } else {
+        ids.join(",")
+    }
+}
+
 /// One process-wide client: reqwest pools connections, so repeated ranking
 /// calls reuse the TCP/TLS session instead of re-handshaking per phrase.
 pub fn http_client() -> &'static reqwest::Client {
@@ -163,6 +177,11 @@ pub async fn rank_detection_candidates(
         return Err("No candidates supplied for ranking.".into());
     }
 
+    log::info!(
+        "[DEEPSEEK] candidates={} transcript_chars={}",
+        format_candidate_ids(&candidates),
+        transcript.chars().count()
+    );
     let started = Instant::now();
     // Hard deadline over the ENTIRE call (connect + headers + stream), per the
     // speed spec: after the deadline the response is worthless — cancel and
@@ -283,6 +302,16 @@ mod tests {
         assert_eq!(letter_to_candidate_id('C', &two), None); // no third candidate
         assert_eq!(letter_to_candidate_id('N', &two), None); // abstain is not a candidate
         assert_eq!(letter_to_candidate_id('X', &two), None);
+    }
+
+    #[test]
+    fn candidate_ids_render_as_compact_log_field() {
+        assert_eq!(
+            format_candidate_ids(&candidates(3)),
+            "44:16:25,44:16:26,44:16:27"
+        );
+        assert_eq!(format_candidate_ids(&[]), "none");
+        assert_eq!(format_candidate_ids(&candidates(7)).matches(',').count(), 4);
     }
 
     #[test]

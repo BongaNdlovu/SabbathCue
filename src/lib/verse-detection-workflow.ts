@@ -23,7 +23,7 @@ import { recordDetectionFeedback } from "@/lib/detection-feedback"
 import { recordAutoSelectionPerformance } from "@/lib/detection-profiler"
 import {
   detectionCandidateId,
-  rankSemanticDetections,
+  scheduleRanking,
 } from "@/lib/deepseek-ranker"
 import type {
   DetectionResult,
@@ -367,7 +367,7 @@ async function maybeMarkAiSuggestion(
   const epoch = aiSuggestionEpoch
   try {
     const settings = useSettingsStore.getState()
-    const winner = await rankSemanticDetections(detections, {
+    const winner = await scheduleRanking(detections, {
       deepseekRankingEnabled: settings.deepseekRankingEnabled,
       hasDeepseekApiKey: settings.hasDeepseekApiKey,
       confidenceThreshold: settings.confidenceThreshold,

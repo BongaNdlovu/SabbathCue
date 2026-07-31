@@ -18,6 +18,8 @@ pub mod lookup;
 pub mod models;
 pub mod search;
 
+mod kjv_names;
+
 pub use db::*;
 pub use error::*;
 pub use models::*;

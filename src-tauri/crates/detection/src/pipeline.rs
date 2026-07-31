@@ -167,6 +167,26 @@ impl DetectionPipeline {
         self.semantic.use_synonyms()
     }
 
+    /// Promote candidates from one unambiguous spoken book before the live
+    /// semantic cap. This is intentionally a boost, not a filter: a speaker
+    /// can name a book while quoting a cross-reference from elsewhere.
+    fn prioritize_spoken_book(&self, text: &str, merged: &mut [MergedDetection]) {
+        let mut book_numbers = HashSet::new();
+        for book_match in self.direct.find_book_mentions(text) {
+            book_numbers.insert(book_match.book_number);
+        }
+        let mut numbers = book_numbers.into_iter();
+        let Some(book_number) = numbers.next() else {
+            return;
+        };
+        if numbers.next().is_some() {
+            return;
+        }
+        merged.sort_by_key(|candidate| {
+            usize::from(candidate.detection.verse_ref.book_number != book_number)
+        });
+    }
+
     /// Run hybrid semantic detection combining vector search with pre-fetched
     /// FTS5 BM25 results. Used by the real-time STT pipeline.
     ///
@@ -187,6 +207,7 @@ impl DetectionPipeline {
 
         if fts_results.is_empty() {
             let mut merged = self.merger.merge(vec![], semantic_detections);
+            self.prioritize_spoken_book(text, &mut merged);
             merged.truncate(LIVE_SEMANTIC_CAP);
             return merged;
         }
@@ -290,6 +311,7 @@ impl DetectionPipeline {
         // operator's semantic visibility threshold so raising the slider
         // actually suppresses keyword noise instead of letting FTS hits bypass.
         let mut merged = self.merger.merge(vec![], semantic_detections);
+        self.prioritize_spoken_book(text, &mut merged);
         merged.truncate(LIVE_SEMANTIC_CAP);
         merged
     }
@@ -826,6 +848,76 @@ mod tests {
             pipeline.process_hybrid_with_fts("test text with many references", &fts_results);
 
         assert_eq!(results.len(), LIVE_SEMANTIC_CAP);
+    }
+
+    #[test]
+    fn spoken_book_is_boosted_before_live_candidate_cap() {
+        let mut pipeline = DetectionPipeline::new();
+        let fts_results = vec![
+            Bm25Result {
+                book_number: 43,
+                book_name: "John".to_string(),
+                chapter: 3,
+                verse: 16,
+                rank: -28.0,
+                is_broad_match: false,
+                text: String::new(),
+            },
+            Bm25Result {
+                book_number: 45,
+                book_name: "Romans".to_string(),
+                chapter: 8,
+                verse: 28,
+                rank: -27.0,
+                is_broad_match: false,
+                text: String::new(),
+            },
+            Bm25Result {
+                book_number: 1,
+                book_name: "Genesis".to_string(),
+                chapter: 1,
+                verse: 1,
+                rank: -26.0,
+                is_broad_match: false,
+                text: String::new(),
+            },
+            Bm25Result {
+                book_number: 19,
+                book_name: "Psalms".to_string(),
+                chapter: 23,
+                verse: 1,
+                rank: -25.0,
+                is_broad_match: false,
+                text: String::new(),
+            },
+            Bm25Result {
+                book_number: 23,
+                book_name: "Isaiah".to_string(),
+                chapter: 53,
+                verse: 5,
+                rank: -24.5,
+                is_broad_match: false,
+                text: String::new(),
+            },
+            Bm25Result {
+                book_number: 2,
+                book_name: "Exodus".to_string(),
+                chapter: 20,
+                verse: 8,
+                rank: -24.0,
+                is_broad_match: false,
+                text: String::new(),
+            },
+        ];
+
+        let results =
+            pipeline.process_hybrid_with_fts("a reading from the book of Exodus", &fts_results);
+
+        assert_eq!(results.len(), LIVE_SEMANTIC_CAP);
+        assert_eq!(results[0].detection.verse_ref.book_number, 2);
+        assert!(results
+            .iter()
+            .any(|result| { result.detection.verse_ref.book_name == "John" }));
     }
 
     #[test]

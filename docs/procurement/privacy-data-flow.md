@@ -161,8 +161,18 @@ automated tests:
 | Ranking never influences what is projected         | `src/lib/verse-detection-workflow.ts`                           | `does not influence which detection is previewed`                 |
 | Key presence read from keychain, never from disk   | `src/stores/settings-store.ts` (`hydrateSettings`)              | `hydrates DeepSeek key presence from the keychain, not from disk` |
 
-**Not yet verified:** the live DeepSeek request path has not been exercised
-against the production API. The request construction, response parsing,
-gating, and failure handling are covered by automated tests, but no
-end-to-end call with a real API key has been recorded. Latency figures for
-the feature are therefore not yet published.
+**Live path verified 2026-07-31.** A live service test recorded 23 ranking
+requests for approximately six spoken indirect phrases, with zero failures or
+timeouts. Observed ranking latency was 715 ms at P50 and approximately 925 ms
+at P95; the slowest cold-start request was 1,221 ms against the 1,800 ms cap.
+The indirect-reference result was correct for 4 of 6 cases, while explicit
+references remained 3 of 3 locally resolved. Source: the supplied
+`SabbathCue Personal.log` from the 2026-07-31 test session.
+
+The live trace also confirmed that STT can emit multiple detection batches
+while a phrase is still extending; batches do not arrive exactly once per
+finished phrase. The client now waits for a 400 ms quiet period and caches
+identical transcript/candidate-set requests, while the request construction,
+response parsing, gating, and failure handling remain covered by automated
+tests. These figures are a baseline from that session, not a guarantee for
+other networks or providers.

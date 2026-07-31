@@ -14,17 +14,17 @@ import { useQueueStore } from "@/stores/queue-store"
 import { useSettingsStore } from "@/stores/settings-store"
 import type { DetectionResult, QueueItem, ReadingAdvance } from "@/types"
 
-const { emitToMock, invokeMock, rankSemanticDetectionsMock } = vi.hoisted(
+const { emitToMock, invokeMock, scheduleRankingMock } = vi.hoisted(
   () => ({
     emitToMock: vi.fn(),
     invokeMock: vi.fn(),
-    rankSemanticDetectionsMock: vi.fn(),
+    scheduleRankingMock: vi.fn(),
   })
 )
 
 vi.mock("@/lib/deepseek-ranker", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/deepseek-ranker")>()),
-  rankSemanticDetections: rankSemanticDetectionsMock,
+  scheduleRanking: scheduleRankingMock,
 }))
 
 vi.mock("@tauri-apps/api/event", () => ({
@@ -109,8 +109,8 @@ describe("verse detection workflow", () => {
     emitToMock.mockResolvedValue(undefined)
     invokeMock.mockReset()
     invokeMock.mockResolvedValue(null)
-    rankSemanticDetectionsMock.mockReset()
-    rankSemanticDetectionsMock.mockResolvedValue(null)
+    scheduleRankingMock.mockReset()
+    scheduleRankingMock.mockResolvedValue(null)
     resetSemanticConfirmationForTests()
 
     useBibleStore.setState({
@@ -1070,7 +1070,7 @@ describe("verse detection workflow", () => {
 
     it("marks the ranked detection as AI-suggested", async () => {
       const winner = makeSemantic()
-      rankSemanticDetectionsMock.mockResolvedValue(winner)
+      scheduleRankingMock.mockResolvedValue(winner)
 
       await handleVerseDetections([
         winner,
@@ -1083,7 +1083,7 @@ describe("verse detection workflow", () => {
 
     it("clears the marker when ranking abstains", async () => {
       useDetectionStore.getState().markAiSuggested("44:16:25")
-      rankSemanticDetectionsMock.mockResolvedValue(null)
+      scheduleRankingMock.mockResolvedValue(null)
 
       await handleVerseDetections([
         makeSemantic(),
@@ -1095,7 +1095,7 @@ describe("verse detection workflow", () => {
     })
 
     it("does not let a ranker failure break the detection batch", async () => {
-      rankSemanticDetectionsMock.mockRejectedValue(new Error("network down"))
+      scheduleRankingMock.mockRejectedValue(new Error("network down"))
 
       await handleVerseDetections([makeDetection({ auto_queued: false })])
       await aiSuggestionSettledForTests()
@@ -1112,7 +1112,7 @@ describe("verse detection workflow", () => {
     it("a stale in-flight ranking cannot overwrite a newer batch's badge", async () => {
       const winner = makeSemantic()
       let resolveFirstFlight: (value: DetectionResult | null) => void = () => {}
-      rankSemanticDetectionsMock.mockReturnValueOnce(
+      scheduleRankingMock.mockReturnValueOnce(
         new Promise<DetectionResult | null>((resolve) => {
           resolveFirstFlight = resolve
         })
@@ -1143,7 +1143,7 @@ describe("verse detection workflow", () => {
     it("does not influence which detection is previewed", async () => {
       // Ranker picks the semantic Acts hit, but a strong direct John hit is
       // present: preview must still follow the deterministic direct path.
-      rankSemanticDetectionsMock.mockResolvedValue(makeSemantic())
+      scheduleRankingMock.mockResolvedValue(makeSemantic())
 
       await handleVerseDetections([
         makeDetection({ auto_queued: false }),

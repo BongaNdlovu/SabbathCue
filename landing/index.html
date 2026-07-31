@@ -645,6 +645,7 @@ footer a:hover{color:var(--paper)}
       <div class="feat reveal"><span class="ico">⇄</span><h3>344,800 cross-references</h3><p>Every detected verse comes with related passages drawn from openbible.info's cross-reference dataset — ready for the follow-up.</p></div>
       <div class="feat reveal"><span class="ico">▣</span><h3>Stream Deck &amp; remote control</h3><p>The HTTP remote-control API lets you trigger verses, clear the live screen, and switch modes from Stream Deck or your own automation.</p></div>
       <div class="feat reveal"><span class="ico">📖</span><h3>Reading mode</h3><p>When the sermon settles into a chapter, SabbathCue locks on and follows along — “next chapter”, “chapter five” — by voice.</p></div>
+      <div class="feat reveal"><span class="ico">✧</span><h3>AI help for indirect references</h3><p>“The passage where Paul and Silas sang in prison” can fit several places at once. Switch on optional AI ranking and SabbathCue asks a cloud model to pick the closest of the passages it already found locally — it only ever chooses from that shortlist, so it cannot invent a verse. You get a suggestion badge to act on or ignore; nothing reaches the screen without you. Off by default, needs your own API key, and every other detection feature works without it.</p></div>
       <div class="feat reveal"><span class="ico">♪</span><h3>SDA Hymnal built in</h3><p>All 695 hymns of the SDA Hymnal, searchable by number, title, or first line — pull a hymn's verses onto the live screen as cleanly as scripture.</p></div>
       <div class="feat reveal"><span class="ico">✎</span><h3>Ellen G. White writings</h3><p>Browse, search, and present from Education, Patriarchs and Prophets, Steps to Christ, The Desire of Ages, and The Great Controversy. Spoken chapter, paragraph, and page references are detected live alongside Bible verses.</p></div>
       <div class="feat reveal"><span class="ico">▤</span><h3>Service planning</h3><p>Build the whole service order ahead of time — scriptures, hymns, and readings — then run it item by item on Sabbath morning with detection still listening in the background.</p></div>
@@ -675,12 +676,13 @@ footer a:hover{color:var(--paper)}
     <div class="free-wrap">
       <div class="reveal">
         <p class="eyebrow">Local-first &amp; private</p>
-        <h2>Your local setup stays under your control. <em>Cloud transcription is optional.</em></h2>
+        <h2>Your local setup stays under your control. <em>Every cloud feature is optional.</em></h2>
         <ul class="free-list">
           <li><b>Offline mode uses constrained grammar.</b> Local Vosk is tuned for Bible reference cues and command phrases, not full-sermon free dictation. Use Deepgram, Soniox, or Speechmatics when you need broad cloud transcription quality.</li>
           <li><b>Runs on your machine when local.</b> Vosk transcription runs on the computer after the model is installed. Deepgram, Soniox, and Speechmatics require your own API key, internet connection, and provider account.</li>
           <li><b>Your audio stays in the room with Vosk.</b> Cloud transcription sends audio to the selected provider only when you explicitly choose Deepgram, Soniox, or Speechmatics.</li>
-          <li><b>Yours to control.</b> Settings, history, and live-screen output live on your device; cloud speech is opt-in through your selected provider.</li>
+          <li><b>AI ranking is off until you turn it on.</b> The optional DeepSeek helper for indirect references sends one short phrase and the shortlisted verse references — never your audio, never the rolling transcript. It needs your own API key, and every other detection feature works without it.</li>
+          <li><b>Yours to control.</b> Settings, history, and live-screen output live on your device; cloud speech and cloud AI are each opt-in and can be switched off independently.</li>
           <li><b>Bring your own translations.</b> Licensed versions like NIV, ESV, NASB, NKJV, NLT, and AMP are supported when you hold the rights.</li>
         </ul>
       </div>

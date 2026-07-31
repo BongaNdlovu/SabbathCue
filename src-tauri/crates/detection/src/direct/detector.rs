@@ -895,6 +895,14 @@ impl DirectDetector {
         &self.recent_detections
     }
 
+    /// Find book-only mentions without running chapter/verse parsing.
+    ///
+    /// The hybrid pipeline uses this lightweight signal to boost candidates
+    /// when a speaker names a book but does not provide a citation.
+    pub fn find_book_mentions(&self, text: &str) -> Vec<BookMatch> {
+        self.matcher.find_books(text)
+    }
+
     /// Check if the transcript contains a translation switching command.
     /// Returns the translation abbreviation if found (e.g., "NIV", "ESV").
     ///

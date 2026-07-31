@@ -113,15 +113,30 @@ pub(crate) fn build_and_query(input: &str) -> String {
 
 /// OR query with stop words removed — any significant word matches.
 /// `"It's a new creature Old things passed away"` → `"creature" OR "things" OR "passed" OR "away"`.
-/// Capped at 10 terms to prevent expensive queries.
+/// KJV name aliases are appended to modern spoken names. Capped at 12 terms
+/// to prevent expensive queries while leaving room for a few expansions.
 pub(crate) fn build_or_query(input: &str) -> String {
-    let mut seen = HashSet::new();
-    let tokens: Vec<String> = query_terms(input)
-        .filter(|w| w.len() >= 3 && !is_stop_word(w) && !is_reference_noise_token(w))
-        .filter(|w| seen.insert(w.to_lowercase()))
-        .take(10)
-        .map(|w| format!("\"{w}\""))
-        .collect();
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut tokens = Vec::new();
+    for word in query_terms(input) {
+        if word.len() < 3 || is_stop_word(word) || is_reference_noise_token(word) {
+            continue;
+        }
+        if seen.insert(word.to_ascii_lowercase()) {
+            tokens.push(format!("\"{word}\""));
+        }
+        for variant in crate::kjv_names::kjv_variants(word) {
+            if seen.insert((*variant).to_string()) {
+                tokens.push(format!("\"{variant}\""));
+            }
+            if tokens.len() >= 12 {
+                break;
+            }
+        }
+        if tokens.len() >= 12 {
+            break;
+        }
+    }
     if tokens.is_empty() {
         return String::new();
     }
@@ -368,7 +383,8 @@ mod tests {
                (2, 'Afr1953', 'Afrikaans 1933/1953 Bybel', 'af', 1, 1);
              INSERT INTO verses VALUES
                (1, 1, 5, 'Deuteronomy', 'Deut', 16, 18, 'Judges and officers shalt thou make thee in all thy gates.'),
-               (2, 2, 5, 'Deuteronomium', 'Deut', 16, 18, 'Regters en opsigters moet jy vir jou aanstel in al jou poorte.');
+               (2, 2, 5, 'Deuteronomium', 'Deut', 16, 18, 'Regters en opsigters moet jy vir jou aanstel in al jou poorte.'),
+               (3, 1, 40, 'Matthew', 'Matt', 24, 37, 'But as the days of Noe were, so shall also the coming of the Son of man be.');
              INSERT INTO verses_fts(rowid, text) SELECT id, text FROM verses;",
         )
         .unwrap();
@@ -621,12 +637,45 @@ mod tests {
     }
 
     #[test]
-    fn or_query_caps_at_10_terms() {
+    fn bm25_name_alias_recovers_kjv_noe_verse_for_spoken_noah() {
+        let db = fixture_db();
+
+        let results = db.search_verses_bm25("the days of Noah", 10).unwrap();
+
+        assert!(
+            results.iter().any(|result| {
+                result.book_number == 40 && result.chapter == 24 && result.verse == 37
+            }),
+            "modern Noah query should retrieve KJV Matthew 24:37 via Noe alias"
+        );
+    }
+
+    #[test]
+    fn or_query_caps_at_12_terms() {
         let long_input =
             "God love peace faith hope joy spirit truth grace mercy light salvation prayer";
         let result = build_or_query(long_input);
         let term_count = result.matches(" OR ").count() + 1;
-        assert!(term_count <= 10);
+        assert!(term_count <= 12);
+    }
+
+    #[test]
+    fn or_query_expands_modern_kjv_name_aliases() {
+        let query = build_or_query("the days of Noah");
+        assert!(
+            query.contains("\"Noah\""),
+            "modern name must remain: {query}"
+        );
+        assert!(
+            query.contains("\"noe\""),
+            "KJV alias must be added: {query}"
+        );
+    }
+
+    #[test]
+    fn or_query_does_not_expand_unlisted_words() {
+        let query = build_or_query("the shepherd");
+        assert!(!query.contains("\"noe\""));
     }
 
     #[test]
