@@ -25,6 +25,8 @@ export interface DetectionResult {
   is_chapter_only: boolean
   egw_paragraph?: EgwParagraph | null
   hymn?: HymnDetection | null
+  /** UTF-8 byte offset into verse_text where the spoken quote begins (EGW). */
+  match_char_start?: number | null
 }
 
 export interface ReadingAdvance {

@@ -22,6 +22,15 @@ impl BibleDb {
             .map_err(|_| BibleError::Internal("Bible database lock was poisoned".to_string()))
     }
 
+    /// Wrap an already-open connection. Exists so integration tests can build
+    /// a small in-memory corpus without touching the real database file.
+    #[must_use]
+    pub fn from_connection(conn: Connection) -> Self {
+        Self {
+            conn: Mutex::new(conn),
+        }
+    }
+
     pub fn open(path: &Path) -> Result<Self, BibleError> {
         let conn = Connection::open(path)?;
         conn.execute_batch("PRAGMA journal_mode=WAL;")?;

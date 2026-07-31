@@ -2,9 +2,9 @@ import { invokeTauri } from "@/lib/tauri-runtime"
 import type { DetectionResult } from "@/types"
 import type { RankingCandidate } from "@/types/ai-ranking"
 
-const MAX_CANDIDATES = 5
+const MAX_CANDIDATES = 8
 const MAX_TRANSCRIPT_CHARS = 500
-const SUMMARY_TEXT_CHARS = 80
+const SUMMARY_TEXT_CHARS = 240
 const CIRCUIT_BREAKER_FAILURES = 3
 const DIRECT_SUPPRESSION_MS = 4000
 const DECISIVE_SEMANTIC_CONFIDENCE = 0.9
@@ -169,6 +169,7 @@ export function buildRankingCandidates(
         0,
         SUMMARY_TEXT_CHARS
       ),
+      confidence: detection.confidence,
     })
   )
 }
@@ -292,6 +293,7 @@ export async function rankSemanticDetections(
       0,
       SUMMARY_TEXT_CHARS
     ),
+    confidence: detection.confidence,
   }))
   const key = cacheKey(transcript, candidates)
   const resolveFromId = (id: string | null) =>

@@ -46,10 +46,12 @@ pub(super) fn run_semantic_search(
 
     let mut fts_count = 0;
     if let Some(ref db) = app_state.bible_db {
-        let fts_results = db.search_verses_bm25(query, limit).unwrap_or_else(|e| {
-            log::warn!("[semantic_search] FTS5/BM25 query failed: {e}");
-            Vec::new()
-        });
+        let fts_results = db
+            .search_verses_bm25_scoped(query, limit, None)
+            .unwrap_or_else(|e| {
+                log::warn!("[semantic_search] FTS5/BM25 query failed: {e}");
+                Vec::new()
+            });
         fts_count = fts_results.len();
         let seen: HashSet<(i32, i32, i32)> = results
             .iter()

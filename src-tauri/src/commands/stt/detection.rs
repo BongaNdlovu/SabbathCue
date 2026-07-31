@@ -67,7 +67,7 @@ mod tests {
     use crate::commands::stt::detection_logic;
     use crate::commands::stt::detection_logic::{
         choose_reading_candidate, clamp_to_recent_words, direct_reading_candidates,
-        should_restart_reading, strip_reference_scaffolding,
+        should_restart_reading, spoken_book_hint, strip_reference_scaffolding,
     };
     use rhema_detection::{Detection, DetectionSource, MergedDetection, VerseRef};
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -96,6 +96,27 @@ mod tests {
             strip_reference_scaffolding("the court was seated and the books were opened"),
             "the court was seated and the books were opened"
         );
+    }
+
+    #[test]
+    fn spoken_book_hint_scopes_single_bare_book() {
+        assert_eq!(
+            spoken_book_hint("in Esther he says for such a time as this"),
+            Some(17)
+        );
+    }
+
+    #[test]
+    fn spoken_book_hint_ignores_multi_book_and_complete_refs() {
+        assert_eq!(
+            spoken_book_hint("Malachi is speaking to Esther about such a time"),
+            None
+        );
+        assert_eq!(
+            spoken_book_hint("Turn with me to Exodus chapter 20 verse 8"),
+            None
+        );
+        assert_eq!(spoken_book_hint("peace be still on the sea"), None);
     }
 
     #[test]
@@ -181,6 +202,7 @@ mod tests {
             transcript_snippet: "snippet".to_string(),
             is_chapter_only: false,
             egw_paragraph: None,
+            match_char_start: None,
         }
     }
 

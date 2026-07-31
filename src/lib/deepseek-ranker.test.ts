@@ -50,7 +50,7 @@ beforeEach(() => {
 })
 
 describe("buildRankingCandidates", () => {
-  it("keeps only resolvable semantic detections, deduped, capped at 5, compact summaries", () => {
+  it("keeps only resolvable semantic detections, deduped, capped at 8, compact summaries", () => {
     const detections = [
       semantic({ verse_text: "x".repeat(300) }),
       semantic(), // duplicate — same book:chapter:verse
@@ -62,12 +62,45 @@ describe("buildRankingCandidates", () => {
       semantic({ verse: 28 }),
       semantic({ verse: 29 }),
       semantic({ verse: 30 }),
+      semantic({ verse: 31 }),
+      semantic({ verse: 32 }),
+      semantic({ verse: 33 }),
     ]
     const candidates = buildRankingCandidates(detections)
-    expect(candidates.length).toBe(5)
+    expect(candidates.length).toBe(8)
     expect(candidates[0].id).toBe("44:16:25")
-    expect(candidates[0].summary.length).toBeLessThanOrEqual(80)
+    expect(candidates[0].summary.length).toBeLessThanOrEqual(240)
     expect(candidates[0].summary).toContain("Acts 16:25")
+    expect(candidates[0].confidence).toBe(0.78)
+  })
+
+  it("passes local confidence through to the ranking candidates", () => {
+    const detections = [
+      semantic({
+        source: "semantic",
+        book_number: 17,
+        chapter: 4,
+        verse: 14,
+        confidence: 0.7,
+        verse_ref: "Esther 4:14",
+        book_name: "Esther",
+      }),
+      semantic({
+        source: "semantic",
+        book_number: 30,
+        chapter: 5,
+        verse: 13,
+        confidence: 0.7,
+        verse_ref: "Amos 5:13",
+        book_name: "Amos",
+      }),
+    ]
+    const candidates = buildRankingCandidates(
+      detections,
+      "such a time as this"
+    )
+    expect(candidates).toHaveLength(2)
+    expect(candidates[0].confidence).toBe(0.7)
   })
 })
 

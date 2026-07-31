@@ -15,8 +15,9 @@ use super::detection_jobs::finalize_live_semantic_results;
 use super::detection_logic::{
     choose_reading_candidate, direct_reading_candidates, filter_direct_results_to_scope_if_present,
     filter_semantic_results_to_reading_scope, live_pause_out_of_scope_bible_book,
-    should_release_stale_reading_scope, should_restart_reading, strip_reference_scaffolding,
-    strong_out_of_scope_bible_book, DirectReadingCandidate, READING_SCOPE_RELEASE_STREAK,
+    should_release_stale_reading_scope, should_restart_reading, spoken_book_hint,
+    strip_reference_scaffolding, strong_out_of_scope_bible_book, DirectReadingCandidate,
+    READING_SCOPE_RELEASE_STREAK,
 };
 use super::utils::{transcript_logging_enabled, truncate_safe};
 fn active_reading_bible_scope(app: &AppHandle) -> Option<(i32, i32, String, u64)> {
@@ -354,6 +355,7 @@ pub(crate) fn run_direct_detection(
                     transcript_snippet: m.detection.transcript_snippet.clone(),
                     is_chapter_only: m.detection.is_chapter_only,
                     egw_paragraph: None,
+                    match_char_start: None,
                 }
             })
             .collect();
@@ -513,6 +515,13 @@ pub(crate) fn run_semantic_detection(
         return;
     }
 
+    // A spoken book name is a scope, not a search term. Left in the text it
+    // matches only verses that literally contain the name — which is why
+    // saying "Malachi" surfaced Malachi 1:1, the one verse whose text
+    // contains that word, instead of scoping to the book. Derive from the
+    // raw transcript: scaffolding strip removes reference framing only.
+    let book_hint = spoken_book_hint(transcript);
+
     let t0 = std::time::Instant::now();
     if transcript_logging_enabled() {
         log::info!("[DET-SEMANTIC] Running on: {:?}", truncate_safe(&query, 80));
@@ -528,10 +537,9 @@ pub(crate) fn run_semantic_detection(
             return;
         };
         (
-            app_state
-                .bible_db
-                .as_ref()
-                .and_then(|db| db.search_verses_bm25(&query, 10).ok()),
+            app_state.bible_db.as_ref().and_then(|db| {
+                db.search_verses_bm25_scoped(&query, 10, book_hint).ok()
+            }),
             app_state.active_translation_id,
         )
     };
@@ -900,6 +908,7 @@ mod bible_mode_tests {
             transcript_snippet: "spoken words".to_string(),
             is_chapter_only: false,
             egw_paragraph: None,
+            match_char_start: None,
         }
     }
 

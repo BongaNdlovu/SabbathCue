@@ -3,4 +3,6 @@
 export interface RankingCandidate {
   id: string
   summary: string
+  /** Local retrieval confidence 0–1 so the model can abstain on a weak pool. */
+  confidence: number
 }

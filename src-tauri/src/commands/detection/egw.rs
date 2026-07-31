@@ -87,29 +87,53 @@ fn quote_has_negation_conflict(window: &str, paragraph: &str) -> bool {
 /// evidence. This separates a paragraph being *read aloud* from a paragraph
 /// that merely shares a topic — the failure mode that made the previous
 /// BM25-only attempt unusable.
-fn longest_shared_content_run(window: &str, paragraph: &str) -> usize {
+/// Longest run of shared content words, and where that run starts in the
+/// paragraph as a UTF-8 **byte** offset. The anchor lets the UI open a long
+/// paragraph at the sentence actually being spoken instead of at its first word.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct SharedRun {
+    pub len: usize,
+    pub paragraph_byte_start: usize,
+}
+
+fn longest_shared_content_run(window: &str, paragraph: &str) -> SharedRun {
+    let none = SharedRun {
+        len: 0,
+        paragraph_byte_start: 0,
+    };
     if quote_has_negation_conflict(window, paragraph) {
-        return 0;
+        return none;
     }
     let spoken: Vec<String> = rhema_detection::pipeline::content_words(window).collect();
-    let candidate: Vec<String> = rhema_detection::pipeline::content_words(paragraph).collect();
+    let candidate: Vec<(usize, String)> =
+        rhema_detection::pipeline::content_words_indexed(paragraph).collect();
     if spoken.is_empty() || candidate.is_empty() {
-        return 0;
+        return none;
     }
 
     let mut previous = vec![0usize; candidate.len() + 1];
     let mut best = 0;
+    let mut best_end = 0;
     for spoken_word in &spoken {
         let mut current = vec![0usize; candidate.len() + 1];
-        for (index, candidate_word) in candidate.iter().enumerate() {
+        for (index, (_, candidate_word)) in candidate.iter().enumerate() {
             if spoken_word == candidate_word {
                 current[index + 1] = previous[index] + 1;
-                best = best.max(current[index + 1]);
+                if current[index + 1] > best {
+                    best = current[index + 1];
+                    best_end = index; // index of the run's LAST word
+                }
             }
         }
         previous = current;
     }
-    best
+    if best == 0 {
+        return none;
+    }
+    SharedRun {
+        len: best,
+        paragraph_byte_start: candidate[best_end + 1 - best].0,
+    }
 }
 
 /// Shared-run length at which a paragraph is treated as spoken aloud.
@@ -461,12 +485,13 @@ pub(crate) fn detect_egw_quotes(
         .into_iter()
         .filter_map(|paragraph| {
             let run = longest_shared_content_run(text, &paragraph.text);
-            let scored = egw_quote_score(run, cue_active);
+            let scored = egw_quote_score(run.len, cue_active);
             log::debug!(
-                "[DET-EGW-QUOTE] candidate {} p.{} par.{} run={run} cue={cue_active} verdict={}",
+                "[DET-EGW-QUOTE] candidate {} p.{} par.{} run={} cue={cue_active} verdict={}",
                 paragraph.book_title,
                 paragraph.page,
                 paragraph.page_paragraph,
+                run.len,
                 match scored {
                     Some((confidence, auto_queued)) =>
                         format!("{:.0}% auto_q={auto_queued}", confidence * 100.0),
@@ -478,6 +503,7 @@ pub(crate) fn detect_egw_quotes(
             result.source = "semantic".to_string();
             result.rank_score = confidence;
             result.auto_queued = auto_queued;
+            result.match_char_start = Some(run.paragraph_byte_start);
             Some(result)
         })
         .collect()
@@ -929,7 +955,7 @@ mod quote_run_tests {
         let spoken = "the history of the great conflict between christ and satan";
         let paragraph =
             "the history of the great conflict between christ and satan began in heaven";
-        assert_eq!(longest_shared_content_run(spoken, paragraph), 6);
+        assert_eq!(longest_shared_content_run(spoken, paragraph).len, 6);
     }
 
     #[test]
@@ -937,21 +963,21 @@ mod quote_run_tests {
         // "of"/"the" are dropped before the run is measured, so they cannot split it.
         let spoken = "history of great conflict";
         let paragraph = "history the great conflict";
-        assert_eq!(longest_shared_content_run(spoken, paragraph), 3);
+        assert_eq!(longest_shared_content_run(spoken, paragraph).len, 3);
     }
 
     #[test]
     fn out_of_order_shared_words_do_not_count_as_a_run() {
         let spoken = "conflict great history";
         let paragraph = "history great conflict";
-        assert_eq!(longest_shared_content_run(spoken, paragraph), 1);
+        assert_eq!(longest_shared_content_run(spoken, paragraph).len, 1);
     }
 
     #[test]
     fn disjoint_vocabulary_has_no_run() {
         let spoken = "quantum mechanics lecture";
         let paragraph = "history great conflict";
-        assert_eq!(longest_shared_content_run(spoken, paragraph), 0);
+        assert_eq!(longest_shared_content_run(spoken, paragraph).len, 0);
     }
 
     #[test]
@@ -966,14 +992,14 @@ mod quote_run_tests {
         let spliced =
             "the shepherd does not remain in the fold waiting for the wandering sheep to return";
 
-        assert_eq!(longest_shared_content_run(interrupted, paragraph), 4);
-        assert_eq!(longest_shared_content_run(spliced, paragraph), 8);
+        assert_eq!(longest_shared_content_run(interrupted, paragraph).len, 4);
+        assert_eq!(longest_shared_content_run(spliced, paragraph).len, 8);
     }
 
     #[test]
     fn empty_inputs_have_no_run() {
-        assert_eq!(longest_shared_content_run("", "history great conflict"), 0);
-        assert_eq!(longest_shared_content_run("history great conflict", ""), 0);
+        assert_eq!(longest_shared_content_run("", "history great conflict").len, 0);
+        assert_eq!(longest_shared_content_run("history great conflict", "").len, 0);
     }
 
     #[test]
@@ -981,6 +1007,31 @@ mod quote_run_tests {
         let paragraph = "The shepherd does not remain in the fold waiting for the wandering sheep to return of itself, but he goes forth into the wilderness.";
         let opposite = "The shepherd does remain in the fold waiting for the wandering sheep to return of itself, but he goes forth into the wilderness.";
 
-        assert_eq!(longest_shared_content_run(opposite, paragraph), 0);
+        assert_eq!(longest_shared_content_run(opposite, paragraph).len, 0);
+    }
+
+    #[test]
+    fn shared_run_reports_where_in_the_paragraph_the_quote_starts() {
+        let paragraph = "Balaam loved the wages of unrighteousness. The sin of covetousness \
+                         had made him a timeserver. Many flatter themselves that they can depart \
+                         from strict integrity for a time, for the sake of some worldly advantage.";
+        let window = "many flatter themselves that they can depart from strict integrity";
+
+        let run = longest_shared_content_run(window, paragraph);
+
+        assert!(run.len >= 6, "expected a strong run, got {}", run.len);
+        let tail = &paragraph[run.paragraph_byte_start..];
+        assert!(
+            tail.starts_with("Many flatter themselves"),
+            "anchor should land on the quoted sentence, landed on {:?}",
+            &tail[..tail.len().min(40)]
+        );
+    }
+
+    #[test]
+    fn shared_run_anchor_is_zero_when_nothing_matches() {
+        let run = longest_shared_content_run("completely unrelated speech", "Balaam loved the wages.");
+        assert_eq!(run.len, 0);
+        assert_eq!(run.paragraph_byte_start, 0);
     }
 }

@@ -94,6 +94,33 @@ pub(crate) fn build_phrase_query(input: &str) -> String {
     format!("\"{trimmed}\"")
 }
 
+/// Minimum terms in a phrase span. Below four, common word runs
+/// ("and he said unto") match hundreds of verses and pollute the pool.
+const MIN_PHRASE_SPAN_TERMS: usize = 4;
+/// Upper bound on SQL round trips added by the phrase tier.
+const MAX_PHRASE_SPANS: usize = 8;
+
+/// Quoted phrase queries for the input, longest first, each anchored at the
+/// end of the window.
+///
+/// The live window slides forward as the speaker talks, so a quotation is
+/// finished at the window's tail while its head still holds framing prose
+/// ("...and he's saying, maybe it was for such a time as this"). Trying only
+/// the whole window means the phrase tier never fires on such quotes; trying
+/// every substring costs O(n^2) SQL round trips. End-anchored spans cost at
+/// most `MAX_PHRASE_SPANS` and catch the case that actually occurs.
+pub(crate) fn build_phrase_spans(input: &str) -> Vec<String> {
+    let terms: Vec<&str> = query_terms(input).collect();
+    if terms.len() < MIN_PHRASE_SPAN_TERMS {
+        return Vec::new();
+    }
+    (MIN_PHRASE_SPAN_TERMS..=terms.len())
+        .rev()
+        .take(MAX_PHRASE_SPANS)
+        .map(|len| format!("\"{}\"", terms[terms.len() - len..].join(" ")))
+        .collect()
+}
+
 /// AND query with stop words removed — all significant words must be present.
 /// `"be doers of the word"` → `doers word` (finds James 1:22).
 /// Capped at 12 terms to prevent expensive queries on long text.
@@ -155,21 +182,25 @@ fn run_fts_query(
     fts_query: &str,
     limit: usize,
     is_broad_match: bool,
+    book_hint: Option<i32>,
 ) -> Result<Vec<Bm25Result>, BibleError> {
     if fts_query.is_empty() {
         return Ok(vec![]);
     }
+    // `?3 IS NULL` makes the filter inert when no book was named, so hinted
+    // and unhinted queries share one prepared statement and one plan.
     let mut stmt = conn.prepare(
         "SELECT bm25(verses_fts) as rank, v.book_number, v.book_name, v.chapter, v.verse, v.text \
          FROM verses_fts fts \
          JOIN verses v ON v.rowid = fts.rowid \
          JOIN translations t ON t.id = v.translation_id \
          WHERE fts.text MATCH ?1 AND t.is_copyrighted = 0 AND t.is_downloaded = 1 \
+           AND (?3 IS NULL OR v.book_number = ?3) \
          ORDER BY rank \
          LIMIT ?2",
     )?;
     let rows = stmt.query_map(
-        rusqlite::params![fts_query, limit as i64],
+        rusqlite::params![fts_query, limit as i64, book_hint],
         |row: &rusqlite::Row| {
             Ok(Bm25Result {
                 rank: row.get(0)?,
@@ -280,18 +311,31 @@ impl BibleDb {
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 
-    /// Search verses using FTS5 with BM25 ranking across unlocked translations.
-    ///
-    /// Three-tier strategy with stop-word filtering for speed:
-    /// 1. **Phrase** — exact substring match (~5ms)
-    /// 2. **AND** — all significant words present, stop words removed (~5-20ms)
-    /// 3. **OR** — any significant word matches, capped at 10 terms (~10-30ms)
-    ///
-    /// Results are deduplicated by verse reference across translations.
+    /// Unscoped search. Retained so existing callers and tests are unaffected.
     pub fn search_verses_bm25(
         &self,
         query: &str,
         limit: usize,
+    ) -> Result<Vec<Bm25Result>, BibleError> {
+        self.search_verses_bm25_scoped(query, limit, None)
+    }
+
+    /// Search verses using FTS5 with BM25 ranking across unlocked translations.
+    ///
+    /// Three-tier strategy with stop-word filtering for speed:
+    /// 1. **Phrase** — end-anchored exact substring spans, longest first (~5ms)
+    /// 2. **AND** — all significant words present, stop words removed (~5-20ms)
+    /// 3. **OR** — any significant word matches, capped at 10 terms (~10-30ms)
+    ///
+    /// When `book_hint` is `Some`, every tier is restricted to that book number
+    /// so a spoken book name scopes retrieval instead of becoming a text term.
+    ///
+    /// Results are deduplicated by verse reference across translations.
+    pub fn search_verses_bm25_scoped(
+        &self,
+        query: &str,
+        limit: usize,
+        book_hint: Option<i32>,
     ) -> Result<Vec<Bm25Result>, BibleError> {
         let conn = self
             .conn
@@ -304,13 +348,21 @@ impl BibleDb {
         // itself is available in debug builds via the gated app-layer
         // `[DET-SEMANTIC] Running on:` line.
 
-        // Tier 1: Exact phrase match
-        let phrase = build_phrase_query(query);
+        // Tier 1: Exact phrase match, end-anchored spans longest first.
+        // Stops at the first span that returns rows — a longer verbatim match
+        // is always the better evidence, so there is nothing to gain by
+        // continuing to shorter spans once one has hit.
         log::debug!(
             "[FTS5-BM25] phrase tier: {} terms",
             query_terms(query).count()
         );
-        let mut all_results = run_fts_query(&conn, &phrase, fetch_limit, false)?;
+        let mut all_results = Vec::new();
+        for span in build_phrase_spans(query) {
+            all_results = run_fts_query(&conn, &span, fetch_limit, false, book_hint)?;
+            if !all_results.is_empty() {
+                break;
+            }
+        }
 
         // Tier 2: AND with stop words filtered (~5-20ms)
         if dedup_count(&all_results) < limit {
@@ -320,7 +372,13 @@ impl BibleDb {
                     "[FTS5-BM25] AND tier: {} terms",
                     and_q.split_whitespace().count()
                 );
-                all_results.extend(run_fts_query(&conn, &and_q, fetch_limit, false)?);
+                all_results.extend(run_fts_query(
+                    &conn,
+                    &and_q,
+                    fetch_limit,
+                    false,
+                    book_hint,
+                )?);
             }
         }
 
@@ -332,7 +390,13 @@ impl BibleDb {
                     "[FTS5-BM25] OR tier: {} terms",
                     or_q.matches(" OR ").count() + 1
                 );
-                all_results.extend(run_fts_query(&conn, &or_q, fetch_limit, true)?);
+                all_results.extend(run_fts_query(
+                    &conn,
+                    &or_q,
+                    fetch_limit,
+                    true,
+                    book_hint,
+                )?);
             }
         }
 
@@ -413,6 +477,22 @@ mod tests {
 
     fn bm25(rank: f64, book_number: i32, chapter: i32, verse: i32) -> Bm25Result {
         bm25_with_broad_match(rank, book_number, chapter, verse, false)
+    }
+
+    #[test]
+    fn phrase_spans_are_end_anchored_longest_first() {
+        let spans = build_phrase_spans("he was saying such a time as this");
+        assert_eq!(spans[0], "\"he was saying such a time as this\"");
+        assert_eq!(spans[1], "\"was saying such a time as this\"");
+        assert!(spans.contains(&"\"such a time as this\"".to_string()));
+        // Never emits a span shorter than the minimum.
+        assert!(spans.iter().all(|s| s.split_whitespace().count() >= 4));
+    }
+
+    #[test]
+    fn phrase_spans_are_bounded_and_skip_short_input() {
+        assert!(build_phrase_spans("only three words").is_empty());
+        assert!(build_phrase_spans(&"word ".repeat(60)).len() <= 8);
     }
 
     #[test]

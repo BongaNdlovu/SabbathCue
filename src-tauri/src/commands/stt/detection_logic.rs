@@ -89,6 +89,43 @@ pub(crate) fn strip_reference_scaffolding(text: &str) -> String {
     out.join(" ")
 }
 
+/// Book number when the window names exactly one book without a complete
+/// chapter:verse reference. Returns `None` when no book is named, when several
+/// are (e.g. "Malachi … Esther …"), or when a complete reference is present —
+/// complete refs are owned by the direct path.
+///
+/// Uses `BookMatcher` + `parse_reference`, not `DirectDetector::detect`: bare
+/// book names are held incomplete and never emitted as detections
+/// (`direct/detector.rs` incomplete-ref path).
+pub(crate) fn spoken_book_hint(transcript: &str) -> Option<i32> {
+    use std::sync::LazyLock;
+
+    use rhema_detection::direct::automaton::BookMatcher;
+    use rhema_detection::direct::parser::parse_reference;
+
+    static MATCHER: LazyLock<BookMatcher> = LazyLock::new(BookMatcher::new);
+    let matches = MATCHER.find_books(transcript);
+    if matches.is_empty() {
+        return None;
+    }
+    let mut books: Vec<i32> = matches.iter().map(|m| m.book_number).collect();
+    books.sort_unstable();
+    books.dedup();
+    if books.len() != 1 {
+        return None;
+    }
+    let book = books[0];
+    for book_match in &matches {
+        if let Some(vr) = parse_reference(transcript, book_match) {
+            if vr.verse_start > 0 {
+                // Complete reference — direct path owns it.
+                return None;
+            }
+        }
+    }
+    Some(book)
+}
+
 /// True when the transcript window is an explicit scripture reference or a
 /// voice/reading command that the direct + command paths already handle.
 ///

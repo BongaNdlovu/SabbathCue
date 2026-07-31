@@ -23,6 +23,10 @@ pub struct DetectionResult {
     /// True when detected from a chapter-only reference (verse defaults to 1, may be refined).
     pub is_chapter_only: bool,
     pub egw_paragraph: Option<EgwParagraph>,
+    /// UTF-8 byte offset into `verse_text` where the spoken quote begins (EGW).
+    /// `None` for Bible detections and for EGW hits without a measured run.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub match_char_start: Option<usize>,
 }
 
 fn source_to_string(source: &rhema_detection::DetectionSource) -> String {
@@ -92,6 +96,7 @@ pub fn to_result(state: &AppState, merged: &MergedDetection) -> DetectionResult 
         transcript_snippet: merged.detection.transcript_snippet.clone(),
         is_chapter_only: merged.detection.is_chapter_only,
         egw_paragraph: None,
+        match_char_start: None,
     }
 }
 
@@ -120,6 +125,7 @@ pub(super) fn egw_to_result(
         transcript_snippet: transcript_snippet.to_string(),
         is_chapter_only: false,
         egw_paragraph: Some(paragraph),
+        match_char_start: None,
     }
 }
 

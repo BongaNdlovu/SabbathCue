@@ -19,11 +19,6 @@ const FTS5_CONFIDENCE_DECAY: f64 = 0.04;
 const FTS5_EXCELLENT_MATCH_RANK: f64 = -24.0;
 const FTS5_EXCELLENT_MATCH_CONFIDENCE: f64 = 0.92;
 
-/// Strong multi-term OR matches may surface for operator review, but broad
-/// evidence alone never earns live confidence.
-const FTS5_STRONG_BROAD_HINT_RANK: f64 = -13.0;
-const FTS5_STRONG_BROAD_HINT_CONFIDENCE: f64 = 0.70;
-
 /// FTS5 results below this confidence are not included.
 const FTS5_MIN_CONFIDENCE: f64 = 0.50;
 
@@ -428,18 +423,32 @@ pub fn content_words(text: &str) -> impl Iterator<Item = String> + '_ {
         .map(str::to_lowercase)
 }
 
+/// `content_words` paired with each word's byte offset in the source text.
+/// Filtering and lowercasing must stay identical to `content_words` — callers
+/// rely on the two producing the same sequence.
+pub fn content_words_indexed(text: &str) -> impl Iterator<Item = (usize, String)> + '_ {
+    text.split(|c: char| !c.is_alphanumeric())
+        .filter(|word| word.len() >= QUOTE_OVERLAP_MIN_WORD_LEN)
+        .map(move |word| {
+            let offset = word.as_ptr() as usize - text.as_ptr() as usize;
+            (offset, word.to_lowercase())
+        })
+}
+
 #[expect(clippy::cast_precision_loss, reason = "rank index is small")]
 fn fts_confidence(rank: usize, bm25_rank: f64, is_broad_match: bool) -> f64 {
     let rank_confidence = FTS5_RANK0_CONFIDENCE - (rank as f64 * FTS5_CONFIDENCE_DECAY);
+    // Excellent phrase/AND matches only — broad OR hits never get the quote floor.
     if bm25_rank <= FTS5_EXCELLENT_MATCH_RANK && !is_broad_match {
         rank_confidence.max(FTS5_EXCELLENT_MATCH_CONFIDENCE)
-    } else if bm25_rank <= FTS5_STRONG_BROAD_HINT_RANK && is_broad_match {
-        rank_confidence.max(FTS5_STRONG_BROAD_HINT_CONFIDENCE)
     } else {
-        // Keyword-band matches keep their honest rank-derived confidence instead
-        // of being floored up to a fixed "strong" score. Otherwise scattered
-        // common-word hits masquerade as confident detections and flood the live
-        // panel regardless of the operator's semantic threshold.
+        // Keyword-band and broad matches keep their honest rank-derived
+        // confidence instead of being floored up to a fixed "strong" score.
+        // The broad floor was 0.70 against a rank-0 ceiling of 0.68, so it
+        // fired at every rank and flattened the whole pool to one value —
+        // 25 distinct verses reported identical confidence in a live sermon,
+        // and nothing downstream could order them.
+        let _ = is_broad_match;
         rank_confidence
     }
 }
@@ -1043,6 +1052,40 @@ mod tests {
     }
 
     #[test]
+    fn content_words_indexed_matches_content_words_sequence() {
+        let text = "History, great conflict — between Christ & Satan.";
+        let plain: Vec<String> = content_words(text).collect();
+        let indexed: Vec<String> = content_words_indexed(text).map(|(_, w)| w).collect();
+        assert_eq!(indexed, plain);
+        let offsets: Vec<usize> = content_words_indexed(text).map(|(o, _)| o).collect();
+        assert!(offsets.windows(2).all(|w| w[0] < w[1]));
+    }
+
+    #[test]
+    fn broad_matches_keep_their_rank_ordering() {
+        // The old broad floor collapsed every strong OR hit to exactly 0.70.
+        let first = fts_confidence(0, -20.0, true);
+        let second = fts_confidence(1, -20.0, true);
+        let third = fts_confidence(2, -20.0, true);
+
+        assert!(
+            first > second,
+            "rank 0 must outscore rank 1: {first} vs {second}"
+        );
+        assert!(
+            second > third,
+            "rank 1 must outscore rank 2: {second} vs {third}"
+        );
+    }
+
+    #[test]
+    fn broad_evidence_alone_does_not_reach_the_default_operator_threshold() {
+        // Broad OR-tier evidence may surface for review but must not read as a
+        // confident detection at the 0.70 default.
+        assert!(fts_confidence(0, -24.0, true) < 0.70);
+    }
+
+    #[test]
     fn test_pipeline_hybrid_drops_weak_fts_below_rank_floor() {
         let mut pipeline = DetectionPipeline::new();
         let fts_results = vec![
@@ -1171,8 +1214,11 @@ mod tests {
             "partial quote must surface as a candidate"
         );
         let confidence = results[0].detection.confidence;
+        // Partial quotes may earn overlap boost; broad floor is gone so pure
+        // rank confidence alone sits below 0.70. Keep the upper bound so this
+        // never auto-fires as a high-confidence live hit.
         assert!(
-            (0.70..0.90).contains(&confidence),
+            (0.50..0.90).contains(&confidence),
             "partial quote is a hint, not a live fire (got {confidence:.2})"
         );
     }
@@ -1393,6 +1439,12 @@ mod tests {
     #[test]
     fn strong_broad_paraphrase_surfaces_only_as_review_hint() {
         let mut pipeline = DetectionPipeline::new();
+        // After floor removal, rank-0 broad is 0.68 — below the default 0.70
+        // operator threshold by design (see broad_evidence_alone_does_not_reach…).
+        // Lower the review slider so the honest score is still visible.
+        pipeline
+            .merger_mut()
+            .set_semantic_confidence_threshold(0.60);
         let fts_results = vec![Bm25Result {
             book_number: 42,
             book_name: "Luke".to_string(),
@@ -1412,9 +1464,35 @@ mod tests {
             .find(|result| result.detection.verse_ref.book_number == 42)
             .expect("a strong broad match must remain visible for operator review");
 
+        // Honest rank-derived confidence: review band, not live-fire.
         assert!(
-            (0.70..0.90).contains(&luke.detection.confidence),
-            "a broad paraphrase is a review hint, not a live fire: {luke:?}"
+            (0.50..0.70).contains(&luke.detection.confidence),
+            "a broad paraphrase is a review hint below the 0.70 default: {luke:?}"
+        );
+    }
+
+    #[test]
+    fn strong_broad_paraphrase_stays_hidden_at_default_operator_threshold() {
+        let mut pipeline = DetectionPipeline::new();
+        let fts_results = vec![Bm25Result {
+            book_number: 42,
+            book_name: "Luke".to_string(),
+            chapter: 10,
+            verse: 2,
+            rank: -20.460,
+            is_broad_match: true,
+            text: "Then he said to them, The harvest is indeed plentiful, but the laborers are few. Pray therefore to the Lord of the harvest, that he may send out laborers into his harvest.".to_string(),
+        }];
+
+        let results = pipeline.process_hybrid_with_fts(
+            "Is the harvest ready? What is the problem? The laborers. The harvest is all around us.",
+            &fts_results,
+        );
+        assert!(
+            results
+                .iter()
+                .all(|r| r.detection.verse_ref.book_number != 42),
+            "broad-only evidence must not clear the default 0.70 threshold without quote overlap"
         );
     }
 }

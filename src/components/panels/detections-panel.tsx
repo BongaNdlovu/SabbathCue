@@ -82,6 +82,34 @@ function isHymnDetection(
   return detection.content_type === "hymn" && Boolean(detection.hymn)
 }
 
+/** Emphasize the spoken EGW sentence when an anchor offset is present. */
+function DetectionQuoteText({ detection }: { detection: DetectionResult }) {
+  const text = detection.verse_text
+  const start = detection.match_char_start
+  if (
+    start == null ||
+    start < 0 ||
+    start >= text.length ||
+    detection.content_type !== "egw"
+  ) {
+    return <>{text}</>
+  }
+  // Offset is a UTF-8 byte index from Rust; for BMP/Latin text (EGW) byte===code unit.
+  const before = text.slice(0, start)
+  const rest = text.slice(start)
+  const sentenceEnd = rest.search(/[.!?](?:\s|$)/)
+  const emphasisLen = sentenceEnd >= 0 ? sentenceEnd + 1 : Math.min(rest.length, 160)
+  const emphasis = rest.slice(0, emphasisLen)
+  const after = rest.slice(emphasisLen)
+  return (
+    <>
+      {before}
+      <span className="font-medium text-foreground">{emphasis}</span>
+      {after}
+    </>
+  )
+}
+
 function HymnDetectionCard({
   detection,
 }: {
@@ -269,7 +297,7 @@ function DetectionCard({ detection }: { detection: DetectionResult }) {
 
       {detection.verse_text && (
         <p className="mt-1 line-clamp-2 text-sm leading-relaxed text-muted-foreground">
-          {detection.verse_text}
+          <DetectionQuoteText detection={detection} />
         </p>
       )}
 
