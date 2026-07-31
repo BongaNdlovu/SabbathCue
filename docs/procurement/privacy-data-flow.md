@@ -1,21 +1,25 @@
 # SabbathCue Privacy & Data Flow
 
-**Version:** 0.1.3  
-**Last updated:** 2026-05-24
+**Version:** 0.1.9  
+**Last updated:** 2026-07-31
 
 ## Data inventory
 
-| Data type         | Storage location                                            | Network transmission                                                   | Notes                                                           |
-| ----------------- | ----------------------------------------------------------- | ---------------------------------------------------------------------- | --------------------------------------------------------------- |
-| Audio input       | RAM only                                                    | None in local Vosk mode / Deepgram or Gladia cloud mode                | Not intentionally written to disk by the app                    |
-| Transcripts       | RAM and UI state during the active session                  | None in local Vosk mode / cloud STT response stream                    | Cleared through transcript/session controls or app close        |
-| Bible database    | Bundled `rhema.db` resource, or development `data/rhema.db` | None during normal app operation                                       | Built during setup/release from source data                     |
-| Deepgram API key  | OS keychain                                                 | Sent to Deepgram only when Deepgram mode is used                       | Never intentionally stored in plaintext app settings            |
-| HTTP bearer token | OS keychain                                                 | Sent by local clients in the `Authorization` header over loopback HTTP | Generated locally; used to authenticate remote-control requests |
-| Service plans     | Local app data/settings storage                             | None                                                                   | User-created local files/data                                   |
-| Settings          | Local app data/settings storage                             | None                                                                   | Includes non-secret preferences                                 |
-| Detection models  | App resources or local `models/` directory                  | None during normal operation                                           | ONNX and Vosk model files run locally                           |
-| Embeddings        | App resources or local `embeddings/` directory              | None during normal operation                                           | Pre-computed verse vectors                                      |
+| Data type            | Storage location                                            | Network transmission                                                   | Notes                                                                    |
+| -------------------- | ----------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Audio input          | RAM only                                                    | None in local Vosk mode / cloud STT provider when selected             | Not intentionally written to disk by the app                             |
+| Transcripts          | RAM and UI state during the active session                  | None in local Vosk mode / cloud STT response stream                    | Cleared through transcript/session controls or app close                 |
+| Transcript snippets  | RAM only                                                    | A single phrase (max 500 characters) to DeepSeek when AI ranking is on | Off by default; never the rolling transcript. See "AI candidate ranking" |
+| Bible database       | Bundled `rhema.db` resource, or development `data/rhema.db` | None during normal app operation                                       | Built during setup/release from source data                              |
+| Deepgram API key     | OS keychain                                                 | Sent to Deepgram only when Deepgram mode is used                       | Never intentionally stored in plaintext app settings                     |
+| Soniox API key       | OS keychain                                                 | Sent to Soniox only when Soniox mode is used                           | Never intentionally stored in plaintext app settings                     |
+| Speechmatics API key | OS keychain                                                 | Sent to Speechmatics only when Speechmatics mode is used               | Never intentionally stored in plaintext app settings                     |
+| DeepSeek API key     | OS keychain                                                 | Sent to DeepSeek only when AI candidate ranking is enabled             | Read only by the Rust backend; never exposed to the WebView              |
+| HTTP bearer token    | OS keychain                                                 | Sent by local clients in the `Authorization` header over loopback HTTP | Generated locally; used to authenticate remote-control requests          |
+| Service plans        | Local app data/settings storage                             | None                                                                   | User-created local files/data                                            |
+| Settings             | Local app data/settings storage                             | None                                                                   | Includes non-secret preferences and feature toggles                      |
+| Detection models     | App resources or local `models/` directory                  | None during normal operation                                           | ONNX and Vosk model files run locally                                    |
+| Embeddings           | App resources or local `embeddings/` directory              | None during normal operation                                           | Pre-computed verse vectors                                               |
 
 ## Network flows
 
@@ -26,11 +30,68 @@
 
 ### Cloud STT modes (opt-in)
 
-- Audio -> Deepgram WebSocket (`wss://api.deepgram.com`) -> transcript -> UI
-- REST fallback may upload buffered audio windows if WebSocket transcription fails
-- Requires a Deepgram API key stored in the OS keychain
-- Audio -> Gladia live session (`https://api.gladia.io`) -> transcript -> UI
-- Requires a Gladia API key stored in the OS keychain
+Exactly one STT provider is active at a time, chosen by the operator in
+Settings -> Speech Recognition. Each requires the operator's own API key,
+stored in the OS keychain.
+
+- Audio -> Deepgram WebSocket (`wss://api.deepgram.com/v1/listen`) -> transcript -> UI
+  - A REST fallback may upload buffered audio windows if WebSocket transcription fails
+- Audio -> Soniox WebSocket (`wss://stt-rt.soniox.com/transcribe-websocket`) -> transcript -> UI
+- Audio -> Speechmatics WebSocket (`wss://eu2.rt.speechmatics.com/v2`) -> transcript -> UI
+
+Gladia was evaluated in earlier versions and has been removed. Persisted
+settings naming Gladia migrate to local Vosk on load.
+
+### AI candidate ranking (opt-in, off by default)
+
+An optional feature that helps disambiguate _indirect_ spoken references
+(for example, "the passage where Paul and Silas sang in prison") when local
+detection surfaces several plausible passages.
+
+- Short transcript phrase + shortlisted references -> DeepSeek
+  (`https://api.deepseek.com/chat/completions`) -> single-letter choice -> UI badge
+- Key validation only: `GET https://api.deepseek.com/models`
+
+#### What is transmitted
+
+- One transcript phrase, hard-truncated to 500 characters
+- Up to 5 candidate references already found locally, each an 80-character
+  summary (reference plus the opening of the verse text)
+- The operator's DeepSeek API key as a bearer token
+
+#### What is never transmitted
+
+- The rolling or full-service transcript
+- Audio of any kind
+- Service plans, settings, church identity, or operator identity
+- Any installation or device identifier
+
+#### Trigger conditions
+
+A request is made only when _all_ of the following
+hold: the feature toggle is on, a key is configured, the current detection
+batch contains two or more ambiguous semantic candidates, and no explicit
+reference already passed the operator's confidence threshold. Ordinary
+spoken references such as "John chapter three verse sixteen" are resolved
+entirely locally and produce no outbound traffic.
+
+**Response handling.** The model returns a single character identifying one
+of the supplied candidates, or an abstention. It cannot return scripture
+text, and the displayed verse is always read from the local Bible database.
+The result is advisory: it marks a suggestion badge in the operator's panel
+and never changes what is sent to the projector.
+
+**Data handling by the provider.** DeepSeek's published privacy policy
+states that submitted input may be used to provide and improve its
+services, that its services are not intended for sensitive personal data
+(a category that expressly includes information revealing religious
+beliefs), and that data may be processed and stored in the People's
+Republic of China. Because sermon speech can incidentally contain personal
+information, this feature ships **disabled by default** and is limited to a
+single short phrase per request. Organisations with data-residency
+obligations, or any policy against transferring congregational content
+abroad, should leave AI candidate ranking switched off; all detection
+features continue to operate without it.
 
 ### Setup-time downloads
 
@@ -47,24 +108,61 @@
 
 - Audio: held in memory during active transcription
 - Transcripts: held in application state for the active session
+- Transcript snippets sent for AI ranking: held in memory for the duration of the request only; retention beyond that point is governed by the provider's policy
 - Service plans and settings: persisted locally until removed by the user or application cleanup
 - API keys and HTTP tokens: persisted in the OS keychain until removed or rotated
 - No server-side SabbathCue storage, cloud sync, analytics database, or telemetry pipeline
 
 ## Third-party dependencies
 
-| Dependency   | Purpose                | Data shared                                              |
-| ------------ | ---------------------- | -------------------------------------------------------- |
-| Vosk         | Local worker STT       | Audio stays on the local machine                         |
-| Deepgram     | Optional cloud STT     | Audio stream and API key when enabled                    |
-| Gladia       | Optional cloud STT     | Audio stream and API key when enabled                    |
-| LibreOffice  | Optional PPTX-to-PDF   | Deck file stays on the local machine                     |
-| ONNX Runtime | Local ML inference     | None                                                     |
-| SQLite       | Local Bible database   | None                                                     |
-| NDI SDK      | Video broadcast output | Video frames to configured local/broadcast NDI consumers |
+| Dependency   | Purpose                       | Data shared                                                                                        |
+| ------------ | ----------------------------- | -------------------------------------------------------------------------------------------------- |
+| Vosk         | Local worker STT              | Audio stays on the local machine                                                                   |
+| Deepgram     | Optional cloud STT            | Audio stream and API key when enabled                                                              |
+| Soniox       | Optional cloud STT            | Audio stream and API key when enabled                                                              |
+| Speechmatics | Optional cloud STT            | Audio stream and API key when enabled                                                              |
+| DeepSeek     | Optional AI candidate ranking | One <=500-character transcript phrase, up to 5 local candidate summaries, and API key when enabled |
+| LibreOffice  | Optional PPTX-to-PDF          | Deck file stays on the local machine                                                               |
+| ONNX Runtime | Local ML inference            | None                                                                                               |
+| SQLite       | Local Bible database          | None                                                                                               |
+| NDI SDK      | Video broadcast output        | Video frames to configured local/broadcast NDI consumers                                           |
+
+## Operator controls
+
+| Control                        | Location                       | Default      |
+| ------------------------------ | ------------------------------ | ------------ |
+| STT provider (local vs. cloud) | Settings -> Speech Recognition | Vosk (local) |
+| AI candidate ranking on/off    | Settings -> AI Ranking         | Off          |
+| DeepSeek API key add/remove    | Settings -> AI Ranking         | Not set      |
+| Remove any stored key          | Respective settings section    | n/a          |
+
+Removing the DeepSeek key also switches the ranking toggle off, so the
+feature cannot be left in a state that reports as active without
+credentials.
 
 ## Compliance notes
 
-- **GDPR**: SabbathCue is local-first and does not operate a cloud account system or telemetry backend.
+- **GDPR**: SabbathCue is local-first and does not operate a cloud account system or telemetry backend. Where an optional cloud provider is enabled, the operating organisation is the controller for the content it chooses to transmit, and the selected provider is the processor. AI candidate ranking involves a transfer outside the EEA/UK and should be assessed before enabling in jurisdictions where that matters.
 - **HIPAA**: Not applicable; SabbathCue is not a healthcare application.
 - **SOC 2**: Not certified; this document provides self-attested evidence for buyer evaluation.
+
+## Verification status
+
+The transmission limits described above are enforced in code and covered by
+automated tests:
+
+| Claim                                              | Enforced at                                                     | Test evidence                                                     |
+| -------------------------------------------------- | --------------------------------------------------------------- | ----------------------------------------------------------------- |
+| Transcript truncated to 500 characters             | `src-tauri/src/commands/deepseek.rs` (`build_request_body`)     | `request_body_clamps_inputs_and_pins_speed_config`                |
+| At most 5 candidates, each summary <=80 characters | `src-tauri/src/commands/deepseek.rs` (`build_request_body`)     | `request_body_clamps_inputs_and_pins_speed_config`                |
+| Model can only select a supplied candidate         | `src-tauri/src/commands/deepseek.rs` (`letter_to_candidate_id`) | `letters_map_back_to_supplied_candidate_ids_only`                 |
+| Unexpected model output abstains rather than acts  | `src-tauri/src/commands/deepseek.rs` (`SseLetterScanner`)       | `scanner_abstains_on_unexpected_content`, `scanner_abstains_on_n` |
+| Feature off by default                             | `src/stores/settings-store.ts`                                  | `deepseek ranking defaults off with no key configured`            |
+| Ranking never influences what is projected         | `src/lib/verse-detection-workflow.ts`                           | `does not influence which detection is previewed`                 |
+| Key presence read from keychain, never from disk   | `src/stores/settings-store.ts` (`hydrateSettings`)              | `hydrates DeepSeek key presence from the keychain, not from disk` |
+
+**Not yet verified:** the live DeepSeek request path has not been exercised
+against the production API. The request construction, response parsing,
+gating, and failure handling are covered by automated tests, but no
+end-to-end call with a real API key has been recorded. Latency figures for
+the feature are therefore not yet published.

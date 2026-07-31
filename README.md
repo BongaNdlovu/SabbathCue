@@ -37,7 +37,7 @@ Local builds create an unsigned NSIS installer; official release CI uses
 
 ## Features
 
-- **Real-time speech-to-text** via local Vosk or cloud Deepgram/Soniox
+- **Real-time speech-to-text** via local Vosk or cloud Deepgram/Soniox/Speechmatics
   - Vosk runs locally with no API costs; cloud providers stream through their live APIs
 - **Voice-controlled translation switching** — say "read in NIV" or "switch to ESV" to change translations instantly during a sermon
 - **Multi-strategy verse detection**
@@ -46,6 +46,7 @@ Local builds create an unsigned NSIS installer; official release CI uses
   - Quotation matching against known verse text
   - Reading mode — locks to book/chapter as soon as it's mentioned, with voice navigation ("next chapter", "chapter 5")
   - Sermon context tracking and sentence buffering
+- **AI candidate ranking (optional, off by default)** — when an indirect reference ("the passage where Paul and Silas sang in prison") leaves several plausible matches, DeepSeek picks the closest one from candidates already found locally. It returns a single choice, never scripture text, and only marks a suggestion badge — it never changes what is projected. Requires your own API key; see [AI candidate ranking](#ai-candidate-ranking-optional)
 - **SQLite Bible database** with FTS5 full-text search (BM25 ranking by default)
 - **Public-release translations** — KJV, WEB, SpaRV (Spanish), FreJND (French), and PorBLivre (Portuguese) ship in the free public installer. NIV, ESV, NASB, NKJV, NLT, and AMP are supported only for licensed/private builds or user-provided data.
 - **Cross-reference lookup** (340k+ refs from openbible.info; the bundled file ships with 344,800 entries)
@@ -72,14 +73,15 @@ Local builds create an unsigned NSIS installer; official release CI uses
 | **AI/ML**     | ONNX Runtime (MiniLM-L6-v2 embeddings), Aho-Corasick, Fuse.js     |
 | **Database**  | SQLite via rusqlite (bundled) with FTS5                           |
 | **Broadcast** | NDI 6 SDK via dynamic loading (libloading FFI)                    |
-| **STT**       | Local Vosk worker; Deepgram/Soniox streaming APIs                 |
+| **STT**       | Local Vosk worker; Deepgram/Soniox/Speechmatics streaming APIs    |
+| **Cloud AI**  | DeepSeek candidate ranking (optional, off by default)             |
 
 ### Rust Crates
 
 | Crate             | Purpose                                                                                                               |
 | ----------------- | --------------------------------------------------------------------------------------------------------------------- |
 | `rhema-audio`     | Audio device enumeration, capture, VAD (cpal)                                                                         |
-| `rhema-stt`       | Local Vosk STT plus Deepgram/Soniox cloud streaming                                                                   |
+| `rhema-stt`       | Local Vosk STT plus Deepgram/Soniox/Speechmatics cloud streaming                                                      |
 | `rhema-bible`     | SQLite Bible DB, FTS5 search, cross-references                                                                        |
 | `rhema-detection` | Verse detection pipeline: direct, semantic, quotation, ensemble merger, sentence buffer, sermon context, reading mode |
 | `rhema-broadcast` | NDI video frame output via FFI                                                                                        |
@@ -147,7 +149,8 @@ This runs 8 idempotent phases in sequence, skipping any whose output artifacts a
 
 #### Speech-to-Text Options
 
-SabbathCue supports three speech-to-text engines:
+SabbathCue supports four speech-to-text engines. Exactly one is active at a
+time, selected under **Settings → Speech Recognition**:
 
 **Option 1: Vosk (Local, Free, Default)**
 Vosk runs locally on your machine with no API costs or per-minute billing.
@@ -174,6 +177,43 @@ The key is stored in the OS keychain.
 3. Copy the key and paste it into the app under **Settings -> Speech Recognition** (Soniox).
 
 **Cost:** pay-as-you-go streaming; check current rates at [soniox.com/pricing](https://soniox.com/pricing).
+
+**Option 4: Speechmatics (Cloud, Paid — multilingual)**
+Supports Afrikaans, English, Spanish, French, Portuguese, and many more. The key is stored in the OS keychain.
+
+1. Create an account or sign in at [portal.speechmatics.com](https://portal.speechmatics.com).
+2. Open **API Keys** from your project or account navigation and generate a key named `SabbathCue`.
+3. Copy the complete key and keep it private.
+4. Paste it into the app under **Settings → Speech Recognition** (Speechmatics), save, then select **Test key**.
+
+**Cost:** a free monthly real-time allowance is currently available; paid usage follows current rates at [speechmatics.com/pricing](https://www.speechmatics.com/pricing).
+
+#### AI candidate ranking (optional)
+
+Off by default. This does **not** affect ordinary reference detection —
+"John chapter three verse sixteen" is resolved entirely on-device and makes
+no network call. Ranking only engages when an _indirect_ reference leaves
+two or more plausible local candidates and no explicit reference has already
+cleared your confidence threshold.
+
+1. Create an account at [platform.deepseek.com](https://platform.deepseek.com) and generate an API key.
+2. Paste it under **Settings → AI Ranking**, save, then select **Test key**.
+3. Switch on **AI candidate ranking**. The toggle stays disabled until a key is stored.
+
+**What is sent:** one transcript phrase (max 500 characters) and up to five
+candidate references SabbathCue already found locally. Never the rolling
+transcript, never audio. The model replies with a single character choosing
+one candidate, so it cannot return scripture text; the verse shown is always
+read from the local Bible database. The result is advisory — it marks a
+suggestion badge and never changes what is projected.
+
+**Before enabling:** review [docs/procurement/privacy-data-flow.md](docs/procurement/privacy-data-flow.md).
+DeepSeek's policy allows submitted input to be used for service improvement
+and permits processing in the People's Republic of China, which may not suit
+every organisation. Removing the key automatically switches the toggle off.
+
+**Cost:** pay-as-you-go; requests are small (a few hundred input tokens and
+at most 4 output tokens each). Current rates at [platform.deepseek.com](https://platform.deepseek.com).
 
 #### Account verification (Supabase)
 
@@ -331,12 +371,22 @@ bun run web:build
 
 SabbathCue enforces a restrictive Content Security Policy on the Tauri webview to prevent script injection and unauthorized data exfiltration. The policy is defined in `src-tauri/tauri.conf.json`; see **[SECURITY.md](.github/SECURITY.md)** for the directive-by-directive rationale, threat model, and vulnerability reporting process.
 
+API keys (Deepgram, Soniox, Speechmatics, DeepSeek) are stored in the OS
+keychain via the Rust `keyring` crate and are read only by the Rust backend —
+they are never returned to the webview, written to `settings.json`, or
+embedded in the shipped binary. Calls to those providers are issued from
+Rust, and none of their hosts appear in the webview's `connect-src`.
+
+For buyer-facing detail see
+[docs/procurement/security-overview.md](docs/procurement/security-overview.md)
+and [docs/procurement/privacy-data-flow.md](docs/procurement/privacy-data-flow.md).
+
 ## Environment Variables
 
 Create a `.env` file in the project root (optional):
 
-| Variable                 | Required | Description          |
-| ------------------------ | -------- | -------------------- |
-| `VITE_SUPABASE_URL`      | Yes      | Supabase project URL |
-| `VITE_SUPABASE_ANON_KEY` | Yes      | Supabase anon key    |
-| `VITE_ACTIVATION_LEASE_PUBLIC_KEY` | Yes | Public P-256 key used to verify 72-hour offline activation leases |
+| Variable                           | Required | Description                                                       |
+| ---------------------------------- | -------- | ----------------------------------------------------------------- |
+| `VITE_SUPABASE_URL`                | Yes      | Supabase project URL                                              |
+| `VITE_SUPABASE_ANON_KEY`           | Yes      | Supabase anon key                                                 |
+| `VITE_ACTIVATION_LEASE_PUBLIC_KEY` | Yes      | Public P-256 key used to verify 72-hour offline activation leases |

@@ -1,33 +1,38 @@
 # Codebase Map - SabbathCue
-Created: 2026-07-12 - Last verified: 2026-07-29 - Confidence: Medium
+
+Created: 2026-07-12 - Last verified: 2026-07-31 - Confidence: Medium
 
 ## 0 - Snapshot
-| Field | Value |
-|---|---|
-| Purpose (one line) | Desktop app for real-time sermon transcription, Bible/EGW/hymn detection, and broadcast overlays. Receipt: README.md:7, README.md:9 |
-| Primary language(s) / framework(s) | TypeScript/React frontend, Rust/Tauri backend. Receipt: package.json:83, package.json:127, src-tauri/Cargo.toml:55 |
-| Repo shape | App monorepo with web UI, Tauri shell, Rust crates, data/docs/landing collateral. Receipt: package.json:6, src-tauri/Cargo.toml:30, README.md:253 |
-| Entry points (count) | Vite app, Tauri app, Rust crates, landing/docs assets. Receipt: package.json:7, package.json:13, src-tauri/src/lib.rs:126 |
-| Persistence | Tauri keyring/store, Zustand stores, SQLite Bible/EGW database. Receipt: src-tauri/Cargo.toml:57, src-tauri/Cargo.toml:70, src-tauri/Cargo.toml:75 |
-| Deploy target | Tauri desktop app and public web/landing/docs content. Receipt: package.json:14, landing/index.html:544, web/content/docs/getting-started/speech-to-text.mdx:9 |
+
+| Field                              | Value                                                                                                                                                          |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Purpose (one line)                 | Desktop app for real-time sermon transcription, Bible/EGW/hymn detection, and broadcast overlays. Receipt: README.md:7, README.md:9                            |
+| Primary language(s) / framework(s) | TypeScript/React frontend, Rust/Tauri backend. Receipt: package.json:83, package.json:127, src-tauri/Cargo.toml:55                                             |
+| Repo shape                         | App monorepo with web UI, Tauri shell, Rust crates, data/docs/landing collateral. Receipt: package.json:6, src-tauri/Cargo.toml:30, README.md:253              |
+| Entry points (count)               | Vite app, Tauri app, Rust crates, landing/docs assets. Receipt: package.json:7, package.json:13, src-tauri/src/lib.rs:126                                      |
+| Persistence                        | Tauri keyring/store, Zustand stores, SQLite Bible/EGW database. Receipt: src-tauri/Cargo.toml:57, src-tauri/Cargo.toml:70, src-tauri/Cargo.toml:75             |
+| Deploy target                      | Tauri desktop app and public web/landing/docs content. Receipt: package.json:14, landing/index.html:544, web/content/docs/getting-started/speech-to-text.mdx:9 |
 
 SabbathCue is a local-first Tauri desktop app for church media operators. The UI is React/Zustand, the native shell is Rust/Tauri, and live service workflows flow from STT into detection panels and broadcast-ready theme rendering.
 
 ## 1 - Purpose & context
+
 SabbathCue listens to live sermon audio, transcribes it, detects scripture/EGW/hymn references, and renders operator-selected items as broadcast overlays. Receipt: README.md:9, README.md:40, README.md:53. Cloud STT is optional; local Vosk is the default path. Receipt: README.md:13, README.md:14, README.md:15.
 
 ## 2 - Tech stack
-| Layer | Technology | Version | Receipt |
-|---|---|---|---|
-| Frontend | React | 19.2.7 | package.json:83 |
-| Frontend build | Vite | 8.1.3 | package.json:7, package.json:127 |
-| Desktop shell | Tauri | 2.10.3 | src-tauri/Cargo.toml:55 |
-| Backend language | Rust | 1.77.2 minimum | src-tauri/Cargo.toml:37 |
-| Testing | Vitest | 4.1.8 | package.json:16, package.json:128 |
-| Data | SQLite via rusqlite | 0.34 | src-tauri/Cargo.toml:75 |
-| STT | Vosk, Deepgram, Soniox, Speechmatics | internal crate | src-tauri/crates/stt/src/lib.rs:3 |
+
+| Layer            | Technology                           | Version        | Receipt                           |
+| ---------------- | ------------------------------------ | -------------- | --------------------------------- |
+| Frontend         | React                                | 19.2.7         | package.json:83                   |
+| Frontend build   | Vite                                 | 8.1.3          | package.json:7, package.json:127  |
+| Desktop shell    | Tauri                                | 2.10.3         | src-tauri/Cargo.toml:55           |
+| Backend language | Rust                                 | 1.77.2 minimum | src-tauri/Cargo.toml:37           |
+| Testing          | Vitest                               | 4.1.8          | package.json:16, package.json:128 |
+| Data             | SQLite via rusqlite                  | 0.34           | src-tauri/Cargo.toml:75           |
+| STT              | Vosk, Deepgram, Soniox, Speechmatics | internal crate | src-tauri/crates/stt/src/lib.rs:3 |
 
 ## 3 - Architecture overview
+
 ```mermaid
 flowchart LR
     React[React operator UI] --> Stores[Zustand stores]
@@ -36,54 +41,64 @@ flowchart LR
     Tauri --> DB[SQLite Bible/EGW DB]
     STT --> Detection[Detection pipeline]
     Detection --> Panels[Detection/Search panels]
+    Detection -. opt-in, advisory .-> Rank[DeepSeek candidate ranking]
+    Rank -. suggestion badge .-> Panels
     Panels --> Broadcast[Broadcast store and renderer]
 ```
+
+The dotted path is optional and off by default. It can annotate a detection
+card with a suggestion but never feeds the broadcast path.
 
 Style and key patterns: React components read small Zustand selectors, Tauri commands expose native operations, and Rust crates hold provider/data logic. Receipts: src/stores/settings-store.ts:6, src-tauri/src/commands/stt/provider.rs:7, src-tauri/crates/stt/src/lib.rs:32.
 
 Where the pattern is violated or watchlisted: the theme catalog still exports `KineticThemesPage` and keeps workspace id `kinetic-themes` while user-facing labels say "Themes", preserving persisted navigation compatibility. Receipt: src/components/broadcast/KineticThemesPage.tsx:132, src/components/broadcast/KineticThemesPage.tsx:170, src/lib/dashboard-workspace-nav.ts:69.
 
 ## 4 - Directory structure
-| Path | Responsibility (verified by looking inside) | Notes |
-|---|---|---|
-| `/src/components` | React operator UI surfaces such as settings, detections, quick search, and broadcast themes. | Receipts: src/components/settings/sections/SpeechSection.tsx:465, src/components/panels/detections-panel.tsx:526, src/components/broadcast/KineticThemesPage.tsx:132 |
-| `/src/stores` | Zustand state for settings, collected detections, Bible, broadcast, and UI state. | Receipts: src/stores/settings-store.ts:6, src/stores/collected-detections-store.ts:48 |
-| `/src/lib` | Shared frontend logic, guards, search helpers, presentation workflow, rendering helpers. | Receipt: src/lib/quick-search.ts:167 |
-| `/src-tauri/src/commands` | Tauri command layer for native features and STT orchestration. | Receipts: src-tauri/src/commands/stt/provider.rs:95, src-tauri/src/lib.rs:126 |
-| `/src-tauri/crates/stt` | STT provider implementations and shared provider traits. | Receipts: src-tauri/crates/stt/src/lib.rs:27, src-tauri/crates/stt/src/lib.rs:32 |
-| `/data` | Bible/EGW source conversion, validation, and SQLite import scripts. | Receipts: data/build-egw.ts:2, data/convert-egw-sc-pdf.ts:26, data/lib/egw-pdf-importer.ts:18 |
-| `/landing` and `/web/content/docs` | Public marketing/docs content aligned with app capabilities. | Receipts: landing/index.html:544, web/content/docs/getting-started/speech-to-text.mdx:9 |
+
+| Path                               | Responsibility (verified by looking inside)                                                  | Notes                                                                                                                                                                |
+| ---------------------------------- | -------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/src/components`                  | React operator UI surfaces such as settings, detections, quick search, and broadcast themes. | Receipts: src/components/settings/sections/SpeechSection.tsx:465, src/components/panels/detections-panel.tsx:526, src/components/broadcast/KineticThemesPage.tsx:132 |
+| `/src/stores`                      | Zustand state for settings, collected detections, Bible, broadcast, and UI state.            | Receipts: src/stores/settings-store.ts:6, src/stores/collected-detections-store.ts:48                                                                                |
+| `/src/lib`                         | Shared frontend logic, guards, search helpers, presentation workflow, rendering helpers.     | Receipt: src/lib/quick-search.ts:167                                                                                                                                 |
+| `/src-tauri/src/commands`          | Tauri command layer for native features and STT orchestration.                               | Receipts: src-tauri/src/commands/stt/provider.rs:95, src-tauri/src/lib.rs:126                                                                                        |
+| `/src-tauri/crates/stt`            | STT provider implementations and shared provider traits.                                     | Receipts: src-tauri/crates/stt/src/lib.rs:27, src-tauri/crates/stt/src/lib.rs:32                                                                                     |
+| `/data`                            | Bible/EGW source conversion, validation, and SQLite import scripts.                          | Receipts: data/build-egw.ts:2, data/convert-egw-sc-pdf.ts:26, data/lib/egw-pdf-importer.ts:18                                                                        |
+| `/landing` and `/web/content/docs` | Public marketing/docs content aligned with app capabilities.                                 | Receipts: landing/index.html:544, web/content/docs/getting-started/speech-to-text.mdx:9                                                                              |
 
 ## 5 - Entry points & core modules
-| Entry point | Location | What it starts |
-|---|---|---|
-| Vite dev app | package.json:7 | React app dev server |
-| Tauri app | package.json:13 | Desktop shell and native command handlers |
-| Tauri command registration | src-tauri/src/lib.rs:126 | Native commands including STT lifecycle |
-| STT crate exports | src-tauri/crates/stt/src/lib.rs:32 | Deepgram, Soniox, Speechmatics, and Vosk providers |
+
+| Entry point                | Location                           | What it starts                                     |
+| -------------------------- | ---------------------------------- | -------------------------------------------------- |
+| Vite dev app               | package.json:7                     | React app dev server                               |
+| Tauri app                  | package.json:13                    | Desktop shell and native command handlers          |
+| Tauri command registration | src-tauri/src/lib.rs:126           | Native commands including STT lifecycle            |
+| STT crate exports          | src-tauri/crates/stt/src/lib.rs:32 | Deepgram, Soniox, Speechmatics, and Vosk providers |
 
 Core modules:
-| Module | Location | Responsibility | Depended on by |
-|---|---|---|---|
-| Settings store | src/stores/settings-store.ts:17 | Persisted STT, detection, Bible-mode, and operator preferences | Settings UI, transcript panel, transcription and detection-sync hooks |
-| Verification store | src/stores/verification-store.ts:20 | Bounds startup/session refresh checks and exposes auth state | Verification gate and sign-in screen |
-| Verification provider | src/lib/verification/verification-provider.ts:191 | Restores sessions, clears expired credentials, and verifies device access | Verification store and heartbeat |
-| Supabase account profile | supabase/migrations/008_church_organization_profiles.sql:4 | Stores optional self-declared church organization identity and exposes it through device/admin RPCs | Signup, verification session, operator badge, admin account list |
-| Device activation boundary | supabase/functions/device-activation/index.ts:178 | Verifies installation-key signatures, invokes service-role-only activation RPCs, and signs offline leases | Verification provider and account device management |
-| Installation identity | src-tauri/src/commands/installation_identity.rs:1 | Owns the P-256 private key in the OS keychain and exposes public identity/challenge signing | Device registration and approval |
-| STT provider routing | src-tauri/src/commands/stt/provider.rs:95 | Selects Vosk, Deepgram, or Soniox and handles removed providers | Tauri STT commands |
-| Collected detections store | src/stores/collected-detections-store.ts:48 | Session-scoped reuse list of presented/queued detections | Detections panel |
-| Detection actions | src/components/panels/detections-panel.tsx:144 | Shared preview/present/queue closures for detection types | Detection cards, latest bar, collection UI |
-| Queue voice control | src/services/queue/queue-voice-control.ts:19 | Strictly parses one-based queue-item commands, resolves the current queue order, and presents through the common queue path with duplicate-final protection | Final transcript bridge |
-| Live Bible-mode policy | src-tauri/src/commands/stt/live_session.rs:243, src-tauri/src/commands/detection.rs:241 | Separately gates live Bible direct/semantic/reading-mode output while preserving transcription, operator commands, queued scripture, and EGW detection | Detection settings sync and live STT workers |
-| Direct scripture scope | src-tauri/crates/detection/src/direct/context.rs:3, src-tauri/crates/detection/src/direct/detector.rs:674 | Keeps the active book/chapter until another resolved citation replaces it and promotes explicit in-scope verse phrases as direct citations | Live STT scripture detection |
-| Verse ranking and calibration | src-tauri/crates/detection/src/semantic/detector.rs:128, src-tauri/crates/detection/src/pipeline.rs:173, src-tauri/crates/detection/src/bin/detection_accuracy.rs:607 | Keeps rank evidence separate from displayed match strength, distinguishes unique exact quotes from ambiguous shared phrases, surfaces strong broad matches only for review, and evaluates policy-aware Auto selection | Live STT detection, frontend detection workflow, desktop CI |
-| Command-classifier experiment | src-tauri/crates/detection/src/command_eval.rs:1, src-tauri/crates/detection/src/bin/command_benchmark.rs:1 | Compares deterministic rules with a trained MiniLM linear head against isolated quality/safety partitions without executing commands | Developer benchmark and shadow replay only |
-| Theme catalog page | src/components/broadcast/KineticThemesPage.tsx:132 | User-facing Themes workspace with static and kinetic columns | Workspace nav |
-| Quick search helper | src/lib/quick-search.ts:167 | Prefix-safe ghost suggestion suffix | Preview and Search quick inputs |
+
+| Module                        | Location                                                                                                                                                              | Responsibility                                                                                                                                                                                                        | Depended on by                                                        |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| Settings store                | src/stores/settings-store.ts:17                                                                                                                                       | Persisted STT, detection, Bible-mode, and operator preferences                                                                                                                                                        | Settings UI, transcript panel, transcription and detection-sync hooks |
+| Verification store            | src/stores/verification-store.ts:20                                                                                                                                   | Bounds startup/session refresh checks and exposes auth state                                                                                                                                                          | Verification gate and sign-in screen                                  |
+| Verification provider         | src/lib/verification/verification-provider.ts:191                                                                                                                     | Restores sessions, clears expired credentials, and verifies device access                                                                                                                                             | Verification store and heartbeat                                      |
+| Supabase account profile      | supabase/migrations/008_church_organization_profiles.sql:4                                                                                                            | Stores optional self-declared church organization identity and exposes it through device/admin RPCs                                                                                                                   | Signup, verification session, operator badge, admin account list      |
+| Device activation boundary    | supabase/functions/device-activation/index.ts:178                                                                                                                     | Verifies installation-key signatures, invokes service-role-only activation RPCs, and signs offline leases                                                                                                             | Verification provider and account device management                   |
+| Installation identity         | src-tauri/src/commands/installation_identity.rs:1                                                                                                                     | Owns the P-256 private key in the OS keychain and exposes public identity/challenge signing                                                                                                                           | Device registration and approval                                      |
+| STT provider routing          | src-tauri/src/commands/stt/provider.rs:95                                                                                                                             | Selects Vosk, Deepgram, or Soniox and handles removed providers                                                                                                                                                       | Tauri STT commands                                                    |
+| Collected detections store    | src/stores/collected-detections-store.ts:48                                                                                                                           | Session-scoped reuse list of presented/queued detections                                                                                                                                                              | Detections panel                                                      |
+| Detection actions             | src/components/panels/detections-panel.tsx:144                                                                                                                        | Shared preview/present/queue closures for detection types                                                                                                                                                             | Detection cards, latest bar, collection UI                            |
+| Queue voice control           | src/services/queue/queue-voice-control.ts:19                                                                                                                          | Strictly parses one-based queue-item commands, resolves the current queue order, and presents through the common queue path with duplicate-final protection                                                           | Final transcript bridge                                               |
+| Live Bible-mode policy        | src-tauri/src/commands/stt/live_session.rs:243, src-tauri/src/commands/detection.rs:241                                                                               | Separately gates live Bible direct/semantic/reading-mode output while preserving transcription, operator commands, queued scripture, and EGW detection                                                                | Detection settings sync and live STT workers                          |
+| Direct scripture scope        | src-tauri/crates/detection/src/direct/context.rs:3, src-tauri/crates/detection/src/direct/detector.rs:674                                                             | Keeps the active book/chapter until another resolved citation replaces it and promotes explicit in-scope verse phrases as direct citations                                                                            | Live STT scripture detection                                          |
+| Verse ranking and calibration | src-tauri/crates/detection/src/semantic/detector.rs:128, src-tauri/crates/detection/src/pipeline.rs:173, src-tauri/crates/detection/src/bin/detection_accuracy.rs:607 | Keeps rank evidence separate from displayed match strength, distinguishes unique exact quotes from ambiguous shared phrases, surfaces strong broad matches only for review, and evaluates policy-aware Auto selection | Live STT detection, frontend detection workflow, desktop CI           |
+| Command-classifier experiment | src-tauri/crates/detection/src/command_eval.rs:1, src-tauri/crates/detection/src/bin/command_benchmark.rs:1                                                           | Compares deterministic rules with a trained MiniLM linear head against isolated quality/safety partitions without executing commands                                                                                  | Developer benchmark and shadow replay only                            |
+| Theme catalog page            | src/components/broadcast/KineticThemesPage.tsx:132                                                                                                                    | User-facing Themes workspace with static and kinetic columns                                                                                                                                                          | Workspace nav                                                         |
+| Quick search helper           | src/lib/quick-search.ts:167                                                                                                                                           | Prefix-safe ghost suggestion suffix                                                                                                                                                                                   | Preview and Search quick inputs                                       |
 
 ## 6 - Traced flows
+
 ### Flow: startup authentication and expired-session handling
+
 ```text
 main starts verification hydration without blocking first paint
   -> src/main.tsx:52
@@ -99,6 +114,7 @@ Verification gate renders the sign-in screen for required/error states
 ```
 
 ### Flow: self-declared church organization signup and badges
+
 ```text
 Trial signup optionally collects a church organization name and validates 2-120 characters
   -> src/components/verification/VerificationScreen.tsx:313
@@ -116,6 +132,7 @@ The operator strip renders the church badge and admins receive the same fields i
 ```
 
 ### Flow: approved-computer activation and signed offline lease
+
 ```text
 Native command creates or restores a P-256 installation key in the OS credential manager
 and preserves an existing verification.json device ID during migration
@@ -143,6 +160,7 @@ as blocking responses
 ```
 
 ### Flow: Paddle subscription billing and access synchronization
+
 ```text
 Authenticated checkout sends the account email plus Supabase user ID as Paddle custom data
   -> src/lib/paddle/checkout.ts:28
@@ -173,6 +191,7 @@ mint portal session with PADDLE_API_KEY (never trust a client-supplied customer 
 ```
 
 ### Flow: STT provider selection
+
 ```text
 Settings store type allows deepgram, soniox, speechmatics, vosk
   -> src/stores/settings-store.ts:6
@@ -187,6 +206,7 @@ Backend constructs Deepgram, Soniox, Speechmatics, or Vosk providers
 ```
 
 ### Flow: Speechmatics visible transcript coalescing
+
 ```text
 Rust transcript payload includes the active provider
   -> src-tauri/src/events.rs:23
@@ -202,6 +222,7 @@ Deepgram, Soniox, Vosk, and Speechmatics spans after a longer pause remain separ
 ```
 
 ### Flow: queue-item voice presentation
+
 ```text
 Every final STT span is stored in transcript history first
   -> src/hooks/use-transcription.ts:252
@@ -218,6 +239,7 @@ semantic Bible-suggestion noise
 ```
 
 ### Flow: Bible mode without stopping transcription
+
 ```text
 Persisted Bible mode defaults ON and syncs independently of semantic preference
   -> src/stores/settings-store.ts:68
@@ -237,6 +259,7 @@ Final transcript storage and queue/slide/hymn command dispatch remain upstream a
 ```
 
 ### Flow: live EGW quotation detection
+
 ```text
 Each transcription session owns one cue timestamp shared by its partial and final workers
   -> src-tauri/src/commands/stt/mod.rs:316
@@ -252,6 +275,7 @@ before EGW results join the normal detection event
 ```
 
 ### Flow: collected detections
+
 ```text
 Detection panel builds shared actions
   -> src/components/panels/detections-panel.tsx:144
@@ -265,6 +289,7 @@ Section is rendered above detections list
 ```
 
 ### Flow: calibrated verse Auto selection
+
 ```text
 Partial/final STT events enqueue semantic jobs with provider confidence
   -> src-tauri/src/commands/stt/mod.rs:380
@@ -297,6 +322,7 @@ non-gating 85% calibration probe to expose the lower threshold's tradeoffs
 ```
 
 ### Flow: quantized semantic embedding assets
+
 ```text
 CI converts the canonical f32 corpus before comparison and bundling
   -> package.json
@@ -314,6 +340,7 @@ Explicit f32/q8 inputs gate ranking agreement, drift, load, and search latency
 ```
 
 ### Flow: direct sermon-passage continuation
+
 ```text
 A fully resolved spoken reference establishes the active book/chapter
   -> src-tauri/crates/detection/src/direct/detector.rs:1196
@@ -331,6 +358,7 @@ Common prose words that collide with fuzzy book names are rejected before parsin
 ```
 
 ### Flow: theme catalog
+
 ```text
 Workspace nav id remains kinetic-themes but label is Themes
   -> src/lib/dashboard-workspace-nav.ts:69
@@ -344,6 +372,7 @@ Both aliases point to broadcast theme slice wrappers
 ```
 
 ### Flow: authored hymn pages and full-fidelity hymn themes
+
 ```text
 Hymnal source sections already carry stable verse/refrain identity
   -> src/types/hymnal.ts
@@ -365,6 +394,7 @@ Refrain/chorus typography resolves from section metadata without mutating the sa
 ```
 
 ### Flow: operator accent themes
+
 ```text
 Accent theme IDs persist independently from light/dark color mode
   -> src/stores/accent-theme-store.ts:3
@@ -378,6 +408,7 @@ Broadcast output reads the same accent ID but keeps its separate canvas/theme re
 ```
 
 ### Flow: quick-search ghost text
+
 ```text
 Helper returns suffix only for non-empty case-insensitive prefix matches
   -> src/lib/quick-search.ts:167
@@ -390,6 +421,7 @@ Search-panel quick search uses same helper
 ```
 
 ### Flow: Steps to Christ EGW source alignment
+
 ```text
 SC PDF conversion reads the local Steps to Christ PDF
   -> data/convert-egw-sc-pdf.ts:24
@@ -404,6 +436,7 @@ Build script imports the generated JSON into egw_books / egw_paragraphs
 ```
 
 ### Flow: The Great Controversy EGW source alignment
+
 ```text
 GC PDF conversion reads the local en_GC PDF with bracket citation markers
 and the supplied PDF's visible folio page sequence
@@ -423,6 +456,7 @@ Build script imports the generated JSON into egw_books / egw_paragraphs
 ```
 
 ### Flow: Patriarchs and Prophets / Desire of Ages / Education EGW source alignment
+
 ```text
 PP, DA, and Education PDF converters read the local user-supplied PDFs with bracket
 citation markers and visible folio page sequences
@@ -456,6 +490,7 @@ Build script imports the generated JSON into egw_books / egw_paragraphs
 ```
 
 ### Flow: offline command-classifier comparison
+
 ```text
 One hundred deterministic synthetic sermon transcripts are generated from 50
 partition-isolated speakers; one ordinary line and one rotating command from
@@ -478,59 +513,113 @@ registration or command-execution dependency
   -> src-tauri/crates/detection/src/bin/command_benchmark.rs
 ```
 
+### Flow: optional AI ranking of ambiguous semantic candidates
+
+Indirect references ("the passage where Paul and Silas sang in prison") can
+leave several plausible semantic hits with no clear winner. When the
+operator has opted in, an external model picks among them — but only as a
+suggestion, and only from passages already found locally.
+
+1. A detection batch reaches `handleVerseDetectionsInternal`, which stores
+   the detections and then fires the ranking pass without awaiting it, so
+   the preview/auto-live path below is never blocked. Receipt:
+   src/lib/verse-detection-workflow.ts:416.
+2. `shouldRankDetections` gates the call: the toggle must be on, a key must
+   be configured, the batch must hold two or more rankable semantic
+   candidates, and no direct hit may already have cleared the operator's
+   confidence threshold. Explicit references therefore never trigger a
+   network call. Receipt: src/lib/deepseek-ranker.ts:60.
+3. The frontend builds up to five candidates keyed `book:chapter:verse` with
+   80-character summaries, picks the longest semantic transcript snippet
+   (capped at 500 characters), and invokes the Rust command. It is
+   single-flight and opens a circuit breaker after three consecutive
+   failures. Receipts: src/lib/deepseek-ranker.ts:8, src/lib/deepseek-ranker.ts:87.
+4. Rust labels the candidates `A`-`E`, sends a fixed system prompt plus the
+   transcript as quoted data, and streams the reply, cancelling as soon as
+   one letter arrives. The whole call sits under a hard 1800 ms timeout with
+   no retries. Receipts: src-tauri/src/commands/deepseek.rs:43,
+   src-tauri/src/commands/deepseek.rs:13, src-tauri/src/commands/deepseek.rs:154.
+5. The letter maps back to a supplied candidate id; anything else — an
+   out-of-range letter, `N`, prose, or a malformed frame — resolves to an
+   abstention rather than an error or content. Receipts:
+   src-tauri/src/commands/deepseek.rs:72, src-tauri/src/commands/deepseek.rs:93.
+6. The winning id is written to `aiSuggestedKey` in the detection store,
+   guarded by an epoch counter so a slow flight cannot overwrite a newer
+   batch's state. It renders as a badge and is read nowhere else. Receipts:
+   src/lib/verse-detection-workflow.ts:363, src/components/panels/detections-panel.tsx:233.
+
+Invariant worth preserving: the ranker's output is display-only. It is not
+consulted by `selectPreviewHit` or the auto-live path, and the verse text
+shown always comes from the local Bible database, so a model error cannot
+place fabricated scripture on the live screen. Guard test: "does not
+influence which detection is previewed" in
+src/lib/verse-detection-workflow.test.ts.
+
+Operator surface: Settings -> AI Ranking holds the key entry and the
+activation toggle, which stays disabled until a key is stored. Receipt:
+src/components/settings/sections/AiRankingSection.tsx:186.
+
 ## 7 - Data model & persistence
-| Entity | Storage | Key fields | Relationships | Defined at |
-|---|---|---|---|---|
-| STT and detection settings | Tauri store plus Zustand hydration | sttProvider, key status booleans, bibleDetectionEnabled, semanticDetectionEnabled, thresholds | Settings UI, transcription hook, detection-settings sync | src/stores/settings-store.ts:17, src/stores/settings-store.ts:105 |
-| Cloud API keys | OS keyring via Tauri commands | Deepgram/Soniox/Speechmatics key presence and validation | STT provider routing | src-tauri/Cargo.toml:70, src/components/settings/sections/ApiKeysSection.tsx:5 |
-| Collected detections | In-memory Zustand only | detection, source, kind, useCount, timestamps | Detections panel action reuse | src/stores/collected-detections-store.ts:20, src/stores/collected-detections-store.ts:85 |
-| Detection feedback | Browser localStorage, capped at 500 entries | reference, source, match strength, rank score, action, timestamp | Offline ranking evaluation; no transcript/audio content | src/lib/detection-feedback.ts:3 |
-| Broadcast themes | Broadcast Zustand slice | activeThemeId, themes, kinetic metadata, optional hymn section styles | Theme catalog and deterministic canvas renderer | src/components/broadcast/KineticThemesPage.tsx:146, src/lib/kinetic-themes.ts, src/lib/hymn-theme-scenes.ts |
-| Hymn presentation pages | In-memory presentation/queue data | authored section id/label/kind, section screen index/count, deck index/count | Hymnal source, queue, preview/live/NDI renderer | src/types/hymnal.ts, src/types/presentation.ts, src/services/hymnal/hymn-presentation.ts |
-| Bible/EGW content | SQLite | translations, verses, EGW paragraphs | Search/detection/presentation | README.md:49, src-tauri/Cargo.toml:75 |
-| EGW source JSON | data/sources/egw/*.json | book_number, chapter, paragraph, page, page_paragraph, text | Built into SQLite by `build:egw` | data/build-egw.ts:2, data/validate-egw-sources.ts:7 |
-| Account flags | Supabase Postgres | user_id, access_expires_at, suspended, is_church_organization, church_name | Auth user, registered devices, admin account list | supabase/migrations/008_church_organization_profiles.sql:4 |
-| Device activations | Supabase Postgres | user_id, device_id, public_key, status, first/last seen, approved/revoked timestamps | Account, installation identity, admin/user management | supabase/migrations/009_device_activation_management.sql:4 |
-| Signed activation lease | Tauri store, verified against build-time public key | payload, signature, user/device binding, issued/expires/access expiry | Offline verification session | src/lib/verification/activation-lease.ts:1, src/lib/verification/session-storage.ts:21 |
-| Paddle customer mirror | Supabase Postgres | customer_id, email, user_id, last event time | Auth user and Paddle subscriptions | supabase/migrations/010_paddle_billing.sql:4 |
-| Paddle subscription mirror | Supabase Postgres | subscription/customer IDs, status, price/product, billing period, scheduled change, last event time | Customer mirror and account access | supabase/migrations/010_paddle_billing.sql:19 |
-| Paddle webhook ledger | Supabase Postgres | event ID/type, occurred/received/processed timestamps | Atomic webhook deduplication and retry recovery | supabase/migrations/010_paddle_billing.sql:38 |
+
+| Entity                     | Storage                                             | Key fields                                                                                          | Relationships                                            | Defined at                                                                                                  |
+| -------------------------- | --------------------------------------------------- | --------------------------------------------------------------------------------------------------- | -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| STT and detection settings | Tauri store plus Zustand hydration                  | sttProvider, key status booleans, bibleDetectionEnabled, semanticDetectionEnabled, thresholds       | Settings UI, transcription hook, detection-settings sync | src/stores/settings-store.ts:17, src/stores/settings-store.ts:105                                           |
+| Cloud API keys             | OS keyring via Tauri commands                       | Deepgram/Soniox/Speechmatics key presence and validation                                            | STT provider routing                                     | src-tauri/Cargo.toml:70, src/components/settings/sections/ApiKeysSection.tsx:5                              |
+| Collected detections       | In-memory Zustand only                              | detection, source, kind, useCount, timestamps                                                       | Detections panel action reuse                            | src/stores/collected-detections-store.ts:20, src/stores/collected-detections-store.ts:85                    |
+| Detection feedback         | Browser localStorage, capped at 500 entries         | reference, source, match strength, rank score, action, timestamp                                    | Offline ranking evaluation; no transcript/audio content  | src/lib/detection-feedback.ts:3                                                                             |
+| Broadcast themes           | Broadcast Zustand slice                             | activeThemeId, themes, kinetic metadata, optional hymn section styles                               | Theme catalog and deterministic canvas renderer          | src/components/broadcast/KineticThemesPage.tsx:146, src/lib/kinetic-themes.ts, src/lib/hymn-theme-scenes.ts |
+| Hymn presentation pages    | In-memory presentation/queue data                   | authored section id/label/kind, section screen index/count, deck index/count                        | Hymnal source, queue, preview/live/NDI renderer          | src/types/hymnal.ts, src/types/presentation.ts, src/services/hymnal/hymn-presentation.ts                    |
+| Bible/EGW content          | SQLite                                              | translations, verses, EGW paragraphs                                                                | Search/detection/presentation                            | README.md:49, src-tauri/Cargo.toml:75                                                                       |
+| EGW source JSON            | data/sources/egw/*.json                             | book_number, chapter, paragraph, page, page_paragraph, text                                         | Built into SQLite by `build:egw`                         | data/build-egw.ts:2, data/validate-egw-sources.ts:7                                                         |
+| Account flags              | Supabase Postgres                                   | user_id, access_expires_at, suspended, is_church_organization, church_name                          | Auth user, registered devices, admin account list        | supabase/migrations/008_church_organization_profiles.sql:4                                                  |
+| Device activations         | Supabase Postgres                                   | user_id, device_id, public_key, status, first/last seen, approved/revoked timestamps                | Account, installation identity, admin/user management    | supabase/migrations/009_device_activation_management.sql:4                                                  |
+| Signed activation lease    | Tauri store, verified against build-time public key | payload, signature, user/device binding, issued/expires/access expiry                               | Offline verification session                             | src/lib/verification/activation-lease.ts:1, src/lib/verification/session-storage.ts:21                      |
+| Paddle customer mirror     | Supabase Postgres                                   | customer_id, email, user_id, last event time                                                        | Auth user and Paddle subscriptions                       | supabase/migrations/010_paddle_billing.sql:4                                                                |
+| Paddle subscription mirror | Supabase Postgres                                   | subscription/customer IDs, status, price/product, billing period, scheduled change, last event time | Customer mirror and account access                       | supabase/migrations/010_paddle_billing.sql:19                                                               |
+| Paddle webhook ledger      | Supabase Postgres                                   | event ID/type, occurred/received/processed timestamps                                               | Atomic webhook deduplication and retry recovery          | supabase/migrations/010_paddle_billing.sql:38                                                               |
 
 Account/access schema changes are versioned in `/supabase/migrations`; migration 008 extends the existing trial/device/admin RPC contract with the optional church organization profile. Receipt: supabase/migrations/008_church_organization_profiles.sql:1.
 
 ## 8 - Interfaces & integrations
+
 Public interfaces:
-| Interface | Type | Description | Auth | Defined at |
-|---|---|---|---|---|
-| Tauri commands | invoke | Native desktop operations and STT lifecycle | app session | src-tauri/src/lib.rs:126 |
+
+| Interface           | Type           | Description                                                  | Auth        | Defined at                            |
+| ------------------- | -------------- | ------------------------------------------------------------ | ----------- | ------------------------------------- |
+| Tauri commands      | invoke         | Native desktop operations and STT lifecycle                  | app session | src-tauri/src/lib.rs:126              |
 | React workspace nav | UI route/state | Operator workspaces, including persisted `kinetic-themes` id | app session | src/lib/dashboard-workspace-nav.ts:69 |
 
 External services:
-| Service | Purpose | Criticality | Called from |
-|---|---|---|---|
-| Deepgram | Cloud STT | watch | src-tauri/crates/stt/src/lib.rs:11 |
-| Soniox | Cloud STT | watch | src-tauri/crates/stt/src/lib.rs:12 |
-| Speechmatics | Cloud STT | watch | src-tauri/crates/stt/src/speechmatics.rs:17 |
-| Vosk | Local STT worker/model | healthy | src-tauri/crates/stt/src/lib.rs:39 |
-| Supabase | Account auth, trial/device access, optional church profile, admin account listing | critical | src/lib/supabase/client.ts:6, supabase/migrations/008_church_organization_profiles.sql:23 |
-| Supabase Edge Function | Installation proof verification and signed activation lease issuance | critical | supabase/functions/device-activation/index.ts:178 |
-| Paddle Billing | Checkout, customer portal, signed webhook subscription mirror, and access renewal | critical | src/lib/paddle/checkout.ts:28, supabase/functions/paddle-webhook/index.ts:139 |
+
+| Service                | Purpose                                                                                 | Criticality | Called from                                                                               |
+| ---------------------- | --------------------------------------------------------------------------------------- | ----------- | ----------------------------------------------------------------------------------------- |
+| Deepgram               | Cloud STT                                                                               | watch       | src-tauri/crates/stt/src/lib.rs:11                                                        |
+| Soniox                 | Cloud STT                                                                               | watch       | src-tauri/crates/stt/src/lib.rs:12                                                        |
+| Speechmatics           | Cloud STT                                                                               | watch       | src-tauri/crates/stt/src/speechmatics.rs:17                                               |
+| Vosk                   | Local STT worker/model                                                                  | healthy     | src-tauri/crates/stt/src/lib.rs:39                                                        |
+| DeepSeek               | Optional AI candidate ranking for indirect references; off by default and advisory only | optional    | src-tauri/src/commands/deepseek.rs:154                                                    |
+| Supabase               | Account auth, trial/device access, optional church profile, admin account listing       | critical    | src/lib/supabase/client.ts:6, supabase/migrations/008_church_organization_profiles.sql:23 |
+| Supabase Edge Function | Installation proof verification and signed activation lease issuance                    | critical    | supabase/functions/device-activation/index.ts:178                                         |
+| Paddle Billing         | Checkout, customer portal, signed webhook subscription mirror, and access renewal       | critical    | src/lib/paddle/checkout.ts:28, supabase/functions/paddle-webhook/index.ts:139             |
 
 ## 9 - Configuration & environments
-| Variable / setting | Purpose | Required | Default | Read at |
-|---|---|---|---|---|
-| `sttProvider` | Selected STT backend | yes | Vosk-compatible fallback | src/stores/settings-store.ts:105 |
-| Auto-live match strength | Minimum score for automatic presentation | no | 0.90; legacy 0.80/0.85 values migrate to 0.90 | src/stores/settings-store.ts:9, src/stores/settings-store.ts:131 |
-| Deepgram endpointing | Finalize after a short speech pause | only for Deepgram | 250 ms | src-tauri/crates/stt/src/deepgram.rs:23 |
-| Speechmatics max delay | Upper target for final transcript latency, with flexible entity formatting | only for Speechmatics | 1.0 second | src-tauri/crates/stt/src/speechmatics.rs:22, src-tauri/crates/stt/src/speechmatics.rs:180 |
-| Deepgram API key | Cloud STT auth | only for Deepgram | absent | src/stores/settings-store.ts:188 |
-| Soniox API key | Cloud STT auth | only for Soniox | absent | src/stores/settings-store.ts:190 |
-| Speechmatics API key | Cloud STT auth | only for Speechmatics | absent | src/stores/settings-store.ts:198 |
-| Vosk model/worker resources | Local STT runtime | required for local STT | downloaded/bundled by scripts | src-tauri/tauri.conf.json:42, src-tauri/tauri.conf.json:44 |
-| `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` | Supabase account/auth client | required for account-enabled builds | absent | src/lib/supabase/client.ts:6 |
-| `VITE_ACTIVATION_LEASE_PUBLIC_KEY` | Verify server-signed offline leases | required for offline access | absent | src/lib/verification/activation-lease.ts:94 |
-| `ACTIVATION_LEASE_PRIVATE_KEY` | Sign offline leases in the Edge Function | required in Supabase Function secrets | absent | supabase/functions/device-activation/index.ts:64 |
-| `PADDLE_API_KEY`, `PADDLE_NOTIFICATION_WEBHOOK_SECRET`, `PADDLE_ENV` | Verify/process Paddle webhooks and create portal sessions | required for Paddle Edge Functions | sandbox environment fallback | supabase/functions/paddle-webhook/index.ts:19, supabase/functions/paddle-portal/index.ts:13 |
+
+| Variable / setting                                                   | Purpose                                                                    | Required                              | Default                                       | Read at                                                                                     |
+| -------------------------------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `sttProvider`                                                        | Selected STT backend                                                       | yes                                   | Vosk-compatible fallback                      | src/stores/settings-store.ts:105                                                            |
+| Auto-live match strength                                             | Minimum score for automatic presentation                                   | no                                    | 0.90; legacy 0.80/0.85 values migrate to 0.90 | src/stores/settings-store.ts:9, src/stores/settings-store.ts:131                            |
+| Deepgram endpointing                                                 | Finalize after a short speech pause                                        | only for Deepgram                     | 250 ms                                        | src-tauri/crates/stt/src/deepgram.rs:23                                                     |
+| Speechmatics max delay                                               | Upper target for final transcript latency, with flexible entity formatting | only for Speechmatics                 | 1.0 second                                    | src-tauri/crates/stt/src/speechmatics.rs:22, src-tauri/crates/stt/src/speechmatics.rs:180   |
+| Deepgram API key                                                     | Cloud STT auth                                                             | only for Deepgram                     | absent                                        | src/stores/settings-store.ts:188                                                            |
+| Soniox API key                                                       | Cloud STT auth                                                             | only for Soniox                       | absent                                        | src/stores/settings-store.ts:190                                                            |
+| Speechmatics API key                                                 | Cloud STT auth                                                             | only for Speechmatics                 | absent                                        | src/stores/settings-store.ts:198                                                            |
+| DeepSeek API key                                                     | AI candidate ranking auth; keychain-only, never persisted to settings      | only for AI ranking                   | absent                                        | src/stores/settings-store.ts:35                                                             |
+| `deepseekRankingEnabled`                                             | Enables cloud AI ranking of ambiguous semantic candidates                  | no                                    | false (off)                                   | src/stores/settings-store.ts:70                                                             |
+| Vosk model/worker resources                                          | Local STT runtime                                                          | required for local STT                | downloaded/bundled by scripts                 | src-tauri/tauri.conf.json:42, src-tauri/tauri.conf.json:44                                  |
+| `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`                        | Supabase account/auth client                                               | required for account-enabled builds   | absent                                        | src/lib/supabase/client.ts:6                                                                |
+| `VITE_ACTIVATION_LEASE_PUBLIC_KEY`                                   | Verify server-signed offline leases                                        | required for offline access           | absent                                        | src/lib/verification/activation-lease.ts:94                                                 |
+| `ACTIVATION_LEASE_PRIVATE_KEY`                                       | Sign offline leases in the Edge Function                                   | required in Supabase Function secrets | absent                                        | supabase/functions/device-activation/index.ts:64                                            |
+| `PADDLE_API_KEY`, `PADDLE_NOTIFICATION_WEBHOOK_SECRET`, `PADDLE_ENV` | Verify/process Paddle webhooks and create portal sessions                  | required for Paddle Edge Functions    | sandbox environment fallback                  | supabase/functions/paddle-webhook/index.ts:19, supabase/functions/paddle-portal/index.ts:13 |
 
 Environments: development uses Vite/Tauri commands; release uses Tauri build and bundled public assets. Receipts: package.json:7, package.json:14, README.md:32.
 
@@ -543,6 +632,7 @@ data directory. The unsigned local installer command is
 src-tauri/tauri.conf.json:4, src-tauri/tauri.conf.json:6, package.json:14.
 
 ## 10 - Build, run & test - commands that actually ran
+
 ```bash
 npm.cmd run typecheck
 # Result before edits: passed.
@@ -668,23 +758,25 @@ npm.cmd run build:egw
 CI/CD & deployment: not fully mapped in this pass. See open questions.
 
 ## 11 - Quality, risks & tech debt
-| Observation | Area | Severity | Receipt |
-|---|---|---|---|
-| Removed Gladia remains as a compatibility error branch and settings migration only. | maintainability | watch | src-tauri/src/commands/stt/provider.rs:95, src/stores/settings-store.ts:105 |
-| Theme workspace id remains `kinetic-themes` while label is "Themes" to avoid persisted-state migration. | maintainability | watch | src/components/broadcast/KineticThemesPage.tsx:170, src/lib/dashboard-workspace-nav.ts:69 |
-| Collected detections are intentionally session-only and capped at 50. | product behavior | healthy | src/stores/collected-detections-store.ts:25, src/stores/collected-detections-store.ts:85 |
-| Full-model accuracy is CI-gated with explicit fire, review-hint, safe-abstention, and silent expectations, but the curated corpus is not a substitute for a held-out multi-church audio corpus. | detection quality | watch | src-tauri/crates/detection/src/bin/detection_accuracy.rs:1, .github/workflows/desktop-ci.yml:184 |
-| Runtime performance metrics begin when ranked candidates reach the frontend; true speech-to-result latency still requires timestamped provider audio fixtures. | detection quality | watch | src/lib/detection-profiler.ts:28 |
-| The command-classifier training corpus now includes deterministic synthetic sermon transcripts, but synthetic text cannot represent real microphones, accents, speakers, congregations, or STT behavior; the gated MiniLM head remains intentionally disconnected from command execution until tested on held-out multi-church transcripts. | command classification | watch | docs/minilm-command-benchmark.md:1, src-tauri/crates/detection/src/bin/command_benchmark.rs:1 |
-| Queue voice commands are deliberately position-based and final-transcript-only; reordered queues change what a number targets, and real-microphone provider/accent coverage remains a field-validation need. | operator voice control | watch | src/services/queue/queue-voice-control.ts:31, src/hooks/use-transcription.ts:247 |
-| The seven hymn presets use bundled open-font alternatives rather than the source HTML's proprietary/device-specific names, so every SabbathCue installation renders consistently without external font licensing or downloads. | typography portability | healthy | src/lib/kinetic-themes.ts, src/index.css, src/components/ui/canvas-verse.tsx |
-| The installer still bundles the offline Vosk model and complete content database; moving either to first-run delivery remains gated on product, hosting, and signing decisions. | installer size | watch | docs/superpowers/plans/2026-07-26-installer-size-and-performance.md |
+
+| Observation                                                                                                                                                                                                                                                                                                                                 | Area                   | Severity | Receipt                                                                                          |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------- | -------- | ------------------------------------------------------------------------------------------------ |
+| Removed Gladia remains as a compatibility error branch and settings migration only.                                                                                                                                                                                                                                                         | maintainability        | watch    | src-tauri/src/commands/stt/provider.rs:95, src/stores/settings-store.ts:105                      |
+| Theme workspace id remains `kinetic-themes` while label is "Themes" to avoid persisted-state migration.                                                                                                                                                                                                                                     | maintainability        | watch    | src/components/broadcast/KineticThemesPage.tsx:170, src/lib/dashboard-workspace-nav.ts:69        |
+| Collected detections are intentionally session-only and capped at 50.                                                                                                                                                                                                                                                                       | product behavior       | healthy  | src/stores/collected-detections-store.ts:25, src/stores/collected-detections-store.ts:85         |
+| Full-model accuracy is CI-gated with explicit fire, review-hint, safe-abstention, and silent expectations, but the curated corpus is not a substitute for a held-out multi-church audio corpus.                                                                                                                                             | detection quality      | watch    | src-tauri/crates/detection/src/bin/detection_accuracy.rs:1, .github/workflows/desktop-ci.yml:184 |
+| Runtime performance metrics begin when ranked candidates reach the frontend; true speech-to-result latency still requires timestamped provider audio fixtures.                                                                                                                                                                              | detection quality      | watch    | src/lib/detection-profiler.ts:28                                                                 |
+| The command-classifier training corpus now includes deterministic synthetic sermon transcripts, but synthetic text cannot represent real microphones, accents, speakers, congregations, or STT behavior; the gated MiniLM head remains intentionally disconnected from command execution until tested on held-out multi-church transcripts. | command classification | watch    | docs/minilm-command-benchmark.md:1, src-tauri/crates/detection/src/bin/command_benchmark.rs:1    |
+| Queue voice commands are deliberately position-based and final-transcript-only; reordered queues change what a number targets, and real-microphone provider/accent coverage remains a field-validation need.                                                                                                                                | operator voice control | watch    | src/services/queue/queue-voice-control.ts:31, src/hooks/use-transcription.ts:247                 |
+| The seven hymn presets use bundled open-font alternatives rather than the source HTML's proprietary/device-specific names, so every SabbathCue installation renders consistently without external font licensing or downloads.                                                                                                              | typography portability | healthy  | src/lib/kinetic-themes.ts, src/index.css, src/components/ui/canvas-verse.tsx                     |
+| The installer still bundles the offline Vosk model and complete content database; moving either to first-run delivery remains gated on product, hosting, and signing decisions.                                                                                                                                                             | installer size         | watch    | docs/superpowers/plans/2026-07-26-installer-size-and-performance.md                              |
 
 Strengths: targeted stores and shared helpers make the current STT/detection/theme changes testable.
 
 Top risks (ranked): 1. STT provider removal can leave stale docs or tests if historical text is edited indiscriminately. 2. Theme naming is user-facing while workspace id remains compatibility-facing. 3. Quick-search ghost text has two UI surfaces and should continue to share one helper.
 
 ## 12 - Onboarding notes
+
 - Treat `kinetic-themes` as a stable workspace id, not the user-facing label.
 - Do not grep-to-zero removed STT provider names across historical reports; compatibility tests may intentionally retain removed-provider strings.
 - Collected detections should be recorded from present/queue actions, not preview-only actions.
@@ -695,49 +787,52 @@ Top risks (ranked): 1. STT provider removal can leave stale docs or tests if his
 - Frozen procedural themes keep `kinetic` metadata with `animate: false`: they draw the deterministic time-zero scene and load the bundled canvas font, but do not schedule animation frames.
 
 ## 13 - Open questions
+
 - [ ] Full CI/CD and deployment flow is not mapped in this scoped pass.
 - [ ] Full database build/migration ownership for Bible/EGW content is not mapped in this scoped pass.
 - [ ] Full broadcast renderer path beyond theme selection is not mapped in this scoped pass.
 
 ## 14 - Glossary
-| Term | Meaning |
-|---|---|
-| STT | Speech-to-text provider layer. |
-| Vosk | Local/offline STT provider and worker. |
-| Deepgram | Cloud STT provider. |
-| Soniox | Cloud STT provider. |
-| Kinetic theme | Theme with moving background data. |
-| Collected detection | Session-scoped item captured when an operator presents or queues a detection. |
-| Bible mode | Persisted master switch for live Bible direct, semantic, and reading-mode detection; it does not stop transcription or EGW detection. |
-| Queue voice command | Strict final-transcript command that presents the current one-based queue position, such as `item 2`. |
+
+| Term                | Meaning                                                                                                                               |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| STT                 | Speech-to-text provider layer.                                                                                                        |
+| Vosk                | Local/offline STT provider and worker.                                                                                                |
+| Deepgram            | Cloud STT provider.                                                                                                                   |
+| Soniox              | Cloud STT provider.                                                                                                                   |
+| Kinetic theme       | Theme with moving background data.                                                                                                    |
+| Collected detection | Session-scoped item captured when an operator presents or queues a detection.                                                         |
+| Bible mode          | Persisted master switch for live Bible direct, semantic, and reading-mode detection; it does not stop transcription or EGW detection. |
+| Queue voice command | Strict final-transcript command that presents the current one-based queue position, such as `item 2`.                                 |
 
 ## 15 - Map changelog
-| Date | Change | Sections touched |
-|---|---|---|
-| 2026-07-12 | Initial scoped map for STT cleanup, collected detections, theme catalog, and quick-search ghost text work. | 0-15 |
-| 2026-07-13 | Added EGW source-generation map for Steps to Christ paragraph/page alignment. | 4, 6, 7, 10, 15 |
-| 2026-07-15 | Added bounded startup-auth and automatic expired-session sign-in flow. | 5, 6, 15 |
-| 2026-07-15 | Added provider-specific cloud-key onboarding and validation plus Speechmatics real-time transcription. | 2, 5-9, 15 |
-| 2026-07-16 | Added provider-aware visible transcript coalescing for adjacent Speechmatics final spans without delaying detection. | 6, 15 |
-| 2026-07-16 | Tuned Deepgram endpointing to 250 ms and Speechmatics flexible final delay to 1.0 second. | 9, 15 |
-| 2026-07-16 | Added optional self-declared church organization signup metadata, verified-session/operator badge display, and admin account visibility. | 5-10, 15 |
-| 2026-07-16 | Replaced UUID-only device counting with managed approved/pending/revoked activations, OS-keychain P-256 identity proof, service-role-only registration/approval, and signed configurable offline leases. | 5-11, 15 |
-| 2026-07-20 | Separated verse rank evidence from displayed match strength, added STT-aware semantic safety and repeat confirmation, production-faithful calibration gates, and privacy-safe local correction feedback. | 5-11, 15 |
-| 2026-07-20 | Added asynchronous detection latency, candidate-switch stability, and semantic confirmation-latency measurements without retaining transcript or audio. | 6, 10, 11, 15 |
-| 2026-07-20 | Corrected the accuracy corpus to replay stable partial/final candidate pairs, retained the 90% release gate, and made the unsafe 85% comparison report-only. | 6, 10, 11, 15 |
-| 2026-07-22 | Added the opt-in obsidian operator accent, scoped dark/light atmosphere tokens, and token-driven confidence/meter/preview/live-state visuals without changing projector themes. | 3, 6, 15 |
-| 2026-07-23 | Fixed dangling cross-segment chapter parsing, synchronized semantic auto-live verses into reading-mode navigation, separated warm/charcoal dark surfaces from accent colors, and restored the Live Desk projector-setup entry point. | 3, 5, 6, 10, 15 |
-| 2026-07-23 | Isolated the desktop installation as SabbathCue Personal and ported the five KNFC stage kinetic themes with their canvas renderer and regression coverage. | 3, 6, 9, 10, 15 |
-| 2026-07-23 | Restored the obsidian accent so it stays amber when selected, made both dark surfaces derive their atmosphere from the active accent, applied the surface class to the verification screen, and removed the duplicate Live Desk projector button (the header entry point at app-controller-header.tsx:138 is the only one). | 3, 6, 15 |
-| 2026-07-23 | Added the Paddle billing mirror flow with atomic retryable webhook processing, event-time ordering, verified user linkage, multi-subscription access recalculation, and nullable authenticated billing summaries. | 6-10, 15 |
-| 2026-07-24 | Made direct sermon passage scope dwell-based, promoted explicit in-scope bare verses as citations, and blocked the prose collision `same` → `James`. | 5, 6, 15 |
-| 2026-07-25 | Kept book-inferred bare chapter/verse references visible for operator review but below auto-live confidence, preventing mutable last-reference context from outranking correct semantic matches. | 6, 10, 11, 15 |
-| 2026-07-26 | Hardened live EGW quotation detection with polarity checks, unambiguous title cues, session-scoped attribution state, and settings-aware auto-queue policy. | 6, 10, 11, 15 |
-| 2026-07-26 | Replaced bundled Bible f32 embeddings with a self-identifying, IDs-bound int8 format; retained f32 compatibility; added deterministic CI generation and paired quality/performance gates. | 6, 9-11, 15 |
-| 2026-07-26 | Added a non-executing command-classifier benchmark with isolated corpus partitions, deterministic and MiniLM baselines, and shadow replay. | 5, 6, 10, 11, 15 |
-| 2026-07-26 | Added a conservative command-shape gate before MiniLM intent output, removing all four seed safety false commands without reducing held-out accuracy. | 5, 6, 10, 11, 15 |
-| 2026-07-26 | Added 100 deterministic synthetic sermon transcripts with speaker-isolated training/validation sampling, improved the authored held-out MiniLM result to 83.3% accuracy and 77.8% macro-F1 with zero safety false commands, and removed the abandoned external-model prototype. | 5, 6, 10, 11, 15 |
-| 2026-07-29 | Made unique short exact quotations live-eligible, kept shared exact phrases and strong broad paraphrases review-only, and made the 204-case benchmark distinguish fire, hint, safe abstention, and silence. | 5, 6, 10, 11, 15 |
-| 2026-07-29 | Preserved high-overlap quote quality for deterministic verse ranking, made explicitly named books preempt stale pending context, and expanded the permanent Auto Live corpus with a 30-case blessed-hope sermon. | 6, 10, 11, 15 |
-| 2026-07-30 | Added deterministic voice presentation for every queue item kind and a persisted Bible-only detection mode that leaves transcription, operator commands, manual/queued scripture, and EGW active. | 5-7, 10-12, 14-15 |
-| 2026-07-30 | Preserved authored hymn verse/refrain pages, retained section identity through presentation rendering, ported seven hymn scenes with bundled portable font alternatives, and added frozen Sacred Minimal/Heritage variants. | 3, 5-7, 10-12, 14-15 |
+
+| Date       | Change                                                                                                                                                                                                                                                                                                                      | Sections touched     |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| 2026-07-12 | Initial scoped map for STT cleanup, collected detections, theme catalog, and quick-search ghost text work.                                                                                                                                                                                                                  | 0-15                 |
+| 2026-07-13 | Added EGW source-generation map for Steps to Christ paragraph/page alignment.                                                                                                                                                                                                                                               | 4, 6, 7, 10, 15      |
+| 2026-07-15 | Added bounded startup-auth and automatic expired-session sign-in flow.                                                                                                                                                                                                                                                      | 5, 6, 15             |
+| 2026-07-15 | Added provider-specific cloud-key onboarding and validation plus Speechmatics real-time transcription.                                                                                                                                                                                                                      | 2, 5-9, 15           |
+| 2026-07-16 | Added provider-aware visible transcript coalescing for adjacent Speechmatics final spans without delaying detection.                                                                                                                                                                                                        | 6, 15                |
+| 2026-07-16 | Tuned Deepgram endpointing to 250 ms and Speechmatics flexible final delay to 1.0 second.                                                                                                                                                                                                                                   | 9, 15                |
+| 2026-07-16 | Added optional self-declared church organization signup metadata, verified-session/operator badge display, and admin account visibility.                                                                                                                                                                                    | 5-10, 15             |
+| 2026-07-16 | Replaced UUID-only device counting with managed approved/pending/revoked activations, OS-keychain P-256 identity proof, service-role-only registration/approval, and signed configurable offline leases.                                                                                                                    | 5-11, 15             |
+| 2026-07-20 | Separated verse rank evidence from displayed match strength, added STT-aware semantic safety and repeat confirmation, production-faithful calibration gates, and privacy-safe local correction feedback.                                                                                                                    | 5-11, 15             |
+| 2026-07-20 | Added asynchronous detection latency, candidate-switch stability, and semantic confirmation-latency measurements without retaining transcript or audio.                                                                                                                                                                     | 6, 10, 11, 15        |
+| 2026-07-20 | Corrected the accuracy corpus to replay stable partial/final candidate pairs, retained the 90% release gate, and made the unsafe 85% comparison report-only.                                                                                                                                                                | 6, 10, 11, 15        |
+| 2026-07-22 | Added the opt-in obsidian operator accent, scoped dark/light atmosphere tokens, and token-driven confidence/meter/preview/live-state visuals without changing projector themes.                                                                                                                                             | 3, 6, 15             |
+| 2026-07-23 | Fixed dangling cross-segment chapter parsing, synchronized semantic auto-live verses into reading-mode navigation, separated warm/charcoal dark surfaces from accent colors, and restored the Live Desk projector-setup entry point.                                                                                        | 3, 5, 6, 10, 15      |
+| 2026-07-23 | Isolated the desktop installation as SabbathCue Personal and ported the five KNFC stage kinetic themes with their canvas renderer and regression coverage.                                                                                                                                                                  | 3, 6, 9, 10, 15      |
+| 2026-07-23 | Restored the obsidian accent so it stays amber when selected, made both dark surfaces derive their atmosphere from the active accent, applied the surface class to the verification screen, and removed the duplicate Live Desk projector button (the header entry point at app-controller-header.tsx:138 is the only one). | 3, 6, 15             |
+| 2026-07-23 | Added the Paddle billing mirror flow with atomic retryable webhook processing, event-time ordering, verified user linkage, multi-subscription access recalculation, and nullable authenticated billing summaries.                                                                                                           | 6-10, 15             |
+| 2026-07-24 | Made direct sermon passage scope dwell-based, promoted explicit in-scope bare verses as citations, and blocked the prose collision `same` → `James`.                                                                                                                                                                        | 5, 6, 15             |
+| 2026-07-25 | Kept book-inferred bare chapter/verse references visible for operator review but below auto-live confidence, preventing mutable last-reference context from outranking correct semantic matches.                                                                                                                            | 6, 10, 11, 15        |
+| 2026-07-26 | Hardened live EGW quotation detection with polarity checks, unambiguous title cues, session-scoped attribution state, and settings-aware auto-queue policy.                                                                                                                                                                 | 6, 10, 11, 15        |
+| 2026-07-26 | Replaced bundled Bible f32 embeddings with a self-identifying, IDs-bound int8 format; retained f32 compatibility; added deterministic CI generation and paired quality/performance gates.                                                                                                                                   | 6, 9-11, 15          |
+| 2026-07-26 | Added a non-executing command-classifier benchmark with isolated corpus partitions, deterministic and MiniLM baselines, and shadow replay.                                                                                                                                                                                  | 5, 6, 10, 11, 15     |
+| 2026-07-26 | Added a conservative command-shape gate before MiniLM intent output, removing all four seed safety false commands without reducing held-out accuracy.                                                                                                                                                                       | 5, 6, 10, 11, 15     |
+| 2026-07-26 | Added 100 deterministic synthetic sermon transcripts with speaker-isolated training/validation sampling, improved the authored held-out MiniLM result to 83.3% accuracy and 77.8% macro-F1 with zero safety false commands, and removed the abandoned external-model prototype.                                             | 5, 6, 10, 11, 15     |
+| 2026-07-29 | Made unique short exact quotations live-eligible, kept shared exact phrases and strong broad paraphrases review-only, and made the 204-case benchmark distinguish fire, hint, safe abstention, and silence.                                                                                                                 | 5, 6, 10, 11, 15     |
+| 2026-07-29 | Preserved high-overlap quote quality for deterministic verse ranking, made explicitly named books preempt stale pending context, and expanded the permanent Auto Live corpus with a 30-case blessed-hope sermon.                                                                                                            | 6, 10, 11, 15        |
+| 2026-07-30 | Added deterministic voice presentation for every queue item kind and a persisted Bible-only detection mode that leaves transcription, operator commands, manual/queued scripture, and EGW active.                                                                                                                           | 5-7, 10-12, 14-15    |
+| 2026-07-30 | Preserved authored hymn verse/refrain pages, retained section identity through presentation rendering, ported seven hymn scenes with bundled portable font alternatives, and added frozen Sacred Minimal/Heritage variants.                                                                                                 | 3, 5-7, 10-12, 14-15 |
