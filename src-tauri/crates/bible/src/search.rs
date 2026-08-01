@@ -112,7 +112,7 @@ const MAX_PHRASE_SPAN_TERMS: usize = 12;
 const MAX_PHRASE_SPANS: usize = 12;
 /// Length used for interior (non-tail) spans. One length only: sliding every
 /// length over every offset is O(n^2) SQL round trips.
-const INTERIOR_SPAN_TERMS: usize = 4;
+const INTERIOR_SPAN_TERMS: usize = 6;
 /// Upper bound on interior spans, on top of `MAX_PHRASE_SPANS`.
 const MAX_INTERIOR_SPANS: usize = 6;
 
@@ -132,7 +132,7 @@ fn push_unique_span(spans: &mut Vec<String>, terms: &[&str]) {
 /// End-anchored spans come first (quotation finishes at the window tail).
 /// Stop-stripped short variants of the tail cover three-word quotes that
 /// follow a light verb ("it is the everlasting gospel"). If those cannot
-/// match, bounded interior 4-grams walk from the tail so mid-window quotes
+/// match, bounded interior 6-grams walk from the tail so mid-window quotes
 /// remain reachable without O(n^2) SQL. Total length of this list is at most
 /// `MAX_PHRASE_SPANS + MAX_INTERIOR_SPANS`.
 pub(crate) fn build_phrase_spans_with_end_count(input: &str) -> (Vec<String>, usize) {
@@ -632,6 +632,40 @@ mod tests {
                     || s == "\"everlasting gospel to preach\""
                     || s == "\"the everlasting gospel\""),
             "an interior or stripped quoted phrase must be reachable, got {spans:?}"
+        );
+    }
+
+    #[test]
+    fn interior_phrase_spans_require_six_words() {
+        let (spans, end_n) = build_phrase_spans_with_end_count(
+            "You know, the song writer says, Nothing between me and my savior.",
+        );
+        let interior = &spans[end_n..];
+
+        assert!(
+            interior
+                .iter()
+                .all(|span| span.split_whitespace().count() >= 6),
+            "collision-prone short interior spans must not receive phrase evidence: {interior:?}"
+        );
+        assert!(
+            !interior.iter().any(|span| span == "\"between me and my\""),
+            "the hymn/Bible collision must not enter the phrase tier: {interior:?}"
+        );
+    }
+
+    #[test]
+    fn six_word_interior_span_keeps_mid_window_recall() {
+        let (spans, end_n) = build_phrase_spans_with_end_count(
+            "the three angels messages it is the everlasting gospel to preach unto them that dwell on the earth",
+        );
+        let interior = &spans[end_n..];
+
+        assert!(
+            interior
+                .iter()
+                .any(|span| span == "\"everlasting gospel to preach unto them\""),
+            "the distinctive six-word Revelation span must remain reachable: {interior:?}"
         );
     }
 

@@ -980,8 +980,7 @@ impl AutoLiveSelector {
                 matches!(
                     candidate.detection.source,
                     rhema_detection::types::DetectionSource::Semantic { .. }
-                ) && candidate.detection.confidence >= threshold
-                    && !candidate.detection.is_chapter_only
+                ) && !candidate.detection.is_chapter_only
                     && !std::ptr::eq(*candidate, semantic)
             })
             .map(|candidate| candidate.detection.rank_score())
@@ -1505,6 +1504,43 @@ mod tests {
         assert!(
             fired.is_none(),
             "ambiguous semantic results stay review-only"
+        );
+    }
+
+    #[test]
+    fn stable_case_replay_counts_a_visible_runner_up_below_auto_live_threshold() {
+        let detection = |verse_start, confidence| MergedDetection {
+            detection: Detection {
+                verse_ref: VerseRef {
+                    book_number: 45,
+                    book_name: "Romans".to_string(),
+                    chapter: 8,
+                    verse_start,
+                    verse_end: None,
+                },
+                verse_id: None,
+                confidence,
+                source: DetectionSource::Semantic {
+                    similarity: confidence,
+                },
+                transcript_snippet: "Nothing can separate us from God's love".to_string(),
+                detected_at: 0,
+                is_chapter_only: false,
+            },
+            auto_queued: false,
+        };
+        let detections = [detection(39, 0.91), detection(38, 0.891)];
+
+        let fired = select_stable_case(
+            &mut AutoLiveSelector::default(),
+            &detections,
+            0.90,
+            &HashMap::new(),
+        );
+
+        assert!(
+            fired.is_none(),
+            "a close visible alternative must prevent an ambiguous auto-live"
         );
     }
 }

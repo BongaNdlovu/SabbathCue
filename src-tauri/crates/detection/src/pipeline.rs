@@ -50,6 +50,10 @@ const LIVE_SEMANTIC_CAP: usize = 5;
 const QUOTE_OVERLAP_MIN_FRACTION: f64 = 0.28;
 const QUOTE_OVERLAP_MIN_MATCHED: usize = 4;
 const QUOTE_OVERLAP_MIN_VERSE_WORDS: usize = 4;
+/// Bag-of-words overlap must include at least one ordered adjacent pair. This
+/// rejects topical prose that happens to reuse many common verse words in a
+/// different order while retaining lightly garbled quotations.
+const QUOTE_OVERLAP_MIN_CONTIGUOUS_RUN: usize = 2;
 const QUOTE_OVERLAP_FIRE_FRACTION: f64 = 0.56;
 const QUOTE_OVERLAP_FIRE_CONFIDENCE: f64 = 0.90;
 const QUOTE_OVERLAP_MAX_CONFIDENCE: f64 = 0.98;
@@ -418,6 +422,9 @@ fn quote_overlap_confidence(fragment: &str, verse_text: &str) -> Option<f64> {
     if matched < QUOTE_OVERLAP_MIN_MATCHED {
         return None;
     }
+    if longest_shared_contiguous_word_run(fragment, verse_text) < QUOTE_OVERLAP_MIN_CONTIGUOUS_RUN {
+        return None;
+    }
     let fraction = matched as f64 / verse_words.len() as f64;
     if fraction < QUOTE_OVERLAP_MIN_FRACTION {
         return None;
@@ -434,6 +441,29 @@ fn quote_overlap_confidence(fragment: &str, verse_text: &str) -> Option<f64> {
         QUOTE_OVERLAP_FIRE_CONFIDENCE
             + (QUOTE_OVERLAP_MAX_CONFIDENCE - QUOTE_OVERLAP_FIRE_CONFIDENCE) * high_overlap,
     )
+}
+
+fn longest_shared_contiguous_word_run(fragment: &str, verse_text: &str) -> usize {
+    // Use the unfiltered word stream here. Removing short connectors would
+    // manufacture adjacency (for example, "only ... those") that the speaker
+    // never quoted, while real paraphrases still preserve ordinary pairs such
+    // as "harm you" or "prosper you".
+    let fragment_words = normalized_words(fragment);
+    let verse_words = normalized_words(verse_text);
+    let mut previous = vec![0usize; verse_words.len() + 1];
+    let mut best = 0usize;
+
+    for fragment_word in &fragment_words {
+        let mut current = vec![0usize; verse_words.len() + 1];
+        for (index, verse_word) in verse_words.iter().enumerate() {
+            if fragment_word == verse_word {
+                current[index + 1] = previous[index] + 1;
+                best = best.max(current[index + 1]);
+            }
+        }
+        previous = current;
+    }
+    best
 }
 
 fn is_exact_quote_fragment(fragment: &str, verse_text: &str) -> bool {
@@ -1209,6 +1239,49 @@ mod tests {
         // Broad OR-tier evidence may surface for review but must not read as a
         // confident detection at the 0.70 default.
         assert!(fts_confidence(0, -24.0, true) < 0.70);
+    }
+
+    #[test]
+    fn scattered_common_words_do_not_verify_a_topical_vector_match() {
+        let mut pipeline = DetectionPipeline::new();
+        let mut semantic = SemanticDetector::new(
+            Box::new(StubEmbedder::new(128)),
+            Box::new(FakeIndex {
+                results: vec![SearchResult {
+                    verse_id: 43_017_020,
+                    similarity: 0.81,
+                }],
+            }),
+        );
+        semantic.set_use_synonyms(false);
+        pipeline.set_semantic(semantic);
+        let spoken = "Only those whose minds are fortified with the word of God will be able to stand in these last days and go through to the heavenly Canaan.";
+        let fts_results = vec![Bm25Result {
+            book_number: 43,
+            book_name: "John".to_string(),
+            chapter: 17,
+            verse: 20,
+            rank: -14.369,
+            is_broad_match: true,
+            is_phrase_match: false,
+            text: "Not for these only do I pray, but for those also who will believe in me through their word.".to_string(),
+        }];
+
+        assert_eq!(
+            quote_overlap_confidence(spoken, &fts_results[0].text),
+            None,
+            "shared words in a different order are topical similarity, not quote evidence"
+        );
+
+        let results = pipeline.process_hybrid_with_fts(spoken, &fts_results);
+        assert!(
+            results.iter().all(|result| {
+                result.detection.verse_ref.book_number != 43
+                    || result.detection.verse_ref.chapter != 17
+                    || result.detection.verse_ref.verse_start != 20
+            }),
+            "scattered common words must not surface John 17:20 as a Bible quote: {results:?}"
+        );
     }
 
     #[test]

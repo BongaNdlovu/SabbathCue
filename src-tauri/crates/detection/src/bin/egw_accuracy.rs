@@ -5,13 +5,13 @@
 //!
 //! Usage (repo root):
 //!   cargo run -p rhema-detection --features precompute-bin --release \
-//!     --bin egw_accuracy -- \
+//!     --bin `egw_accuracy` -- \
 //!     --cases data/detection-fixtures/egw-quote-cases.json
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use rhema_bible::BibleDb;
+use rhema_bible::{BibleDb, EgwParagraph};
 use rhema_detection::{egw_quote_score, longest_shared_content_run, EGW_QUOTE_RUN_FIRE};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
@@ -34,8 +34,8 @@ struct FixtureCase {
 }
 
 fn load_cases(path: &Path) -> Result<Vec<FixtureCase>, String> {
-    let raw = std::fs::read_to_string(path).map_err(|e| format!("read {path:?}: {e}"))?;
-    serde_json::from_str(&raw).map_err(|e| format!("parse {path:?}: {e}"))
+    let raw = std::fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    serde_json::from_str(&raw).map_err(|e| format!("parse {}: {e}", path.display()))
 }
 
 fn book_matches(actual: &str, expected: &str) -> bool {
@@ -48,22 +48,30 @@ fn accuracy_failed(misses: usize, false_fires: usize) -> bool {
     misses > 0 || false_fires > 0
 }
 
-fn main() {
-    let mut cases_path = PathBuf::from("data/detection-fixtures/egw-quote-cases.json");
-    let mut db_path = PathBuf::from("data/rhema.db");
-    let mut candidates: usize = 5;
+struct Config {
+    cases_path: PathBuf,
+    db_path: PathBuf,
+    candidates: usize,
+}
+
+fn parse_config() -> Config {
+    let mut config = Config {
+        cases_path: PathBuf::from("data/detection-fixtures/egw-quote-cases.json"),
+        db_path: PathBuf::from("data/rhema.db"),
+        candidates: 5,
+    };
 
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--cases" => {
-                cases_path = PathBuf::from(args.next().expect("--cases needs a path"));
+                config.cases_path = PathBuf::from(args.next().expect("--cases needs a path"));
             }
             "--db" => {
-                db_path = PathBuf::from(args.next().expect("--db needs a path"));
+                config.db_path = PathBuf::from(args.next().expect("--db needs a path"));
             }
             "--candidates" => {
-                candidates = args
+                config.candidates = args
                     .next()
                     .expect("--candidates needs a number")
                     .parse()
@@ -75,20 +83,68 @@ fn main() {
             }
         }
     }
+    config
+}
 
-    let cases = load_cases(&cases_path).unwrap_or_else(|e| {
+fn best_match(
+    paragraphs: &[EgwParagraph],
+    case: &FixtureCase,
+) -> Option<(String, usize, f64, bool)> {
+    paragraphs.iter().fold(None, |best, paragraph| {
+        let run = longest_shared_content_run(&case.text, &paragraph.text);
+        let Some((confidence, auto_queued)) = egw_quote_score(run.len, case.cue) else {
+            return best;
+        };
+        let better = best.as_ref().is_none_or(|(_, len, conf, _)| {
+            run.len > *len || (run.len == *len && confidence > *conf)
+        });
+        if better {
+            Some((
+                paragraph.book_title.clone(),
+                run.len,
+                confidence,
+                auto_queued,
+            ))
+        } else {
+            best
+        }
+    })
+}
+
+fn print_summary(
+    by_cat: HashMap<String, (usize, usize)>,
+    fires: usize,
+    misses: usize,
+    false_fires: usize,
+    silents: usize,
+) {
+    println!();
+    println!("By category (correct / total):");
+    let mut cats: Vec<_> = by_cat.into_iter().collect();
+    cats.sort_by(|a, b| a.0.cmp(&b.0));
+    for (cat, (ok, total)) in cats {
+        println!("  {cat:>14}  {ok}/{total}");
+    }
+    println!();
+    println!("Fires: {fires}  misses: {misses}  false-fires: {false_fires}  silent-ok: {silents}");
+}
+
+fn main() {
+    let config = parse_config();
+
+    let cases = load_cases(&config.cases_path).unwrap_or_else(|e| {
         eprintln!("{e}");
         std::process::exit(1);
     });
-    let db = BibleDb::open_readonly(&db_path).unwrap_or_else(|e| {
-        eprintln!("open db {db_path:?}: {e}");
+    let db = BibleDb::open_readonly(&config.db_path).unwrap_or_else(|e| {
+        eprintln!("open db {}: {e}", config.db_path.display());
         std::process::exit(1);
     });
 
     println!(
         "Loaded {} EGW cases from {}",
         cases.len(),
-        cases_path.display()
+        config.cases_path.display()
     );
     println!();
 
@@ -100,26 +156,9 @@ fn main() {
 
     for case in &cases {
         let paragraphs = db
-            .search_egw_bm25(&case.text, candidates)
+            .search_egw_bm25(&case.text, config.candidates)
             .unwrap_or_default();
-
-        let mut best: Option<(String, usize, f64, bool)> = None;
-        for paragraph in &paragraphs {
-            let run = longest_shared_content_run(&case.text, &paragraph.text);
-            if let Some((confidence, auto_queued)) = egw_quote_score(run.len, case.cue) {
-                let better = best.as_ref().is_none_or(|(_, len, conf, _)| {
-                    run.len > *len || (run.len == *len && confidence > *conf)
-                });
-                if better {
-                    best = Some((
-                        paragraph.book_title.clone(),
-                        run.len,
-                        confidence,
-                        auto_queued,
-                    ));
-                }
-            }
-        }
+        let best = best_match(&paragraphs, case);
 
         let entry = by_cat.entry(case.category.clone()).or_insert((0, 0));
         entry.1 += 1;
@@ -131,9 +170,9 @@ fn main() {
                     println!(
                         "[{:>14}] want silent -> FALSE-FIRE {} run={} ({:.0}%)",
                         case.category,
-                        best.as_ref().map(|(b, _, _, _)| b.as_str()).unwrap_or("?"),
-                        best.as_ref().map(|(_, r, _, _)| *r).unwrap_or(0),
-                        best.as_ref().map(|(_, _, c, _)| *c * 100.0).unwrap_or(0.0),
+                        best.as_ref().map_or("?", |(b, _, _, _)| b.as_str()),
+                        best.as_ref().map_or(0, |(_, r, _, _)| *r),
+                        best.as_ref().map_or(0.0, |(_, _, c, _)| *c * 100.0),
                     );
                     false
                 } else {
@@ -194,15 +233,7 @@ fn main() {
         }
     }
 
-    println!();
-    println!("By category (correct / total):");
-    let mut cats: Vec<_> = by_cat.into_iter().collect();
-    cats.sort_by(|a, b| a.0.cmp(&b.0));
-    for (cat, (ok, total)) in cats {
-        println!("  {cat:>14}  {ok}/{total}");
-    }
-    println!();
-    println!("Fires: {fires}  misses: {misses}  false-fires: {false_fires}  silent-ok: {silents}");
+    print_summary(by_cat, fires, misses, false_fires, silents);
     if accuracy_failed(misses, false_fires) {
         std::process::exit(1);
     }

@@ -356,6 +356,38 @@ describe("verse detection workflow", () => {
     expect(useBroadcastStore.getState().liveItem).toBeNull()
   })
 
+  it("uses a visible runner-up below the auto-live threshold for ambiguity", async () => {
+    useSettingsStore.setState({ confidenceThreshold: 0.9 })
+    const strongest = makeDetection({
+      source: "semantic",
+      verse_ref: "Romans 8:39",
+      book_name: "Romans",
+      book_number: 45,
+      chapter: 8,
+      verse: 39,
+      confidence: 0.91,
+      rank_score: 0.91,
+      auto_queued: false,
+    })
+    const runnerUp = makeDetection({
+      source: "semantic",
+      verse_ref: "Romans 8:38",
+      book_name: "Romans",
+      book_number: 45,
+      chapter: 8,
+      verse: 38,
+      confidence: 0.891,
+      rank_score: 0.891,
+      auto_queued: false,
+    })
+
+    await handleVerseDetections([strongest, runnerUp])
+    await handleVerseDetections([strongest, runnerUp])
+
+    expect(useBibleStore.getState().selectedVerse).toBeNull()
+    expect(useBroadcastStore.getState().liveItem).toBeNull()
+  })
+
   it("confirms a semantic verse after an intervening semantic candidate", async () => {
     const first = makeDetection({
       source: "semantic",

@@ -209,20 +209,22 @@ function selectPreviewHit(
     minConfidence,
     semanticMinConfidence
   )
-  const semanticHits = detections.filter(
+  const semanticCandidates = detections.filter(
     (d) =>
       d.source === "semantic" &&
-      d.confidence >= semanticAutoLiveThreshold &&
+      d.confidence >= semanticMinConfidence &&
       !d.is_chapter_only &&
       d.book_number > 0
   )
-  semanticHits.sort(
+  semanticCandidates.sort(
     (a, b) => (b.rank_score ?? b.confidence) - (a.rank_score ?? a.confidence)
   )
-  const strongest = semanticHits[0]
-  const runnerUp = semanticHits[1]
+  const strongest = semanticCandidates.find(
+    (candidate) => candidate.confidence >= semanticAutoLiveThreshold
+  )
+  if (!strongest) return null
+  const runnerUp = semanticCandidates.find((candidate) => candidate !== strongest)
   if (
-    strongest &&
     runnerUp &&
     (strongest.rank_score ?? strongest.confidence) -
       (runnerUp.rank_score ?? runnerUp.confidence) <
