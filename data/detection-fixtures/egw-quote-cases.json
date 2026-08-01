@@ -1,0 +1,71 @@
+[
+  {
+    "category": "egw-verbatim",
+    "mode": "fire",
+    "cue": true,
+    "text": "Many flatter themselves that they can depart from strict integrity for a time, for the sake of some worldly advantage.",
+    "expectedBook": "Patriarchs and Prophets"
+  },
+  {
+    "category": "egw-paraphrase",
+    "mode": "fire",
+    "cue": true,
+    "text": "Only those whose minds are fortified with the word of God will be able to stand in these last days and go through to the heavenly Canaan.",
+    "expectedBook": "The Great Controversy"
+  },
+  {
+    "category": "egw-paraphrase",
+    "mode": "fire",
+    "cue": true,
+    "text": "only those whose minds are fortified with the word of God will stand in these last days",
+    "expectedBook": "The Great Controversy"
+  },
+  {
+    "category": "egw-noise",
+    "mode": "silent",
+    "cue": false,
+    "text": "So, we got to take time, friends, in God's word. We've got to take time to pray. And we've got to take time to be holy."
+  },
+  {
+    "category": "egw-noise",
+    "mode": "silent",
+    "cue": false,
+    "text": "But I pray this morning, Father, take the world, but give us Jesus."
+  },
+  {
+    "category": "egw-noise",
+    "mode": "silent",
+    "cue": false,
+    "text": "Can we please stand as we sing our closing hymn?"
+  },
+  {
+    "category": "egw-noise",
+    "mode": "silent",
+    "cue": false,
+    "text": "If it's your phone, I can tell you this, you can pick up my phone. I'm not ashamed to give it to you."
+  },
+  {
+    "category": "egw-noise",
+    "mode": "silent",
+    "cue": false,
+    "text": "There's no sites that I've visited there that I shouldn't be visiting. If it's a vice, get rid of it."
+  },
+  {
+    "category": "egw-noise",
+    "mode": "silent",
+    "cue": false,
+    "text": "You know, the song writer says, Nothing between me and my savior."
+  },
+  {
+    "category": "egw-noise",
+    "mode": "silent",
+    "cue": false,
+    "text": "We need to spend time pointing men and women to Jesus Christ, the hope of glory."
+  },
+  {
+    "category": "egw-noise",
+    "mode": "silent",
+    "cue": false,
+    "text": "Spiritualism in all forms is prevalent in our society today and people don't know that the dead know nothing."
+  }
+]

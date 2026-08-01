@@ -1,0 +1,44 @@
+[
+  {
+    "language": "en",
+    "category": "probe-long",
+    "mode": "fire",
+    "text": "unless we are in our secret closet at home praying, you will not stand the wiles of the devil",
+    "expected": "Ephesians 6:11"
+  },
+  {
+    "language": "en",
+    "category": "probe-short",
+    "mode": "fire",
+    "text": "you will not stand the wiles of the devil",
+    "expected": "Ephesians 6:11"
+  },
+  {
+    "language": "en",
+    "category": "probe-long",
+    "mode": "fire",
+    "text": "Spiritualism in all forms is prevalent in our society today and people don't know that the dead know nothing.",
+    "expected": "Ecclesiastes 9:5"
+  },
+  {
+    "language": "en",
+    "category": "probe-short",
+    "mode": "fire",
+    "text": "people don't know that the dead know nothing",
+    "expected": "Ecclesiastes 9:5"
+  },
+  {
+    "language": "en",
+    "category": "probe-mid-window",
+    "mode": "fire",
+    "text": "the three angels messages it is the everlasting gospel to preach unto them that dwell on the earth",
+    "expected": "Revelation 14:6"
+  },
+  {
+    "language": "en",
+    "category": "probe-mid-window",
+    "mode": "fire",
+    "text": "And so we have the final messages, the three angels messages going out to the whole world. It is the everlasting gospel.",
+    "expected": "Revelation 14:6"
+  }
+]

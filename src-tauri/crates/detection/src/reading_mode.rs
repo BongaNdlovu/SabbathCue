@@ -737,7 +737,8 @@ fn is_previous_verse_command(command: &str) -> bool {
 /// "go back") — common prefixes of ordinary speech — never fire early.
 /// Chapter navigation stays on the final path for the same reason.
 pub fn is_complete_verse_navigation_command(text: &str) -> bool {
-    let normalized = crate::direct::parser::strip_english_filler_words(&normalize_command_text(text));
+    let normalized =
+        crate::direct::parser::strip_english_filler_words(&normalize_command_text(text));
     let trimmed = normalized.as_str();
     if !trimmed.contains("verse") {
         return false;
@@ -975,7 +976,9 @@ mod tests {
         assert!(is_complete_verse_navigation_command(
             "Go back to the previous verse."
         ));
-        assert!(is_complete_verse_navigation_command("previous verse please"));
+        assert!(is_complete_verse_navigation_command(
+            "previous verse please"
+        ));
         assert!(is_complete_verse_navigation_command("last verse again"));
     }
 

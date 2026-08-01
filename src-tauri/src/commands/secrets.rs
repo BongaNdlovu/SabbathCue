@@ -840,7 +840,10 @@ mod tests {
     #[test]
     fn deepseek_key_or_empty_returns_empty_when_missing() {
         let store = MockKeychainStore::new();
-        assert_eq!(get_deepseek_api_key_or_empty_with_store(&store).unwrap(), "");
+        assert_eq!(
+            get_deepseek_api_key_or_empty_with_store(&store).unwrap(),
+            ""
+        );
     }
 
     #[cfg(target_os = "windows")]

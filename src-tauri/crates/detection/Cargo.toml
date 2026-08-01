@@ -52,6 +52,11 @@ path = "src/bin/detection_accuracy.rs"
 required-features = ["precompute-bin"]
 
 [[bin]]
+name = "egw_accuracy"
+path = "src/bin/egw_accuracy.rs"
+required-features = ["precompute-bin"]
+
+[[bin]]
 name = "live_probe"
 path = "src/bin/live_probe.rs"
 required-features = ["precompute-bin"]

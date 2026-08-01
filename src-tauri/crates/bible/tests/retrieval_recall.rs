@@ -1,7 +1,7 @@
 //! Recall regressions: does the correct verse enter the candidate pool at all?
-//! Distilled from live sermon logs where DeepSeek ranked correctly but the
+//! Distilled from live sermon logs where `DeepSeek` ranked correctly but the
 //! right verse was never retrieved. Unlike the pipeline tests, these go
-//! through real SQLite FTS5.
+//! through real `SQLite` FTS5.
 
 use rhema_bible::BibleDb;
 
@@ -15,13 +15,17 @@ fn recall_db() -> BibleDb {
     )
     .unwrap();
 
-    let verses: [(i64, i32, &str, i32, i32, &str); 6] = [
+    let verses: [(i64, i32, &str, i32, i32, &str); 10] = [
         (1, 17, "Esther", 4, 14, "For if thou altogether holdest thy peace at this time, then shall there enlargement and deliverance arise to the Jews from another place; but thou and thy father's house shall be destroyed: and who knoweth whether thou art come to the kingdom for such a time as this?"),
         (2, 30, "Amos", 5, 13, "Therefore the prudent shall keep silence in that time; for it is an evil time."),
         (3, 39, "Malachi", 1, 1, "The burden of the word of the LORD to Israel by Malachi."),
         (4, 41, "Mark", 4, 39, "And he arose, and rebuked the wind, and said unto the sea, Peace, be still. And the wind ceased, and there was a great calm."),
         (5, 53, "2 Thessalonians", 2, 3, "Let no man deceive you by any means: for that day shall not come, except there come a falling away first, and that man of sin be revealed, the son of perdition;"),
         (6, 44, "Acts", 16, 25, "And at midnight Paul and Silas prayed, and sang praises unto God: and the prisoners heard them."),
+        (7, 49, "Ephesians", 6, 11, "Put on the whole armour of God, that ye may be able to stand against the wiles of the devil."),
+        (8, 66, "Revelation", 14, 6, "And I saw another angel fly in the midst of heaven, having the everlasting gospel to preach unto them that dwell on the earth, and to every nation, and kindred, and tongue, and people,"),
+        (9, 51, "Colossians", 1, 27, "To whom God would make known what is the riches of the glory of this mystery among the Gentiles; which is Christ in you, the hope of glory:"),
+        (10, 66, "Revelation", 13, 8, "And all that dwell upon the earth shall worship him, whose names are not written in the book of life of the Lamb slain from the foundation of the world."),
     ];
     for (id, book_number, book_name, chapter, verse, text) in verses {
         conn.execute(
@@ -99,4 +103,52 @@ fn absent_book_hint_leaves_the_pool_unscoped() {
         .unwrap();
     let plain = db.search_verses_bm25("peace be still", 10).unwrap();
     assert_eq!(hinted.len(), plain.len());
+}
+
+#[test]
+fn quoted_fragment_survives_a_long_prose_window() {
+    let db = recall_db();
+    assert_recalls(
+        &db,
+        "unless we are in our secret closet at home praying, you will not stand the wiles of the devil",
+        "Ephesians",
+        6,
+        11,
+    );
+}
+
+#[test]
+fn mid_window_everlasting_gospel_is_recalled() {
+    let db = recall_db();
+    assert_recalls(
+        &db,
+        "And so we have the final messages, the three angels messages going out to the whole world. It is the everlasting gospel.",
+        "Revelation",
+        14,
+        6,
+    );
+}
+
+#[test]
+fn hope_of_glory_fragment_is_recalled() {
+    let db = recall_db();
+    assert_recalls(
+        &db,
+        "We need to spend time pointing men and women to Jesus Christ, the hope of glory.",
+        "Colossians",
+        1,
+        27,
+    );
+}
+
+#[test]
+fn lamb_slain_from_foundation_is_recalled() {
+    let db = recall_db();
+    assert_recalls(
+        &db,
+        "I want that blood. The lamb slain from the foundation of the world.",
+        "Revelation",
+        13,
+        8,
+    );
 }

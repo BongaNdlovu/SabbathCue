@@ -98,13 +98,13 @@ pub(crate) fn strip_reference_scaffolding(text: &str) -> String {
 /// book names are held incomplete and never emitted as detections
 /// (`direct/detector.rs` incomplete-ref path).
 pub(crate) fn spoken_book_hint(transcript: &str) -> Option<i32> {
-    use std::sync::LazyLock;
+    use std::sync::OnceLock;
 
     use rhema_detection::direct::automaton::BookMatcher;
     use rhema_detection::direct::parser::parse_reference;
 
-    static MATCHER: LazyLock<BookMatcher> = LazyLock::new(BookMatcher::new);
-    let matches = MATCHER.find_books(transcript);
+    static MATCHER: OnceLock<BookMatcher> = OnceLock::new();
+    let matches = MATCHER.get_or_init(BookMatcher::new).find_books(transcript);
     if matches.is_empty() {
         return None;
     }

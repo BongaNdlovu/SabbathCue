@@ -1,0 +1,158 @@
+[
+  {
+    "language": "en",
+    "category": "closing-quote",
+    "mode": "fire",
+    "timestamp": "01:23:29",
+    "text": "We must give diligent study to the word of God. Wherewith shall a young man cleanse his ways by taking heed there according to thy word.",
+    "expected": "Psalms 119:9"
+  },
+  {
+    "language": "en",
+    "category": "closing-quote",
+    "mode": "fire",
+    "timestamp": "01:23:29",
+    "text": "He says, Hide my word against me. Hide thy word in me so that I may not sin against thee.",
+    "expected": "Psalms 119:11"
+  },
+  {
+    "language": "en",
+    "category": "closing-quote",
+    "mode": "fire",
+    "timestamp": "01:25:03",
+    "text": "It says, Here are those who keep the commandments of God and the faith of Jesus.",
+    "expected": "Revelation 14:12"
+  },
+  {
+    "language": "en",
+    "category": "closing-direct",
+    "mode": "fire",
+    "timestamp": "01:25:33",
+    "text": "What is the definition of sin? 1 John 3:4 says, Sin is the transgression of the law.",
+    "expected": "1 John 3:4"
+  },
+  {
+    "language": "en",
+    "category": "closing-fragment",
+    "mode": "fire",
+    "timestamp": "01:26:41",
+    "text": "How can we do so? It says they overcame him by the blood of the lamb and by the word of their testimony.",
+    "expected": "Revelation 12:11"
+  },
+  {
+    "language": "en",
+    "category": "closing-fragment",
+    "mode": "fire",
+    "timestamp": "01:27:49",
+    "text": "And we need to be separate from among them and touch not the unclean thing.",
+    "expected": "2 Corinthians 6:17"
+  },
+  {
+    "language": "en",
+    "category": "closing-fragment",
+    "mode": "fire",
+    "timestamp": "01:23:57",
+    "text": "unless we are in our secret closet at home praying, you will not stand the wiles of the devil",
+    "expected": "Ephesians 6:11"
+  },
+  {
+    "language": "en",
+    "category": "closing-fragment",
+    "mode": "fire",
+    "timestamp": "01:27:13",
+    "text": "I want that blood. The lamb slain from the foundation of the world.",
+    "expected": "Revelation 13:8",
+    "forbidden": ["Luke 11:50"]
+  },
+  {
+    "language": "en",
+    "category": "closing-fragment",
+    "mode": "fire",
+    "timestamp": "01:24:31",
+    "text": "We need to spend time pointing men and women to Jesus Christ, the hope of glory.",
+    "expected": "Colossians 1:27"
+  },
+  {
+    "language": "en",
+    "category": "closing-fragment",
+    "mode": "fire",
+    "timestamp": "01:23:29",
+    "text": "And so we have the final messages, the three angels messages going out to the whole world. It is the everlasting gospel.",
+    "expected": "Revelation 14:6"
+  },
+  {
+    "language": "en",
+    "category": "closing-hint",
+    "mode": "hint",
+    "timestamp": "01:27:13",
+    "text": "Spiritualism in all forms is prevalent in our society today and people don't know that the dead know nothing.",
+    "expectedAny": ["Ecclesiastes 9:5"]
+  },
+  {
+    "language": "en",
+    "category": "closing-hint",
+    "mode": "hint",
+    "timestamp": "01:22:59",
+    "text": "David said that whom shall he cleanse? Those who are what? Whose mind is hid in the word of God.",
+    "expectedAny": ["Psalms 119:11", "Psalms 119:9"],
+    "forbidden": ["Matthew 22:42"]
+  },
+  {
+    "language": "en",
+    "category": "closing-hint",
+    "mode": "hint",
+    "timestamp": "01:25:03",
+    "text": "They don't have a desire for the worldly sinful pleasures because it says, Here is the patience of hope, the saints.",
+    "expectedAny": ["Revelation 14:12"],
+    "forbidden": ["Psalms 52:9"]
+  },
+  {
+    "language": "en",
+    "category": "closing-noise",
+    "mode": "silent",
+    "timestamp": "01:27:49",
+    "text": "But I pray this morning, Father, take the world, but give us Jesus."
+  },
+  {
+    "language": "en",
+    "category": "closing-noise",
+    "mode": "silent",
+    "timestamp": "01:26:06",
+    "text": "You know, the song writer says, Nothing between me and my savior."
+  },
+  {
+    "language": "en",
+    "category": "closing-noise",
+    "mode": "silent",
+    "timestamp": "01:29:04",
+    "text": "Can we please stand as we sing our closing hymn?"
+  },
+  {
+    "language": "en",
+    "category": "closing-noise",
+    "mode": "silent",
+    "timestamp": "01:26:06",
+    "text": "If it's your phone, I can tell you this, you can pick up my phone. I'm not ashamed to give it to you. You will see where I spend most of my time."
+  },
+  {
+    "language": "en",
+    "category": "closing-noise",
+    "mode": "silent",
+    "timestamp": "01:26:41",
+    "text": "There's no sites that I've visited there that I shouldn't be visiting. If it's a vice, get rid of it."
+  },
+  {
+    "language": "en",
+    "category": "closing-noise",
+    "mode": "silent",
+    "timestamp": "01:24:31",
+    "text": "So, we got to take time, friends, in God's word. We've got to take time to pray. And we've got to take time to be holy."
+  },
+  {
+    "language": "en",
+    "category": "closing-egw",
+    "mode": "silent",
+    "timestamp": "01:23:57",
+    "text": "Only those whose minds are fortified with the word of God will be able to stand in these last days and go through to the heavenly Canaan."
+  }
+]

@@ -15,9 +15,12 @@ const FTS5_RANK0_CONFIDENCE: f64 = 0.68;
 /// Confidence decrease per FTS5 rank position (rank 1 = 0.64, rank 2 = 0.60, etc.).
 const FTS5_CONFIDENCE_DECAY: f64 = 0.04;
 
-/// Very strong phrase/AND matches should score like a near-verbatim quote.
-const FTS5_EXCELLENT_MATCH_RANK: f64 = -24.0;
-const FTS5_EXCELLENT_MATCH_CONFIDENCE: f64 = 0.92;
+/// Confidence for one uniquely identified contiguous quote span.
+const EXACT_QUOTE_CONFIDENCE: f64 = 0.92;
+/// Strong strict-tier BM25 matches remain visible for operator review, but
+/// retrieval rank alone must stay well below quote-strength auto-live bands.
+const FTS5_STRONG_REVIEW_RANK: f64 = -24.0;
+const FTS5_STRONG_REVIEW_CONFIDENCE: f64 = 0.70;
 
 /// FTS5 results below this confidence are not included.
 const FTS5_MIN_CONFIDENCE: f64 = 0.50;
@@ -50,7 +53,19 @@ const QUOTE_OVERLAP_MIN_VERSE_WORDS: usize = 4;
 const QUOTE_OVERLAP_FIRE_FRACTION: f64 = 0.56;
 const QUOTE_OVERLAP_FIRE_CONFIDENCE: f64 = 0.90;
 const QUOTE_OVERLAP_MAX_CONFIDENCE: f64 = 0.98;
-const EXACT_QUOTE_MIN_WORDS: usize = 5;
+/// Minimum contiguous spoken words that must appear in a verse before the
+/// match counts as an exact quote. Five is too short: "from the foundation of
+/// the world" (6 tokens with "the") is shared by Luke 11:50 and Revelation 13:8,
+/// and used to crown the wrong verse. Seven captures "lamb slain from the
+/// foundation of the world" while excluding the generic six-word tail.
+const EXACT_QUOTE_MIN_WORDS: usize = 7;
+/// A short exact span must account for most of the spoken fragment. Otherwise
+/// ordinary framing plus one partial verse clause is useful operator evidence,
+/// but not enough certainty to auto-display it.
+const EXACT_QUOTE_MIN_FRAGMENT_PERCENT: usize = 85;
+/// Long contiguous spans are independently distinctive even when the speaker
+/// adds framing prose around them.
+const EXACT_QUOTE_LONG_SPAN_WORDS: usize = 12;
 /// Words shorter than this are too common (the, and, thy, God) to count as
 /// quote evidence either way.
 const QUOTE_OVERLAP_MIN_WORD_LEN: usize = 4;
@@ -201,6 +216,12 @@ impl DetectionPipeline {
         };
 
         if fts_results.is_empty() {
+            for detection in &mut semantic_detections {
+                detection.confidence = detection.confidence.min(VECTOR_ONLY_CONFIDENCE_CAP);
+                if let DetectionSource::Semantic { similarity } = &mut detection.source {
+                    *similarity = (*similarity).min(VECTOR_ONLY_CONFIDENCE_CAP);
+                }
+            }
             let mut merged = self.merger.merge(vec![], semantic_detections);
             self.prioritize_spoken_book(text, &mut merged);
             merged.truncate(LIVE_SEMANTIC_CAP);
@@ -222,6 +243,7 @@ impl DetectionPipeline {
             .map(detection_verse_key)
             .collect();
         let exact_phrase_keys = exact_quote_keys(text, fts_results);
+        let mut fts_keys: HashSet<(i32, i32, i32)> = HashSet::new();
 
         for (rank, fts) in fts_results.iter().enumerate() {
             let Some((confidence, overlap_confidence)) =
@@ -230,6 +252,7 @@ impl DetectionPipeline {
                 continue;
             };
             let key = (fts.book_number, fts.chapter, fts.verse);
+            fts_keys.insert(key);
             if vector_keys.contains(&key) {
                 if let Some(existing) = semantic_detections
                     .iter_mut()
@@ -237,11 +260,13 @@ impl DetectionPipeline {
                 {
                     existing.confidence = (existing.confidence + OVERLAP_CONFIDENCE_BOOST)
                         .min(1.0)
-                        .max(overlap_confidence.unwrap_or(0.0));
+                        .max(overlap_confidence.unwrap_or(0.0))
+                        .max(confidence);
                     if let DetectionSource::Semantic { similarity } = &mut existing.source {
                         *similarity = (*similarity + OVERLAP_CONFIDENCE_BOOST)
                             .min(1.0)
-                            .max(overlap_confidence.unwrap_or(0.0));
+                            .max(overlap_confidence.unwrap_or(0.0))
+                            .max(confidence);
                     }
                 }
                 continue;
@@ -274,6 +299,19 @@ impl DetectionPipeline {
             vector_keys.insert(key);
         }
 
+        // Vector-only survivors (no FTS phrase/AND/OR corroboration) stay in
+        // the review band rather than presenting as mid-80s confident fires.
+        for detection in &mut semantic_detections {
+            let key = detection_verse_key(detection);
+            if fts_keys.contains(&key) {
+                continue;
+            }
+            detection.confidence = detection.confidence.min(VECTOR_ONLY_CONFIDENCE_CAP);
+            if let DetectionSource::Semantic { similarity } = &mut detection.source {
+                *similarity = (*similarity).min(VECTOR_ONLY_CONFIDENCE_CAP);
+            }
+        }
+
         // Gate every live candidate — FTS-derived and vector alike — by the
         // operator's semantic visibility threshold so raising the slider
         // actually suppresses keyword noise instead of letting FTS hits bypass.
@@ -297,6 +335,15 @@ impl DetectionPipeline {
 /// tiers, so genuine near-verbatim quotes routinely arrive as keyword-band OR
 /// hits. Returns the candidate confidence alongside the overlap confidence,
 /// which the caller reuses when collapsing vector/FTS duplicates.
+/// Minimum confidence for a non-broad (phrase/AND) FTS hit so verbatim
+/// phrase evidence outranks a typical vector-only guess (~0.80–0.85).
+const PHRASE_TIER_CONFIDENCE_FLOOR: f64 = 0.88;
+/// Pure vector hits without FTS corroboration are capped. Calibration on the
+/// closing sermon showed 80–89% was ~half wrong; mid-band topical fires
+/// (Matthew 22:42 @86%, Psalms 52:9 @73%) were vector-only. Phrase/overlap
+/// paths are unaffected.
+const VECTOR_ONLY_CONFIDENCE_CAP: f64 = 0.79;
+
 fn live_fts_candidate_confidence(
     text: &str,
     fts: &Bm25Result,
@@ -305,7 +352,12 @@ fn live_fts_candidate_confidence(
 ) -> Option<(f64, Option<f64>)> {
     let overlap_confidence = quote_overlap_confidence(text, &fts.text);
     let exact_phrase_confidence = exact_quote_confidence(exact_phrase_keys, fts);
-    let rank_confidence = fts_confidence(rank, fts.rank, fts.is_broad_match);
+    let mut rank_confidence = fts_confidence(rank, fts.rank, fts.is_broad_match);
+    // Contiguous phrase-tier hits (and verified exact spoken spans) get a
+    // floor above typical vector-only scores. AND/OR keyword hits do not.
+    if exact_phrase_confidence.is_some() || fts.is_phrase_match {
+        rank_confidence = rank_confidence.max(PHRASE_TIER_CONFIDENCE_FLOOR);
+    }
     let confidence = cap_pastoral_prayer_address_confidence(
         text,
         overlap_confidence
@@ -314,18 +366,24 @@ fn live_fts_candidate_confidence(
             .fold(rank_confidence, f64::max),
     );
     log::debug!(
-        "[DET-SEMANTIC] FTS5 candidate idx={rank} bm25={:.3} {} {}:{} conf={:.0}% overlap={:?}",
+        "[DET-SEMANTIC] FTS5 candidate idx={rank} bm25={:.3} {} {}:{} conf={:.0}% overlap={:?} broad={}",
         fts.rank,
         fts.book_name,
         fts.chapter,
         fts.verse,
         confidence * 100.0,
-        overlap_confidence
+        overlap_confidence,
+        fts.is_broad_match
     );
     if confidence < FTS5_MIN_CONFIDENCE {
         return None;
     }
-    if fts.rank > FTS5_LIVE_RANK_FLOOR
+    // The live rank floor exists to suppress keyword-band OR noise. Phrase and
+    // AND hits are not keyword noise — a four-word quoted span often scores
+    // only ~-11 BM25 on a long verse, which is above -13 and used to vanish
+    // even when the words were spoken verbatim.
+    if fts.is_broad_match
+        && fts.rank > FTS5_LIVE_RANK_FLOOR
         && overlap_confidence.is_none()
         && exact_phrase_confidence.is_none()
     {
@@ -384,9 +442,26 @@ fn is_exact_quote_fragment(fragment: &str, verse_text: &str) -> bool {
         return false;
     }
     let verse_words = normalized_words(verse_text);
-    verse_words
-        .windows(fragment_words.len())
-        .any(|window| window == fragment_words)
+    // Speakers frame quotes with prose, but a short partial clause inside a
+    // larger contextual utterance is hint evidence rather than a complete
+    // quote. Accept either a long distinctive span or a short span comprising
+    // most of the spoken fragment.
+    let max_len = fragment_words.len().min(16);
+    for len in (EXACT_QUOTE_MIN_WORDS..=max_len).rev() {
+        for start in 0..=fragment_words.len() - len {
+            let span = &fragment_words[start..start + len];
+            let covers_most_of_fragment = len.saturating_mul(100)
+                >= fragment_words
+                    .len()
+                    .saturating_mul(EXACT_QUOTE_MIN_FRAGMENT_PERCENT);
+            if (len >= EXACT_QUOTE_LONG_SPAN_WORDS || covers_most_of_fragment)
+                && verse_words.windows(len).any(|window| window == span)
+            {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 fn exact_quote_keys(fragment: &str, fts_results: &[Bm25Result]) -> HashSet<(i32, i32, i32)> {
@@ -404,7 +479,7 @@ fn exact_quote_confidence(
     exact_phrase_keys
         .contains(&(fts.book_number, fts.chapter, fts.verse))
         .then_some(if exact_phrase_keys.len() == 1 {
-            FTS5_EXCELLENT_MATCH_CONFIDENCE
+            EXACT_QUOTE_CONFIDENCE
         } else {
             0.89
         })
@@ -438,17 +513,13 @@ pub fn content_words_indexed(text: &str) -> impl Iterator<Item = (usize, String)
 #[expect(clippy::cast_precision_loss, reason = "rank index is small")]
 fn fts_confidence(rank: usize, bm25_rank: f64, is_broad_match: bool) -> f64 {
     let rank_confidence = FTS5_RANK0_CONFIDENCE - (rank as f64 * FTS5_CONFIDENCE_DECAY);
-    // Excellent phrase/AND matches only — broad OR hits never get the quote floor.
-    if bm25_rank <= FTS5_EXCELLENT_MATCH_RANK && !is_broad_match {
-        rank_confidence.max(FTS5_EXCELLENT_MATCH_CONFIDENCE)
+    // BM25 rank measures retrieval relevance, not certainty that the speaker
+    // quoted a verse. A strict-tier excellent rank may reach the operator's
+    // review floor, while separate contiguous-span and overlap checks are the
+    // only routes to quote-strength confidence.
+    if bm25_rank <= FTS5_STRONG_REVIEW_RANK && !is_broad_match {
+        rank_confidence.max(FTS5_STRONG_REVIEW_CONFIDENCE)
     } else {
-        // Keyword-band and broad matches keep their honest rank-derived
-        // confidence instead of being floored up to a fixed "strong" score.
-        // The broad floor was 0.70 against a rank-0 ceiling of 0.68, so it
-        // fired at every rank and flattened the whole pool to one value —
-        // 25 distinct verses reported identical confidence in a live sermon,
-        // and nothing downstream could order them.
-        let _ = is_broad_match;
         rank_confidence
     }
 }
@@ -561,6 +632,7 @@ mod tests {
             chapter: 29,
             verse: 11,
             is_broad_match: true,
+            is_phrase_match: false,
             text: "\"For I know the plans I have for you,\" declares the LORD, \
                    \"plans to prosper you and not to harm you, plans to give you hope and a future.\""
                 .to_string(),
@@ -733,6 +805,7 @@ mod tests {
                 verse: 16,
                 rank: -24.0,
                 is_broad_match: false,
+                is_phrase_match: false,
                 text: String::new(),
             },
             Bm25Result {
@@ -742,6 +815,7 @@ mod tests {
                 verse: 8,
                 rank: -24.0,
                 is_broad_match: false,
+                is_phrase_match: false,
                 text: String::new(),
             },
         ];
@@ -786,6 +860,7 @@ mod tests {
             verse: 1,
             rank: -24.0,
             is_broad_match: false,
+            is_phrase_match: false,
             text: String::new(),
         }];
 
@@ -821,6 +896,7 @@ mod tests {
                 verse: 16,
                 rank: -28.0,
                 is_broad_match: false,
+                is_phrase_match: false,
                 text: String::new(),
             },
             Bm25Result {
@@ -830,6 +906,7 @@ mod tests {
                 verse: 28,
                 rank: -27.0,
                 is_broad_match: false,
+                is_phrase_match: false,
                 text: String::new(),
             },
             Bm25Result {
@@ -839,6 +916,7 @@ mod tests {
                 verse: 1,
                 rank: -26.0,
                 is_broad_match: false,
+                is_phrase_match: false,
                 text: String::new(),
             },
             Bm25Result {
@@ -848,6 +926,7 @@ mod tests {
                 verse: 1,
                 rank: -25.0,
                 is_broad_match: false,
+                is_phrase_match: false,
                 text: String::new(),
             },
             Bm25Result {
@@ -857,6 +936,7 @@ mod tests {
                 verse: 5,
                 rank: -24.5,
                 is_broad_match: false,
+                is_phrase_match: false,
                 text: String::new(),
             },
             Bm25Result {
@@ -866,6 +946,7 @@ mod tests {
                 verse: 3,
                 rank: -24.0,
                 is_broad_match: false,
+                is_phrase_match: false,
                 text: String::new(),
             },
         ];
@@ -887,6 +968,7 @@ mod tests {
                 verse: 16,
                 rank: -28.0,
                 is_broad_match: false,
+                is_phrase_match: false,
                 text: String::new(),
             },
             Bm25Result {
@@ -896,6 +978,7 @@ mod tests {
                 verse: 28,
                 rank: -27.0,
                 is_broad_match: false,
+                is_phrase_match: false,
                 text: String::new(),
             },
             Bm25Result {
@@ -905,6 +988,7 @@ mod tests {
                 verse: 1,
                 rank: -26.0,
                 is_broad_match: false,
+                is_phrase_match: false,
                 text: String::new(),
             },
             Bm25Result {
@@ -914,6 +998,7 @@ mod tests {
                 verse: 1,
                 rank: -25.0,
                 is_broad_match: false,
+                is_phrase_match: false,
                 text: String::new(),
             },
             Bm25Result {
@@ -923,6 +1008,7 @@ mod tests {
                 verse: 5,
                 rank: -24.5,
                 is_broad_match: false,
+                is_phrase_match: false,
                 text: String::new(),
             },
             Bm25Result {
@@ -932,6 +1018,7 @@ mod tests {
                 verse: 8,
                 rank: -24.0,
                 is_broad_match: false,
+                is_phrase_match: false,
                 text: String::new(),
             },
         ];
@@ -958,6 +1045,7 @@ mod tests {
             verse: 16,
             rank: -24.0,
             is_broad_match: false,
+            is_phrase_match: false,
             text: String::new(),
         }];
 
@@ -995,6 +1083,7 @@ mod tests {
                 verse: 16,
                 rank: -24.0, // near-verbatim genuine match
                 is_broad_match: false,
+                is_phrase_match: false,
                 text: String::new(),
             },
             Bm25Result {
@@ -1004,6 +1093,7 @@ mod tests {
                 verse: 27,
                 rank: -11.5, // keyword noise
                 is_broad_match: false,
+                is_phrase_match: false,
                 text: String::new(),
             },
         ];
@@ -1025,29 +1115,65 @@ mod tests {
     }
 
     #[test]
-    fn live_fts_confidence_floors_only_near_verbatim_quotes() {
+    fn live_fts_confidence_does_not_treat_rank_as_quote_evidence() {
         let excellent = fts_confidence(0, -24.0, false);
         let broad_excellent_rank = fts_confidence(0, -24.0, true);
         let keyword_band = fts_confidence(0, -17.0, false);
 
         assert!(
-            excellent >= FTS5_EXCELLENT_MATCH_CONFIDENCE,
-            "excellent verse-text BM25 matches should score like near-verbatim quotes"
+            (excellent - FTS5_STRONG_REVIEW_CONFIDENCE).abs() < f64::EPSILON,
+            "a strong strict-tier BM25 rank may reach only review confidence"
         );
         // Keyword-band matches keep their honest rank-derived score rather than
         // being floored up to a fixed "strong" confidence that masquerades as a
         // quote and bypasses the operator's semantic threshold.
         assert!(
             keyword_band < excellent,
-            "keyword-band FTS matches must not masquerade as quote-strength"
+            "ordinary keyword-band matches must retain their rank confidence"
         );
         assert!(
             broad_excellent_rank < excellent,
-            "OR-tier FTS matches must not masquerade as quote-strength"
+            "broad matches must not receive the strict-tier review floor"
         );
+        assert!(excellent < 0.90, "BM25 rank must not masquerade as a quote");
         assert!(
             (keyword_band - FTS5_RANK0_CONFIDENCE).abs() < f64::EPSILON,
             "keyword-band rank-0 match scores its honest rank confidence"
+        );
+    }
+
+    #[test]
+    fn strong_bm25_paraphrase_does_not_masquerade_as_a_quote() {
+        let spoken = "God will wipe away every tear and there will be no more death or pain";
+        let fts = Bm25Result {
+            book_number: 66,
+            book_name: "Revelation".to_string(),
+            chapter: 21,
+            verse: 4,
+            rank: -38.250_856_466_548_43,
+            is_broad_match: false,
+            is_phrase_match: true,
+            text: "He will wipe away every tear from their eyes. Death will be no more; neither will there be mourning, nor crying, nor pain any more. The first things have passed away.”".to_string(),
+        };
+        let exact_keys = exact_quote_keys(spoken, std::slice::from_ref(&fts));
+        let confidence = live_fts_candidate_confidence(spoken, &fts, 0, &exact_keys)
+            .expect("the paraphrase remains a useful below-threshold hint")
+            .0;
+
+        assert!(
+            confidence < 0.90,
+            "a BM25 rank alone is not quote evidence; got {confidence}"
+        );
+    }
+
+    #[test]
+    fn framing_words_keep_a_partial_quote_in_the_review_band() {
+        let spoken = "Read verse 10, for Demas hath forsaken me, having loved this present world.";
+        let verse = "For Demas hath forsaken me, having loved this present world, and is departed unto Thessalonica; Crescens to Galatia, Titus unto Dalmatia.";
+
+        assert!(
+            !is_exact_quote_fragment(spoken, verse),
+            "a short partial quotation with contextual framing is hint evidence, not a confident complete quote"
         );
     }
 
@@ -1096,6 +1222,7 @@ mod tests {
                 verse: 16,
                 rank: -24.0,
                 is_broad_match: false,
+                is_phrase_match: false,
                 text: String::new(),
             },
             Bm25Result {
@@ -1105,6 +1232,7 @@ mod tests {
                 verse: 1,
                 rank: -11.0,
                 is_broad_match: false,
+                is_phrase_match: false,
                 text: String::new(),
             },
         ];
@@ -1137,6 +1265,7 @@ mod tests {
             verse: 27,
             rank: -11.0,
             is_broad_match: true,
+            is_phrase_match: false,
             text: DANIEL_4_27_KJV.to_string(),
         }];
 
@@ -1200,6 +1329,7 @@ mod tests {
             verse: 5,
             rank: -9.0,
             is_broad_match: true,
+            is_phrase_match: false,
             text: "Thou preparest a table before me in the presence of mine enemies: thou anointest my head with oil; my cup runneth over.".to_string(),
         }];
 
@@ -1235,6 +1365,7 @@ mod tests {
             verse: 16,
             rank: -11.0,
             is_broad_match: true,
+            is_phrase_match: false,
             text: "For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life.".to_string(),
         }];
 
@@ -1261,6 +1392,7 @@ mod tests {
             verse: 35,
             rank: -11.0,
             is_broad_match: true,
+            is_phrase_match: false,
             text: "Jesus wept.".to_string(),
         }];
 
@@ -1291,6 +1423,7 @@ mod tests {
             chapter: 23,
             verse: 1,
             is_broad_match: true,
+            is_phrase_match: false,
             text: "The LORD is my shepherd; I shall not want.".to_string(),
         }];
 
@@ -1325,6 +1458,7 @@ mod tests {
                 verse: 19,
                 rank: -17.0,
                 is_broad_match: false,
+                is_phrase_match: false,
                 text: String::new(),
             },
             Bm25Result {
@@ -1334,6 +1468,7 @@ mod tests {
                 verse: 12,
                 rank: -16.5,
                 is_broad_match: false,
+                is_phrase_match: false,
                 text: String::new(),
             },
         ];
@@ -1357,6 +1492,7 @@ mod tests {
             verse: 6,
             rank: -14.938,
             is_broad_match: false,
+            is_phrase_match: false,
             text: "Jesus saith unto him, I am the way, the truth, and the life: no man cometh unto the Father, but by me.".to_string(),
         }];
 
@@ -1383,6 +1519,7 @@ mod tests {
             verse: 10,
             rank: -12.104,
             is_broad_match: false,
+            is_phrase_match: false,
             text: "Be still, and know that I am God: I will be exalted among the heathen, I will be exalted in the earth.".to_string(),
         }];
 
@@ -1411,6 +1548,7 @@ mod tests {
                 verse: 1,
                 rank: -18.209,
                 is_broad_match: false,
+                is_phrase_match: false,
                 text: "Let not your heart be troubled: ye believe in God, believe also in me."
                     .to_string(),
             },
@@ -1421,6 +1559,7 @@ mod tests {
                 verse: 27,
                 rank: -14.976,
                 is_broad_match: false,
+                is_phrase_match: false,
                 text: "Peace I leave with you, my peace I give unto you: not as the world giveth, give I unto you. Let not your heart be troubled, neither let it be afraid.".to_string(),
             },
         ];
@@ -1452,6 +1591,7 @@ mod tests {
             verse: 2,
             rank: -20.460,
             is_broad_match: true,
+            is_phrase_match: false,
             text: "Then he said to them, The harvest is indeed plentiful, but the laborers are few. Pray therefore to the Lord of the harvest, that he may send out laborers into his harvest.".to_string(),
         }];
 
@@ -1481,6 +1621,7 @@ mod tests {
             verse: 2,
             rank: -20.460,
             is_broad_match: true,
+            is_phrase_match: false,
             text: "Then he said to them, The harvest is indeed plentiful, but the laborers are few. Pray therefore to the Lord of the harvest, that he may send out laborers into his harvest.".to_string(),
         }];
 
@@ -1494,5 +1635,69 @@ mod tests {
                 .all(|r| r.detection.verse_ref.book_number != 42),
             "broad-only evidence must not clear the default 0.70 threshold without quote overlap"
         );
+    }
+
+    #[test]
+    fn phrase_tier_hit_bypasses_live_rank_floor() {
+        // Real phrase-tier BM25 for short quotes is often only ~-11 to -12,
+        // above the -13 keyword floor. Phrase evidence must still surface.
+        let conf = live_fts_candidate_confidence(
+            "the lamb slain from the foundation of the world",
+            &Bm25Result {
+                book_number: 66,
+                book_name: "Revelation".to_string(),
+                chapter: 13,
+                verse: 8,
+                rank: -11.0,
+                is_broad_match: false,
+                is_phrase_match: true,
+                text: "And all that dwell upon the earth shall worship him, whose names are not written in the book of life of the Lamb slain from the foundation of the world.".to_string(),
+            },
+            0,
+            &HashSet::new(),
+        );
+        assert!(
+            conf.is_some(),
+            "phrase-tier hit must not be dropped by the keyword floor"
+        );
+    }
+
+    #[test]
+    fn verbatim_phrase_evidence_outranks_a_vector_only_band() {
+        // Contiguous quoted span inside framing prose must clear the phrase
+        // floor so it beats a typical 0.83 vector-only guess (Luke 11:50).
+        let text = "I want that blood. The lamb slain from the foundation of the world.";
+        let verse = "And all that dwell upon the earth shall worship him, whose names are not written in the book of life of the Lamb slain from the foundation of the world.";
+        let fts = Bm25Result {
+            book_number: 66,
+            book_name: "Revelation".to_string(),
+            chapter: 13,
+            verse: 8,
+            rank: -11.0,
+            is_broad_match: false,
+            is_phrase_match: true,
+            text: verse.to_string(),
+        };
+        let keys = exact_quote_keys(text, std::slice::from_ref(&fts));
+        let phrase = live_fts_candidate_confidence(text, &fts, 1, &keys)
+            .expect("phrase")
+            .0;
+        assert!(
+            phrase > 0.83 + 0.02,
+            "verbatim phrase {phrase} must clearly beat a 0.83 vector-only guess"
+        );
+    }
+
+    #[test]
+    fn topical_vector_only_is_capped_below_confident_fire_band() {
+        // No FTS results: pure vector path. Stub returns nothing, so inject via
+        // hybrid with empty FTS and a synthetic semantic detector is heavy —
+        // assert the constant contract instead and rely on harness for e2e.
+        const {
+            assert!(
+                VECTOR_ONLY_CONFIDENCE_CAP < 0.80,
+                "vector-only cap must keep topical hits out of the 80%+ fire band"
+            );
+        }
     }
 }

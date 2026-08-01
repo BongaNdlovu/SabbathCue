@@ -1,0 +1,1038 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.31s
+     Running unittests src\lib.rs (src-tauri\target\debug\deps\rhema_api-fd82c583e43a8c35.exe)
+
+running 85 tests
+test coerce::tests::coerce_bool_from_false ... ok
+test coerce::tests::coerce_bool_from_float_0_7 ... ok
+test coerce::tests::coerce_bool_from_float_0_0 ... ok
+test coerce::tests::coerce_bool_from_float_1_0 ... ok
+test coerce::tests::coerce_bool_from_int_0 ... ok
+test coerce::tests::coerce_bool_from_int_1 ... ok
+test coerce::tests::coerce_bool_from_string_on ... ok
+test coerce::tests::coerce_bool_from_int_42_errors ... ok
+test coerce::tests::coerce_bool_from_string_false ... ok
+test coerce::tests::coerce_bool_from_string_true ... ok
+test coerce::tests::coerce_bool_from_string_off ... ok
+test coerce::tests::coerce_bool_from_true ... ok
+test coerce::tests::coerce_f32_clamps_high ... ok
+test coerce::tests::coerce_f32_clamps_low ... ok
+test coerce::tests::coerce_f32_from_double ... ok
+test coerce::tests::coerce_f32_from_float ... ok
+test coerce::tests::coerce_f32_from_int_0 ... ok
+test coerce::tests::coerce_f32_from_int_1_literal ... ok
+test coerce::tests::coerce_f32_from_int_percent ... ok
+test coerce::tests::coerce_string_from_int ... ok
+test coerce::tests::coerce_string_from_string ... ok
+test coerce::tests::parse_osc_confidence_from_int_percent ... ok
+test coerce::tests::parse_osc_confidence_missing_arg_errors ... ok
+test coerce::tests::parse_osc_hide ... ok
+test coerce::tests::parse_osc_next ... ok
+test coerce::tests::parse_osc_on_air_from_float ... ok
+test coerce::tests::parse_osc_on_air_from_int ... ok
+test coerce::tests::parse_osc_on_air_from_string ... ok
+test coerce::tests::parse_osc_on_air_missing_arg_errors ... ok
+test coerce::tests::parse_osc_opacity ... ok
+test coerce::tests::parse_osc_opacity_from_int_percent ... ok
+test coerce::tests::parse_osc_opacity_missing_arg_errors ... ok
+test coerce::tests::parse_osc_prev ... ok
+test coerce::tests::parse_osc_show ... ok
+test coerce::tests::parse_osc_theme ... ok
+test coerce::tests::parse_osc_theme_missing_arg_errors ... ok
+test coerce::tests::parse_osc_unknown_address_errors ... ok
+test command::tests::deserialize_next ... ok
+test command::tests::deserialize_confidence ... ok
+test command::tests::deserialize_theme ... ok
+test command::tests::display_confidence ... ok
+test command::tests::display_next ... ok
+test command::tests::display_on_air ... ok
+test command::tests::display_opacity ... ok
+test command::tests::display_prev ... ok
+test command::tests::display_theme ... ok
+test command::tests::enum_has_exactly_8_variants ... ok
+test command::tests::roundtrip_all_variants ... ok
+test command::tests::serialize_confidence ... ok
+test command::tests::serialize_hide ... ok
+test command::tests::serialize_next ... ok
+test command::tests::serialize_on_air ... ok
+test command::tests::serialize_opacity ... ok
+test command::tests::serialize_prev ... ok
+test command::tests::serialize_show ... ok
+test command::tests::serialize_theme ... ok
+test dispatch::tests::backend_commands_never_emit_events ... ok
+test dispatch::tests::dispatch_confidence_invokes_backend_with_value ... ok
+test dispatch::tests::dispatch_hide_invokes_backend ... ok
+test dispatch::tests::dispatch_next_emits_event ... ok
+test dispatch::tests::dispatch_on_air_emits_event_with_active ... ok
+test dispatch::tests::dispatch_opacity_emits_event_with_value ... ok
+test dispatch::tests::dispatch_prev_emits_event ... ok
+test dispatch::tests::dispatch_show_invokes_backend ... ok
+test dispatch::tests::dispatch_theme_emits_event_with_name ... ok
+test dispatch::tests::emit_event_error_propagates ... ok
+test dispatch::tests::frontend_commands_never_invoke_backend ... ok
+test dispatch::tests::invoke_backend_error_propagates ... ok
+test http::auth_tests::constant_time_eq_matches_string_eq ... ok
+test http::cors_origin_tests::loopback_origin_matches_host_exactly ... ok
+test osc::tests::handle_message_ignores_unknown_address ... ok
+test osc::tests::handle_message_dispatches_next ... ok
+test osc::tests::handle_packet_processes_bundle ... ok
+test osc::tests::osc_listener_binds_and_stops ... ok
+test osc::tests::osc_listener_port_conflict_returns_error ... ok
+test http::tests::port_conflict_returns_error ... ok
+test http::tests::http_server_binds_and_stops ... ok
+test http::tests::health_endpoint_returns_ok ... ok
+test http::tests::control_endpoint_accepts_valid_bearer_token ... ok
+test http::tests::control_endpoint_requires_token_when_configured ... ok
+test http::tests::malformed_control_payload_is_rejected_without_dispatch ... ok
+test http::tests::status_endpoint_returns_snapshot ... ok
+test http::tests::token_updates_revoke_old_bearer_without_restart ... ok
+test http::tests::control_endpoint_dispatches_command ... ok
+test osc::tests::osc_listener_receives_and_dispatches ... ok
+
+test result: ok. 85 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.22s
+
+     Running unittests src\lib.rs (src-tauri\target\debug\deps\rhema_audio-329f99410c228d12.exe)
+
+running 10 tests
+test vad::tests::test_reset ... ok
+test capture::tests::downmix_carries_incomplete_frame_between_callbacks ... ok
+test vad::tests::test_pre_buffer_flushed_on_speech ... ok
+test capture::tests::processor_reads_live_gain_updates ... ok
+test vad::tests::test_silence_after_speech ... ok
+test vad::tests::test_silence_gates_audio ... ok
+test vad::tests::test_speech_detection ... ok
+test vad::tests::test_starts_in_silence ... ok
+test vad::tests::test_speech_forwards_audio ... ok
+test capture::tests::streaming_resampler_matches_single_pass_across_callback_boundaries ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\lib.rs (src-tauri\target\debug\deps\rhema_bible-ad7c33ed383a56e4.exe)
+
+running 60 tests
+test db::tests::open_readonly_rejects_missing_file ... ok
+test db::tests::open_in_memory_database ... ok
+test db::tests::conn_reports_poisoned_lock_error ... ok
+test crossref::tests::empty_when_no_match ... ok
+test crossref::tests::orders_by_votes_desc_and_formats_ranges ... ok
+test egw::tests::gets_page_paragraphs ... ok
+test egw::tests::gets_paragraph_by_row_id ... ok
+test egw::tests::fingerprint_changes_when_paragraph_text_changes ... ok
+test egw::tests::gets_chapter_paragraphs ... ok
+test egw::tests::empty_query_returns_no_results ... ok
+test egw::tests::gets_single_page_paragraph_or_none ... ok
+test egw::tests::hides_books_without_page_resolved_paragraphs ... ok
+test egw::tests::gets_single_paragraph_or_none ... ok
+test kjv_names::tests::leaves_unknown_and_existing_kjv_terms_unchanged ... ok
+test kjv_names::tests::expands_modern_names_to_kjv_spellings ... ok
+test egw::tests::keyword_search_is_order_independent ... ok
+test egw::tests::fingerprint_counts_only_page_resolved_paragraphs ... ok
+test egw::tests::bm25_search_matches_partial_transcript_window ... ok
+test lookup::lookup_tests::get_chapter_orders_verses ... ok
+test lookup::lookup_tests::get_verse_by_id_in_translation_returns_matching_reference ... ok
+test egw::tests::lists_all_paragraph_texts_for_embedding ... ok
+test lookup::lookup_tests::get_verse_by_id_in_translation_returns_none_when_translation_missing_reference ... ok
+test search::tests::and_query_drops_reference_noise_tokens ... ok
+test search::tests::and_query_caps_at_12_terms ... ok
+test search::tests::and_query_filters_all_stop_words ... ok
+test search::tests::and_query_filters_stop_words ... ok
+test lookup::lookup_tests::get_verse_returns_matching_row ... ok
+test search::tests::and_query_keeps_significant_words ... ok
+test egw::tests::lists_chapters_with_counts ... ok
+test egw::tests::lists_pages_with_counts ... ok
+test lookup::lookup_tests::get_verse_range_is_inclusive ... ok
+test egw::tests::lists_books ... ok
+test search::tests::dedup_preserves_first_seen_order_and_limit ... ok
+test search::tests::dedup_keeps_strongest_bm25_per_verse ... ok
+test search::tests::dedup_preserves_strict_tier_when_broad_duplicate_has_stronger_rank ... ok
+test lookup::lookup_tests::get_verse_returns_none_for_missing_verse ... ok
+test search::tests::dedup_preserves_strict_tier_when_broad_duplicate_has_weaker_rank ... ok
+test search::tests::or_query_caps_at_12_terms ... ok
+test search::tests::or_query_does_not_expand_unlisted_words ... ok
+test search::tests::or_query_drops_reference_noise_tokens_and_duplicates ... ok
+test search::tests::or_query_empty_on_all_stop_words ... ok
+test egw::tests::searches_paragraphs ... ok
+test search::tests::or_query_expands_modern_kjv_name_aliases ... ok
+test search::tests::or_query_filters_stop_words ... ok
+test search::tests::phrase_query_empty ... ok
+test search::tests::phrase_query_strips_special_chars ... ok
+test search::tests::phrase_query_wraps_input ... ok
+test search::tests::phrase_spans_are_end_anchored_longest_first ... ok
+test search::tests::phrase_spans_include_interior_windows ... ok
+test search::tests::phrase_spans_reach_stripped_three_word_tail ... ok
+test search::tests::phrase_spans_are_bounded_and_skip_short_input ... ok
+test search::tests::phrase_spans_reach_verse_length_on_long_windows ... ok
+test lookup::lookup_tests::list_books_returns_ordered_rows ... ok
+test search::tests::query_builders_strip_apostrophes_for_fts5_safety ... ok
+test search::tests::phrase_spans_stay_bounded_and_ordered_longest_first ... ok
+test lookup::lookup_tests::load_translation_verses_for_search_filters_by_translation ... ok
+test egw::tests::searches_paragraphs_with_apostrophes_without_fts_syntax_error ... ok
+test search::tests::bm25_name_alias_recovers_kjv_noe_verse_for_spoken_noah ... ok
+test search::tests::bm25_results_carry_verse_text_for_quote_verification ... ok
+test search::tests::bm25_ignores_locked_translation_text ... ok
+
+test result: ok. 60 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests\retrieval_recall.rs (src-tauri\target\debug\deps\retrieval_recall-75c5c71c5fa2d21d.exe)
+
+running 8 tests
+test lamb_slain_from_foundation_is_recalled ... ok
+test verbatim_quote_that_fills_the_window_is_recalled ... ok
+test absent_book_hint_leaves_the_pool_unscoped ... ok
+test short_quoted_fragment_inside_prose_is_recalled ... ok
+test mid_window_everlasting_gospel_is_recalled ... ok
+test quoted_fragment_survives_a_long_prose_window ... ok
+test hope_of_glory_fragment_is_recalled ... ok
+test book_hint_scopes_the_pool_to_the_named_book ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running unittests src\lib.rs (src-tauri\target\debug\deps\rhema_broadcast-19925334e37b4605.exe)
+
+running 6 tests
+test ndi::tests::convert_rgba_to_bgra_swaps_channels_and_honors_alpha ... ok
+test ndi::tests::frame_rate_fps_are_correct ... ok
+test ndi::tests::ndi_error_display_messages ... ok
+test ndi::tests::resolution_dimensions_are_correct ... ok
+test ndi::tests::validate_frame_dimensions_enforces_size_and_shape ... ok
+test ndi::tests::start_request_serde_round_trip ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\lib.rs (src-tauri\target\debug\deps\rhema_detection-b857787a07c26e13.exe)
+
+running 347 tests
+test command_eval::tests::command_label_rejects_unknown_translation ... ok
+test command_eval::tests::deterministic_classifier_drops_bare_translation_words ... ok
+test command_eval::tests::linear_head_keeps_explicit_operator_command ... ok
+test command_eval::tests::linear_head_abstains_for_declarative_sermon_speech ... ok
+test command_eval::tests::deterministic_classifier_requires_translation_command_cue ... ok
+test command_eval::tests::validation_rejects_family_leakage ... ok
+test command_eval::tests::score_counts_false_commands_and_misses ... ok
+test command_eval::tests::command_shape_gate_accepts_every_held_out_command ... ok
+test command_eval::tests::command_shape_gate_rejects_every_safety_utterance ... ok
+test direct::context::tests::test_context_update_and_resolve ... ok
+test direct::context::tests::test_no_context ... ok
+test direct::automaton::tests::test_find_numbered_book ... ok
+test direct::automaton::tests::full_book_names_still_match_after_min_length_filter ... ok
+test direct::automaton::tests::test_find_psalm ... ok
+test direct::automaton::tests::test_find_john ... ok
+test direct::automaton::tests::two_letter_patterns_are_not_registered ... ok
+test direct::detector::tests::afrikaans_translation_command ... ok
+test direct::detector::tests::afrikaans_detects_matteus_20_vers_25 ... ok
+test direct::detector::tests::dangling_verse_keyword_waits_for_number_instead_of_emitting_verse_one ... ok
+test command_eval::tests::linear_head_learns_separable_embeddings ... ok
+test direct::detector::tests::afrikaans_detects_johannes_3_vers_16 ... ok
+test direct::detector::tests::bare_book_rementions_keep_the_spoken_chapter ... ok
+test direct::detector::tests::afrikaans_detects_deuteronomium_16_vers_18 ... ok
+test direct::detector::tests::explicit_new_book_preempts_stale_verse_continuation ... ok
+test direct::detector::tests::active_stt_provider_reference_variants_stay_direct_accurate ... ok
+test direct::detector::tests::french_detects_jean_chapitre_3_verset_16 ... ok
+test direct::detector::tests::common_word_is_does_not_fabricate_isaiah ... ok
+test direct::detector::tests::hymn_number_commands_do_not_become_bible_references ... ok
+test direct::detector::tests::hymn_number_guard_preserves_scripture_song_references ... ok
+test direct::detector::tests::hymn_number_guard_preserves_psalm_song_chapter_mishears ... ok
+test direct::detector::tests::incomplete_reference_rejects_verse_beyond_chapter_end ... ok
+test direct::detector::tests::lone_book_name_without_chapter_is_not_emitted ... ok
+test direct::detector::tests::portuguese_detects_joao_3_versiculo_16 ... ok
+test direct::detector::tests::previous_verse_command_ignores_second_to_last_verse_prose ... ok
+test direct::detector::tests::spanish_detects_juan_3_versiculo_16 ... ok
+test direct::detector::tests::test_bare_number_as_chapter_after_book_only ... ok
+test direct::detector::tests::suppressed_bare_book_still_completes_with_a_later_chapter_verse ... ok
+test direct::detector::tests::test_abandoned_partial_no_stale_state ... ok
+test direct::detector::tests::test_basic_reference ... ok
+test direct::detector::tests::spoken_psalm_alias_still_resolves_with_adjacent_number ... ok
+test direct::detector::tests::test_chapter_only_held_as_incomplete ... ok
+test direct::detector::tests::test_clean_transcript_lets_turn_to ... ok
+test direct::detector::tests::test_chapter_only_no_duplicate_on_repeat ... ok
+test direct::detector::tests::test_clean_transcript_the_bible_says_in ... ok
+test direct::detector::tests::test_clean_transcript_look_at ... ok
+test direct::detector::tests::test_confidence_range ... ok
+test direct::detector::tests::test_clean_transcript ... ok
+test direct::detector::tests::test_cross_segment_dangling_chapter_keyword_then_number_verse ... ok
+test direct::detector::tests::test_detection_source ... ok
+test direct::detector::tests::test_cross_segment_chapter_and_verse_combined ... ok
+test direct::detector::tests::test_fuzzy_fallback_filipians ... ok
+test direct::detector::tests::test_cross_segment_acts_3_22 ... ok
+test direct::detector::tests::test_multiple_references ... ok
+test direct::detector::tests::test_reference_corrections_do_not_replace_inside_words ... ok
+test direct::detector::tests::test_new_book_supersedes_incomplete ... ok
+test direct::detector::tests::test_incomplete_ref_completed_by_verse ... ok
+test direct::detector::tests::test_cross_segment_daniel_7_dangling_number_verse_waits_for_actual_verse ... ok
+test direct::detector::tests::test_no_reference ... ok
+test direct::detector::tests::test_numbered_book ... ok
+test direct::detector::tests::test_reference_corrections_psalm_chapter_mishears ... ok
+test direct::detector::tests::judgment_books_sermon_references_stay_on_spoken_passages ... ok
+test direct::detector::tests::test_impossible_reference_does_not_leave_stale_continuation_state ... ok
+test direct::detector::tests::test_reference_corrections_numbered_books ... ok
+test direct::detector::tests::test_previous_verse_command ... ok
+test direct::detector::tests::test_stt_voice_command_no_match ... ok
+test direct::detector::tests::test_previous_verse_no_history ... ok
+test direct::detector::tests::test_spoken_chapter_verse_keywords ... ok
+test direct::detector::tests::test_spoken_reference ... ok
+test direct::detector::tests::test_stt_voice_command_start ... ok
+test direct::detector::tests::test_stt_voice_command_stop ... ok
+test direct::detector::tests::test_required_explicit_reference_phrases ... ok
+test direct::detector::tests::test_translation_command_csb_hcsb ... ok
+test direct::detector::tests::test_translation_command_basic_niv ... ok
+test direct::detector::tests::test_translation_command_english_does_not_shadow_esv ... ok
+test direct::detector::tests::test_translation_command_bare_abbreviations ... ok
+test direct::detector::tests::test_translation_command_case_insensitive ... ok
+test direct::detector::tests::test_translation_command_english_maps_to_kjv ... ok
+test direct::detector::tests::test_translation_command_full_names ... ok
+test direct::detector::tests::revelation_thirteen_book_of_life_sermon_does_not_become_isaiah ... ok
+test direct::detector::tests::test_translation_command_good_news ... ok
+test direct::detector::tests::test_translation_command_ignores_king_james_narration ... ok
+test direct::detector::tests::test_translation_command_message_bible ... ok
+test direct::detector::tests::test_translation_command_in_sentence ... ok
+test direct::detector::tests::test_translation_command_natural_language ... ok
+test direct::detector::tests::test_translation_command_partial_match ... ok
+test direct::detector::tests::test_translation_command_no_match ... ok
+test direct::detector::tests::test_translation_command_non_english ... ok
+test direct::detector::tests::test_translation_command_net_cev ... ok
+test direct::detector::tests::test_translation_command_revised_standard ... ok
+test direct::detector::tests::test_translation_command_show_me_variations ... ok
+test direct::detector::tests::voice_command_utterance_ignores_prose_and_bare_references ... ok
+test direct::detector::tests::test_translation_command_spanish_english_round_trip ... ok
+test direct::detector::tests::test_verse_keyword_anywhere_in_text ... ok
+test direct::detector::tests::test_verse_range ... ok
+test direct::detector::tests::voice_command_utterance_matches_hymn_translation_and_navigation ... ok
+test direct::detector::tests::transcript_philippians_dangling_chapter_then_four_verse_six ... ok
+test direct::detector::tests::transcript_numbers_context_handles_damaged_range ... ok
+test direct::detector::tests::transcript_revelation_context_prefers_read_verse_after_skipped_verse ... ok
+test direct::detector::tests::transcript_same_chapter_and_range_survives_detection ... ok
+test direct::fuzzy::tests::stoplist_ignores_trailing_punctuation ... ok
+test direct::fuzzy::tests::test_fuzzy_filipians ... ok
+test direct::fuzzy::tests::singular_plural_book_variants_still_recover_book_names ... ok
+test direct::fuzzy::tests::common_word_number_does_not_match_numbers_book ... ok
+test direct::detector::tests::translation_command_accepts_i_want_nkjv_and_nlt_phrases ... ok
+test direct::fuzzy::tests::test_fuzzy_no_false_positive ... ok
+test direct::fuzzy::tests::test_fuzzy_revelations ... ok
+test direct::fuzzy::tests::test_levenshtein_empty ... ok
+test direct::fuzzy::tests::genuine_typos_still_recover_book_names ... ok
+test direct::detector::tests::transcript_keep_your_place_restores_saved_chapter ... ok
+test direct::fuzzy::tests::test_levenshtein_identical ... ok
+test direct::fuzzy::tests::test_levenshtein_substitution ... ok
+test direct::parser::tests::afrikaans_johannes_3_vers_16 ... ok
+test direct::parser::tests::afrikaans_johannes_drie_sestien ... ok
+test direct::parser::tests::afrikaans_number_words ... ok
+test direct::parser::tests::afrikaans_psalm_drie_en_twintig ... ok
+test direct::fuzzy::tests::test_fuzzy_hebrews_misspelled ... ok
+test direct::parser::tests::test_book_chapter_is_chapter_only ... ok
+test direct::parser::tests::test_book_chapter_verse_with_long_tail ... ok
+test direct::parser::tests::test_book_number_incomplete ... ok
+test direct::parser::tests::test_book_only_is_chapter_only ... ok
+test direct::parser::tests::test_book_verse_defaults_to_chapter_1 ... ok
+test direct::parser::tests::test_chapter_keyword_then_verse_number ... ok
+test direct::parser::tests::test_chapter_only ... ok
+test direct::parser::tests::test_chapter_verse_keywords ... ok
+test direct::parser::tests::test_chapter_verse_range_to ... ok
+test direct::parser::tests::test_chapter_verse_with_and_filler ... ok
+test direct::detector::tests::transcript_verse_only_correction_prefers_corrected_verse ... ok
+test direct::parser::tests::test_chapter_verse_with_filler_words ... ok
+test direct::parser::tests::test_colon_range ... ok
+test direct::parser::tests::test_colon_reference ... ok
+test direct::parser::tests::test_continuation_bare_number_book_only ... ok
+test direct::parser::tests::test_continuation_bare_number_with_chapter ... ok
+test direct::parser::tests::test_continuation_chapter_and_verse ... ok
+test direct::parser::tests::test_continuation_chapter_only ... ok
+test direct::parser::tests::test_continuation_dangling_number_verse_after_book_only_sets_chapter ... ok
+test direct::parser::tests::test_continuation_dangling_number_verse_waits_for_number ... ok
+test direct::parser::tests::test_continuation_no_match ... ok
+test direct::parser::tests::test_continuation_number_verse_number_after_book_only_sets_both ... ok
+test direct::parser::tests::test_continuation_number_verse_number_uses_following_verse ... ok
+test direct::parser::tests::test_continuation_verse_anywhere ... ok
+test direct::parser::tests::test_correction_chapter_change ... ok
+test direct::parser::tests::test_correction_full_reference ... ok
+test direct::parser::tests::test_correction_chapter_only ... ok
+test direct::parser::tests::test_correction_verse_only ... ok
+test direct::parser::tests::test_correction_verse_then_chapter ... ok
+test direct::parser::tests::test_correction_verse_then_chapter_rather ... ok
+test direct::parser::tests::test_genesis_without_chapter_keyword ... ok
+test direct::parser::tests::test_incomplete_chapter_keyword ... ok
+test direct::parser::tests::test_incomplete_verse_keyword ... ok
+test direct::parser::tests::test_john_only_is_chapter_only ... ok
+test direct::parser::tests::test_lets_go_to_with_range ... ok
+test direct::parser::tests::test_number_verse_with_filler ... ok
+test direct::parser::tests::test_psalms_verse_23_defaults_to_chapter_1 ... ok
+test direct::parser::tests::test_romans_chapter_8_is_chapter_only ... ok
+test direct::parser::tests::test_spoken_chapter_verse ... ok
+test direct::parser::tests::test_spoken_number_parser ... ok
+test direct::parser::tests::test_two_numbers_genesis ... ok
+test direct::parser::tests::test_two_numbers_large ... ok
+test direct::parser::tests::test_two_numbers_space_separated ... ok
+test direct::parser::tests::transcript_continuation_correction_prefers_corrected_verse ... ok
+test direct::parser::tests::transcript_continuation_damaged_colon_es_range_is_preserved ... ok
+test direct::parser::tests::transcript_damaged_colon_es_range_is_preserved ... ok
+test direct::parser::tests::transcript_same_chapter_and_range_is_preserved ... ok
+test egw_quote::tests::opposite_polarity_is_not_quote_evidence ... ok
+test egw_quote::tests::shared_run_tolerates_a_paraphrase_gap ... ok
+test merger::tests::chapter_only_direct_detection_does_not_auto_queue ... ok
+test merger::tests::test_merger_auto_queue ... ok
+test egw_quote::tests::spoken_verse_scaffolding_breaks_a_quote_run ... ok
+test merger::tests::test_merger_auto_queue_below_threshold ... ok
+test egw_quote::tests::shared_run_reports_anchor_on_quoted_sentence ... ok
+test merger::tests::test_merger_dedup_keeps_direct ... ok
+test merger::tests::test_merger_dedups_matching_semantic_verse_ids ... ok
+test merger::tests::test_merger_dedups_semantic_same_verse_keeps_higher_confidence ... ok
+test merger::tests::test_merger_direct_dominates_semantic_even_if_semantic_confidence_is_higher ... ok
+test merger::tests::test_merger_direct_ranks_above_stronger_distinct_semantic_result ... ok
+test merger::tests::test_merger_drops_below_threshold ... ok
+test merger::tests::test_merger_empty_inputs ... ok
+test merger::tests::test_merger_keeps_distinct_verses ... ok
+test merger::tests::test_merger_keeps_unresolved_semantic_verse_ids_distinct ... ok
+test merger::tests::test_merger_only_one_auto_queue_per_batch ... ok
+test merger::tests::test_merger_semantic_never_auto_queues_even_above_threshold ... ok
+test merger::tests::test_merger_shared_cooldown_blocks_second_merger_auto_queue ... ok
+test merger::tests::test_merger_sort_order_prioritizes_direct_then_confidence ... ok
+test merger::tests::test_merger_uses_separate_direct_and_semantic_visibility_thresholds ... ok
+test pipeline::tests::broad_evidence_alone_does_not_reach_the_default_operator_threshold ... ok
+test pipeline::tests::broad_matches_keep_their_rank_ordering ... ok
+test pipeline::tests::content_words_indexed_matches_content_words_sequence ... ok
+test pipeline::tests::live_fts_confidence_floors_only_near_verbatim_quotes ... ok
+test direct::fuzzy::tests::common_words_do_not_fuzzy_match_books ... ok
+test direct::detector::tests::word_like_abbreviations_require_adjacent_reference_context ... ok
+test pipeline::tests::phrase_tier_hit_bypasses_live_rank_floor ... ok
+test pipeline::tests::quote_overlap_prefers_complete_john_316_over_embedded_john_315 ... ok
+test pipeline::tests::quote_overlap_prefers_full_thessalonians_verse_over_shared_opening ... ok
+test pipeline::tests::live_fts_floor_drops_keyword_noise_keeps_strong_matches ... ok
+test pipeline::tests::default_semantic_threshold_suppresses_live_fts_keyword_flood ... ok
+test pipeline::tests::partial_quote_surfaces_as_hint_below_fire_threshold ... ok
+test pipeline::tests::natural_speech_with_direct_reference_mistake_stays_direct ... ok
+test pipeline::tests::overlap_verified_quote_fires_despite_keyword_band_rank ... ok
+test pipeline::tests::niv_worded_jeremiah_quote_surfaces_via_fts_quote_overlap ... ok
+test pipeline::tests::exact_phrase_shared_by_multiple_verses_stays_below_live_confidence ... ok
+test pipeline::tests::quoted_verse_text_with_misheard_word_surfaces_fts_match ... ok
+test pipeline::tests::human_quote_with_common_word_mistake_stays_semantic ... ok
+test pipeline::tests::scattered_keyword_hit_is_not_boosted_by_overlap ... ok
+test pipeline::tests::short_verbatim_verse_earns_quote_overlap_confidence ... ok
+test pipeline::tests::short_verse_mention_is_not_boosted_by_overlap ... ok
+test pipeline::tests::test_pipeline_hybrid_with_fts_confidence_decay ... ok
+test pipeline::tests::strong_broad_paraphrase_stays_hidden_at_default_operator_threshold ... ok
+test pipeline::tests::strong_broad_paraphrase_surfaces_only_as_review_hint ... ok
+test pipeline::tests::test_pipeline_auto_queue_for_direct ... ok
+test pipeline::tests::test_pipeline_direct_only ... ok
+test pipeline::tests::spoken_book_is_boosted_before_live_candidate_cap ... ok
+test pipeline::tests::test_pipeline_hybrid_dedup_fts_vector_overlap ... ok
+test pipeline::tests::active_provider_transcripts_keep_pipeline_direct_accuracy ... ok
+test pipeline::tests::test_pipeline_hybrid_drops_weak_fts_below_rank_floor ... ok
+test pipeline::tests::test_pipeline_hybrid_with_fts_caps_at_five ... ok
+test pipeline::tests::test_pipeline_hybrid_with_fts_returns_results ... ok
+test pipeline::tests::verbatim_phrase_evidence_outranks_a_vector_only_band ... ok
+test reading_mode::tests::bare_um_filler_does_not_jump_to_verse_one ... ok
+test reading_mode::tests::chapter_only_sermon_transition_does_not_emit_verse_one ... ok
+test reading_mode::tests::commentary_repeating_current_verse_does_not_auto_advance ... ok
+test pipeline::tests::test_pipeline_hybrid_with_fts_empty_fts ... ok
+test reading_mode::tests::complete_verse_navigation_command_matches_next_and_previous_phrases ... ok
+test reading_mode::tests::complete_verse_navigation_command_rejects_prose_references_and_bare_directionals ... ok
+test reading_mode::tests::current_chapter_verse_command_is_not_restarted ... ok
+test reading_mode::tests::explicit_backward_chapter_verse_command_can_reanchor ... ok
+test reading_mode::tests::extract_verse_number_ignores_complete_reference_context ... ok
+test reading_mode::tests::later_verse_command_wins_after_full_reference_in_same_fragment ... ok
+test reading_mode::tests::next_verse_command_accepts_natural_go_to_phrase ... ok
+test pipeline::tests::test_pipeline_no_match ... ok
+test reading_mode::tests::out_of_scope_streak_counts_same_chapter_and_restarts_on_scope_change ... ok
+test reading_mode::tests::next_verse_command_does_not_fire_for_plain_sermon_sentence ... ok
+test reading_mode::tests::out_of_scope_streak_resets_when_a_scoped_verse_matches ... ok
+test reading_mode::tests::pause_clears_accumulated_text_so_stale_words_cannot_fake_a_match ... ok
+test reading_mode::tests::previous_verse_command_accepts_natural_go_to_phrase ... ok
+test reading_mode::tests::reading_mode_does_not_apply_external_reference_to_current_context ... ok
+test pipeline::tests::test_pipeline_multiple_references ... ok
+test reading_mode::tests::reading_mode_ignores_book_count_numbers_after_revelation_reference ... ok
+test reading_mode::tests::stale_current_chapter_previous_verse_command_does_not_reanchor_backward ... ok
+test reading_mode::tests::same_chapter_verse_command_works_when_chapter_is_trailing_word ... ok
+test reading_mode::tests::same_chapter_verse_command_keeps_current_chapter_and_sets_verse ... ok
+test reading_mode::tests::test_advance_on_next_verse_match ... ok
+test reading_mode::tests::test_bare_number_as_chapter_after_chapter_keyword ... ok
+test reading_mode::tests::test_bare_two_numbers_as_chapter_verse ... ok
+test reading_mode::tests::test_backward_verse_navigation ... ok
+test reading_mode::tests::test_chapter_command_no_verses_ignored ... ok
+test reading_mode::tests::test_chapter_command_detected ... ok
+test reading_mode::tests::test_chapter_command_same_chapter_ignored ... ok
+test reading_mode::tests::test_chapter_verse_command ... ok
+test pipeline::tests::test_pipeline_semantic_not_ready_by_default ... ok
+test reading_mode::tests::test_context_resets_after_full_reference ... ok
+test reading_mode::tests::test_chapter_command_with_digit ... ok
+test reading_mode::tests::test_extract_chapter_and_verse ... ok
+test reading_mode::tests::test_deactivate ... ok
+test reading_mode::tests::test_extract_verse_number_bare ... ok
+test reading_mode::tests::test_extract_verse_number_direct ... ok
+test reading_mode::tests::test_extract_verse_number_no_match ... ok
+test reading_mode::tests::test_extract_verse_number_spoken ... ok
+test reading_mode::tests::test_extract_verse_number_with_prefix ... ok
+test reading_mode::tests::test_next_chapter_command ... ok
+test pipeline::tests::topical_vector_only_is_capped_below_confident_fire_band ... ok
+test reading_mode::tests::test_number_verse_command ... ok
+test reading_mode::tests::test_no_match_returns_none ... ok
+test reading_mode::tests::test_previous_chapter_at_chapter_1 ... ok
+test reading_mode::tests::test_pause_retains_verses_for_resume ... ok
+test reading_mode::tests::test_previous_chapter_command ... ok
+test reading_mode::tests::test_spoken_chapter_verse_command ... ok
+test reading_mode::tests::test_spoken_numbers_in_context ... ok
+test reading_mode::tests::test_starts_inactive ... ok
+test reading_mode::tests::test_start_activates ... ok
+test pipeline::tests::test_pipeline_semantic_keeps_distinct_vector_hits_after_merge ... ok
+test reading_mode::tests::test_word_overlap_function ... ok
+test reading_mode::tests::test_start_positions_cursor_at_start_verse ... ok
+test semantic::cache::tests::test_cache_clear ... ok
+test semantic::cache::tests::test_cache_eviction ... ok
+test reading_mode::tests::verse_command_with_um_filler_still_navigates ... ok
+test semantic::cache::tests::test_cache_insert_and_get ... ok
+test semantic::cache::tests::test_cache_miss ... ok
+test semantic::chunker::tests::lead_in_only_sentence_is_not_emptied ... ok
+test semantic::chunker::tests::citation_lead_in_is_stripped_before_embedding ... ok
+test semantic::chunker::tests::sentences_without_lead_ins_are_unchanged ... ok
+test semantic::chunker::tests::test_empty_text ... ok
+test semantic::chunker::tests::test_max_window_size ... ok
+test semantic::chunker::tests::test_newline_boundaries ... ok
+test semantic::chunker::tests::test_no_boundary_single_chunk ... ok
+test semantic::chunker::tests::test_short_text_filtered ... ok
+test semantic::chunker::tests::test_simple_sentences ... ok
+test pipeline::tests::unique_exact_quote_survives_the_keyword_rank_floor ... ok
+test pipeline::tests::unique_short_exact_quote_reaches_live_confidence ... ok
+test semantic::detector::tests::test_detection_with_fake_index ... ok
+test semantic::detector::tests::test_direct_embedding_mode_dedupes_repeated_hits_across_chunks ... ok
+test pipeline::tests::active_provider_transcripts_keep_pipeline_semantic_accuracy ... ok
+test semantic::detector::tests::non_prayer_semantic_hits_keep_high_confidence ... ok
+test semantic::embedder::tests::test_stub_embedder_dimension ... ok
+test semantic::embedder::tests::test_stub_embedder_returns_zeros ... ok
+test semantic::ensemble::tests::test_ensemble_threshold ... ok
+test semantic::ensemble::tests::test_extract_concepts ... ok
+test semantic::ensemble::tests::test_extract_concepts_empty ... ok
+test semantic::detector::tests::pastoral_prayer_address_caps_semantic_confidence_below_live_fire ... ok
+test semantic::detector::tests::ensemble_path_embeds_stripped_sentence_chunks ... ok
+test semantic::detector::tests::test_direct_embedding_mode_sorts_and_caps_model_hits ... ok
+test semantic::detector::tests::test_ensemble_detection_confidence_uses_best_similarity ... ok
+test semantic::hnsw_index::tests::k_larger_than_corpus_returns_everything ... ok
+test semantic::detector::tests::test_stub_returns_empty ... ok
+test semantic::detector::tests::ensemble_path_searches_a_late_scripture_quote_in_a_long_sermon ... ok
+test semantic::hnsw_index::tests::test_dimension_mismatch ... ok
+test semantic::detector::tests::test_search_query_returns_raw_model_hits_without_detection_threshold ... ok
+test semantic::hnsw_index::tests::test_brute_force_search ... ok
+test semantic::hnsw_index::tests::test_empty_index ... ok
+test semantic::index::tests::test_stub_index_is_empty ... ok
+test semantic::index::tests::test_stub_index_returns_empty ... ok
+test semantic::quantize::tests::decoder_rejects_nonzero_reserved_field ... ok
+test semantic::quantize::tests::decoder_rejects_truncated_q8_header ... ok
+test semantic::quantize::tests::header_round_trips_and_binds_ids ... ok
+test semantic::hnsw_index::tests::quantized_file_rejects_mismatched_ids_digest ... ok
+test semantic::quantize::tests::quantize_vector_preserves_cosine_within_tolerance ... ok
+test semantic::quantize::tests::decoder_rejects_unsupported_q8_version_instead_of_falling_back ... ok
+test semantic::detector::tests::test_stub_is_not_ready ... ok
+test semantic::hnsw_index::tests::legacy_f32_file_still_loads ... ok
+test semantic::quantize::tests::decoder_reports_legacy_when_magic_is_absent ... ok
+test semantic::quantize::tests::quantize_vector_rejects_non_finite_component ... ok
+test semantic::quantize::tests::quantize_vector_handles_zero_vector_without_nan ... ok
+test semantic::hnsw_index::tests::quantized_file_matches_f32_ranking ... ok
+test semantic::detector::tests::test_threshold_adjustment ... ok
+test semantic::quantize::tests::quantize_vector_uses_full_symmetric_range ... ok
+test semantic::synonyms::tests::test_light_synonyms ... ok
+test semantic::synonyms::tests::test_database_has_500_plus_entries ... ok
+test semantic::synonyms::tests::test_death_synonyms ... ok
+test semantic::synonyms::tests::test_faith_synonyms ... ok
+test semantic::hnsw_index::tests::quantized_file_rejects_unsupported_version_without_legacy_fallback ... ok
+test semantic::synonyms::tests::test_forgiveness_synonyms ... ok
+test semantic::synonyms::tests::test_empty_input ... ok
+test semantic::synonyms::tests::test_no_synonyms_returns_original ... ok
+test semantic::synonyms::tests::test_max_expansions ... ok
+test sentence_buffer::tests::test_accumulates_fragments ... ok
+test sentence_buffer::tests::test_colon_flushes ... ok
+test sentence_buffer::tests::test_empty_buffer ... ok
+test sentence_buffer::tests::test_exclamation_flushes ... ok
+test sentence_buffer::tests::test_question_mark_flushes ... ok
+test semantic::synonyms::tests::test_original_always_first ... ok
+test sentence_buffer::tests::test_force_flush ... ok
+test sentence_buffer::tests::test_sentence_ending_flushes ... ok
+test sentence_buffer::tests::test_semicolon_flushes ... ok
+test semantic::hnsw_index::tests::matches_reference_serial_scan ... ok
+test semantic::synonyms::tests::test_punctuation_preserved ... ok
+test semantic::synonyms::tests::test_sin_synonyms ... ok
+test semantic::synonyms::tests::test_worship_synonyms ... ok
+test semantic::synonyms::tests::test_synonym_expansion ... ok
+
+test result: ok. 347 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.27s
+
+     Running unittests src\bin\command_benchmark.rs (src-tauri\target\debug\deps\command_benchmark-43a29e311db9f7ca.exe)
+
+running 1 test
+test tests::percentile_uses_nearest_rank ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\bin\embedding_comparison.rs (src-tauri\target\debug\deps\embedding_comparison-511a7426442e936e.exe)
+
+running 1 test
+test tests::percentile_returns_requested_order_statistic ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\bin\quantize_embeddings.rs (src-tauri\target\debug\deps\quantize_embeddings-5dcde6bfee1ec5ac.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\afrikaans_semantic.rs (src-tauri\target\debug\deps\afrikaans_semantic-642846efe8c5d703.exe)
+
+running 1 test
+test afrikaans_semantic_benchmark_has_johannes_3_16_paraphrase ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\balaam_sermon_regressions.rs (src-tauri\target\debug\deps\balaam_sermon_regressions-941cc175994804eb.exe)
+
+running 3 tests
+test balaam_sermon_quote_surfaces_through_hybrid_fts_overlap ... ok
+test balaam_sermon_prose_numbers_do_not_fabricate_direct_references ... ok
+test balaam_sermon_explicit_references_survive_real_preaching_prose ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests\closing_sermon_regressions.rs (src-tauri\target\debug\deps\closing_sermon_regressions-61d966d48e7eadd1.exe)
+
+running 3 tests
+test closing_prayer_address_cannot_reach_live_fire_confidence ... ok
+test high_confidence_non_prayer_semantic_match_is_not_capped ... ok
+test closing_prayer_fts_candidate_cannot_reach_live_fire_confidence ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests\command_corpus.rs (src-tauri\target\debug\deps\command_corpus-03cbb160e58243b3.exe)
+
+running 1 test
+test command_corpus_has_isolated_complete_partitions ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\direct_fuzzy_regressions.rs (src-tauri\target\debug\deps\direct_fuzzy_regressions-2bfd045e3ea1d01b.exe)
+
+running 3 tests
+test singular_plural_book_variants_still_detect_through_direct_detector ... ok
+test prose_number_still_does_not_fabricate_numbers_reference ... ok
+test daniel_seven_ten_number_prose_does_not_fabricate_numbers_reference ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\great_controversy_sermon_regressions.rs (src-tauri\target\debug\deps\great_controversy_sermon_regressions-3525d247cf8a7f6c.exe)
+
+running 5 tests
+test dotted_first_ordinal_reference_reaches_live_threshold ... ok
+test dotted_second_ordinal_reference_reaches_live_threshold ... ok
+test prose_number_after_dotted_reference_is_not_ambiguous ... ok
+test bare_number_range_joined_by_and_preserves_verse_end ... ok
+test unconnected_third_number_surfaces_held_alternatives ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\jeremiah_repro.rs (src-tauri\target\debug\deps\jeremiah_repro-eb9df945b3b875eb.exe)
+
+running 3 tests
+test portuguese_um_still_parses_as_one ... ok
+test um_filler_inside_real_reference_still_detects ... ok
+test um_filler_windows_do_not_complete_book_only_reference ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\sermon_sovereignty_regressions.rs (src-tauri\target\debug\deps\sermon_sovereignty_regressions-1e16dcee3c332bda.exe)
+
+running 8 tests
+test explicit_spoken_chapter_only_reaches_live_threshold ... ok
+test bare_verse_reference_without_any_context_stays_silent ... ok
+test bare_chapter_verse_reference_resolves_book_from_context ... ok
+test bare_verse_reference_resolves_from_context_after_full_citation ... ok
+test inferred_book_reference_stays_below_live_threshold ... ok
+test prose_numbers_do_not_become_context_resolved_references ... ok
+test daniel_reading_flow_verse_continuation_still_completes ... ok
+test supplied_thessalonians_transcript_keeps_scope_and_surfaces_bare_verses ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running unittests src\lib.rs (src-tauri\target\debug\deps\rhema_stt-78950f21bb1e2126.exe)
+
+running 45 tests
+test bench::tests::token_similarity_rewards_shared_transcript_terms ... ok
+test deepgram::deepgram_url_tests::redacts_query_with_keyterms ... ok
+test bench::tests::score_fixture_tracks_scripture_terms_and_duration ... ok
+test deepgram::deepgram_url_tests::keeps_url_without_query_intact ... ok
+test deepgram::tests::parses_speech_started_event ... ok
+test deepgram::tests::parses_utterance_end_event ... ok
+test deepgram::tests::parses_interim_result_as_partial ... ok
+test deepgram::tests::parses_final_result_with_confidence_and_speech_final ... ok
+test deepgram::tests::ignores_metadata_messages ... ok
+test deepgram::tests::keyterms_follow_selected_language ... ok
+test error::tests::display_messages_are_stable_for_all_variants ... ok
+test deepgram::tests::websocket_url_preserves_accuracy_and_latency_params ... ok
+test deepgram::tests::keyterms_are_deduplicated_and_capped ... ok
+test soniox::tests::final_tokens_emit_once_for_detection ... ok
+test soniox::tests::non_final_tokens_emit_partial_only ... ok
+test soniox::tests::server_error_code_returns_parse_error ... ok
+test soniox::tests::start_payload_uses_selected_language_context_terms ... ok
+test rest::tests::rest_url_uses_same_accuracy_params_as_streaming_base ... ok
+test soniox::tests::start_payload_uses_stt_rt_v5_afrikaans_hints_and_endpoint_detection ... ok
+test speechmatics::tests::accumulates_chunks_until_sentence_punctuation ... ok
+test speechmatics::tests::error_message_returns_err ... ok
+test speechmatics::tests::partial_shows_the_accumulated_line ... ok
+test speechmatics::tests::start_payload_uses_live_pcm_and_language ... ok
+test speechmatics::tests::word_cap_commits_a_long_unpunctuated_run ... ok
+test vosk::tests::grammar_json_excludes_worship_terms ... ok
+test vosk::tests::local_worker_preflight_succeeds_when_model_is_installed ... ignored, requires Python, the vosk package, and a local model download
+test vosk::tests::grammar_json_has_no_duplicates ... ok
+test vosk::tests::grammar_json_includes_bible_reference_terms ... ok
+test vosk::tests::grammar_json_includes_hymn_cue_words ... ok
+test vosk::tests::grammar_json_is_valid_json_array ... ok
+test vosk::tests::grammar_json_preserves_voice_control_and_translation_terms ... ok
+test vosk::tests::worker_args_include_model_and_sample_rate ... ok
+test worker::tests::average_confidence_defaults_when_unscored ... ok
+test vosk::tests::worker_args_strip_windows_extended_length_prefix ... ok
+test worker::tests::average_confidence_uses_scored_words ... ok
+test vosk::tests::grammar_json_includes_open_dictation_fallback ... ok
+test worker::tests::simplify_model_path_handles_unc_and_plain_paths ... ok
+test worker::tests::to_words_maps_worker_fields ... ok
+test worker::tests::worker_command_runs_exe_directly_and_py_through_python ... ok
+test worker::tests::reader_maps_worker_events_to_transcript_events ... ok
+test vosk::tests::spawn_uses_grammar_file_not_inline_json ... ok
+test vosk::tests::check_ready_reports_missing_model ... ok
+test vosk::tests::check_ready_reports_missing_worker ... ok
+test vosk::tests::write_grammar_temp_file_writes_valid_json_array ... ok
+test vosk::tests::bundled_worker_preflight_reports_ready ... ok
+
+test result: ok. 44 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 2.27s
+
+     Running unittests src\lib.rs (src-tauri\target\debug\deps\rhema_lib-7a18823781a77673.exe)
+
+running 277 tests
+test asset_paths::tests::simplify_windows_path_strips_extended_length_prefix ... ok
+test asset_paths::tests::semantic_assets_are_compatible_rejects_unknown_tokenizer_family ... ok
+test asset_paths::tests::semantic_assets_are_compatible_accepts_matching_minilm_assets ... ok
+test asset_paths::tests::semantic_assets_are_compatible_rejects_unknown_model_family ... ok
+test asset_paths::tests::semantic_candidates_prefer_paired_q8_then_f32_then_legacy_assets ... ok
+test asset_paths::tests::soffice_candidate_paths_prefer_override_then_path_then_fixed ... ok
+test asset_paths::tests::soffice_candidate_paths_skip_blank_override_and_missing_path ... ok
+test commands::assets::tests::exposes_attachment_limits_matching_validation_constants ... ok
+test commands::assets::tests::rejects_empty_path ... ok
+test commands::assets::tests::rejects_network_path ... ok
+test commands::assets::tests::rejects_parent_traversal ... ok
+test commands::assets::tests::rejects_url_scheme ... ok
+test commands::audio::tests::maps_audio_error_variants_to_stable_strings ... ok
+test commands::bible::tests::copyrighted_or_missing_translations_are_locked ... ok
+test commands::bible::tests::require_bible_db_reports_stable_error ... ok
+test commands::bible::tests::search_validation_runs_before_db_access ... ok
+test commands::broadcast::tests::build_monitor_key_normalizes_name_and_includes_geometry ... ok
+test commands::broadcast::tests::build_monitor_key_preserves_negative_extended_desktop_coordinates ... ok
+test commands::broadcast::tests::expected_ndi_frame_payload_len_counts_rgba_bytes ... ok
+test commands::broadcast::tests::resolve_monitor_index_falls_back_to_index_when_key_is_missing ... ok
+test commands::broadcast::tests::resolve_monitor_index_prefers_stable_hdmi_key_over_stale_index ... ok
+test commands::broadcast::tests::resolve_monitor_index_rejects_out_of_range_fallback ... ok
+test commands::broadcast::tests::validate_ndi_frame_payload_rejects_length_mismatch ... ok
+test commands::broadcast::tests::validate_ndi_frame_payload_rejects_zero_dimensions ... ok
+test asset_paths::tests::first_existing_picks_first_present_path ... ok
+test commands::broadcast::tests::window_label_maps_main_and_alt ... ok
+test commands::broadcast::tests::window_url_includes_output_query_param ... ok
+test commands::deepseek::tests::letters_map_back_to_supplied_candidate_ids_only ... ok
+test commands::deepseek::tests::candidate_ids_render_as_compact_log_field ... ok
+test commands::deepseek::tests::ranking_prompt_still_pins_single_character_output ... ok
+test commands::deepseek::tests::request_body_carries_candidate_confidence ... ok
+test commands::deepseek::tests::request_body_clamps_inputs_and_pins_speed_config ... ok
+test commands::deepseek::tests::scanner_abstains_on_done_without_letter ... ok
+test commands::deepseek::tests::scanner_abstains_on_n ... ok
+test commands::deepseek::tests::scanner_abstains_on_unexpected_content ... ok
+test commands::deepseek::tests::scanner_handles_lines_split_across_chunks ... ok
+test commands::deepseek::tests::scanner_selects_letter_from_single_chunk ... ok
+test commands::deepseek::tests::scanner_skips_keepalive_and_malformed_lines ... ok
+test commands::deepseek::tests::scanner_waits_through_whitespace_only_tokens ... ok
+test asset_paths::tests::resolve_vosk_model_dir_rejects_unrelated_dirs ... ok
+test commands::deepseek::tests::system_prompt_is_stable_and_first_for_prefix_caching ... ok
+test commands::deepseek::tests::validation_status_mapping ... ok
+test commands::detection::egw::auto_queue_policy_tests::auto_mode_keeps_a_semantic_quote_above_threshold_eligible ... ok
+test commands::detection::egw::auto_queue_policy_tests::manual_mode_revokes_semantic_quote_auto_queue ... ok
+test commands::detection::egw::cue_tests::ambiguous_single_word_book_title_is_not_a_cue ... ok
+test commands::detection::egw::cue_tests::author_name_is_a_cue ... ok
+test commands::detection::egw::cue_tests::book_title_is_a_cue ... ok
+test commands::detection::egw::cue_tests::ordinary_sermon_prose_is_not_a_cue ... ok
+test commands::detection::egw::cue_tests::spirit_of_prophecy_is_a_cue ... ok
+test commands::detection::egw::cue_ttl_tests::clock_going_backwards_does_not_panic_or_extend ... ok
+test commands::detection::egw::cue_tests::white_alone_is_not_a_cue ... ok
+test commands::detection::egw::cue_ttl_tests::cue_expires_after_the_window ... ok
+test commands::detection::egw::cue_ttl_tests::cue_is_live_within_the_window ... ok
+test commands::detection::egw::cue_ttl_tests::cue_state_is_isolated_between_sessions ... ok
+test commands::detection::egw::cue_ttl_tests::never_cued_is_never_live ... ok
+test commands::assets::tests::accepts_pdf_larger_than_image_limit ... ok
+test commands::detection::egw::low_stt_dampening_tests::high_confidence_leaves_the_hit_alone ... ok
+test commands::detection::egw::low_stt_dampening_tests::low_confidence_caps_scores_and_revokes_auto_queue ... ok
+test commands::detection::egw::low_stt_dampening_tests::the_cap_never_raises_a_weaker_hit ... ok
+test commands::detection::egw::low_stt_dampening_tests::threshold_boundary_matches_the_bible_block ... ok
+test commands::detection::egw::low_stt_dampening_tests::unreported_confidence_leaves_the_hit_alone ... ok
+test commands::assets::tests::rejects_video_extension ... ok
+test commands::detection::egw::quote_run_tests::disjoint_vocabulary_has_no_run ... ok
+test commands::assets::tests::accepts_valid_pdf ... ok
+test commands::assets::tests::accepts_valid_image ... ok
+test commands::assets::tests::rejects_image_larger_than_data_url_reader_limit ... ok
+test commands::detection::egw::quote_run_tests::empty_inputs_have_no_run ... ok
+test commands::detection::egw::quote_run_tests::opposite_polarity_is_not_quote_evidence ... ok
+test commands::detection::egw::quote_run_tests::out_of_order_shared_words_do_not_count_as_a_run ... ok
+test commands::detection::egw::quote_run_tests::shared_run_anchor_is_zero_when_nothing_matches ... ok
+test commands::detection::egw::quote_run_tests::mid_window_interruption_breaks_the_run_instead_of_splicing ... ok
+test commands::detection::egw::quote_run_tests::short_words_do_not_break_a_run ... ok
+test commands::detection::egw::quote_run_tests::shared_run_reports_where_in_the_paragraph_the_quote_starts ... ok
+test commands::detection::egw::quote_run_tests::verbatim_phrase_runs_the_full_content_length ... ok
+test commands::detection::egw::quote_score_tests::fire_band_starts_at_six_regardless_of_cue ... ok
+test commands::detection::egw::quote_score_tests::long_run_with_cue_fires_and_auto_queues ... ok
+test commands::detection::egw::quote_score_tests::long_run_without_cue_fires_but_never_auto_queues ... ok
+test commands::detection::egw::quote_score_tests::short_run_is_a_hint_only_when_cued ... ok
+test commands::detection::egw::quote_score_tests::three_or_fewer_shared_words_is_always_dropped ... ok
+test asset_paths::tests::resolve_vosk_model_dir_descends_into_known_dirnames ... ok
+test asset_paths::tests::resolve_vosk_model_dir_accepts_direct_path ... ok
+test asset_paths::tests::is_vosk_model_dir_requires_all_markers ... ok
+test commands::detection::tests::detection_settings_apply_semantic_visibility_threshold ... ok
+test commands::detection::tests::detection_settings_can_disable_semantic_results ... ok
+test commands::detection::tests::detection_settings_keep_semantic_results_visible_below_auto_threshold ... ok
+test commands::detection::tests::disabling_bible_mode_deactivates_reading_mode ... ok
+test asset_paths::tests::resolve_vosk_model_dir_prefers_accurate_dynamic_graph_model ... ok
+test commands::detection::tests::detect_egw_quotes_ignores_windows_below_the_word_floor ... ok
+test commands::detection::tests::detect_egw_quotes_fires_without_cue_but_does_not_auto_queue ... ok
+test commands::detection::tests::detect_egw_quotes_returns_at_most_one_paragraph ... ok
+test commands::detection::tests::manual_mode_disables_auto_queue_without_hiding_semantic_results ... ok
+test commands::detection::tests::detect_egw_references_requires_existing_paragraph ... ok
+test commands::detection::tests::detect_egw_quotes_rejects_thematic_overlap ... ok
+test commands::detection::tests::detect_egw_references_ignores_shorthand_references ... ok
+test commands::detection::tests::detect_egw_references_handles_noisy_spoken_human_intro ... ok
+test commands::detection::tests::detect_egw_references_finds_title_page_paragraph ... ok
+test commands::egw::tests::egw_search_validation_runs_before_db_access ... ok
+test commands::egw::tests::reports_stable_db_not_loaded_message ... ok
+test commands::detection::tests::egw_direct_results_auto_queue_when_auto_mode_threshold_allows ... ok
+test commands::detection::tests::detect_egw_quotes_fires_on_verbatim_reading_with_attribution ... ok
+test commands::detection::tests::detect_egw_references_resolves_reference_embedded_in_rolling_window ... ok
+test commands::library::tests::accepts_supported_image_under_size_limit ... ok
+test commands::library::tests::reads_png_dimensions ... ok
+test commands::library::tests::rejects_unsafe_delete_file_names ... ok
+test commands::installation_identity::tests::legacy_device_id_is_preserved_in_the_keychain ... ok
+test commands::library::tests::rejects_url_network_traversal_and_system_paths ... ok
+test commands::path_guard::tests::allows_plain_and_drive_paths ... ok
+test commands::path_guard::tests::blocks_system_paths ... ok
+test commands::path_guard::tests::rejects_url_network_and_traversal_surfaces ... ok
+test commands::library::tests::rejects_unsupported_extension ... ok
+test commands::powerpoint::tests::missing_converter_error_names_override_without_local_paths ... ok
+test commands::powerpoint::tests::accepts_valid_pptx ... ok
+test commands::installation_identity::tests::identity_is_stable_for_the_same_keychain ... ok
+test commands::powerpoint::tests::rejects_system_path ... ok
+test commands::powerpoint::tests::rejects_directory_path ... ok
+test commands::powerpoint::tests::rejects_url_network_and_traversal ... ok
+test commands::remote::tests::maps_confidence_action_with_args ... ok
+test commands::detection::tests::egw_direct_results_do_not_auto_queue_in_manual_mode ... ok
+test commands::powerpoint::tests::rejects_oversized_deck ... ok
+test commands::remote::tests::maps_show_and_hide_actions ... ok
+test commands::remote::tests::rejects_unknown_backend_action ... ok
+test commands::secrets::tests::clear_verification_token_makes_get_return_empty ... ok
+test commands::secrets::tests::deepseek_key_or_empty_returns_empty_when_missing ... ok
+test commands::secrets::tests::deepseek_key_rejects_empty_values ... ok
+test commands::secrets::tests::deepseek_key_round_trips_through_secure_store ... ok
+test commands::secrets::tests::ensure_remote_http_token_creates_missing_token ... ok
+test commands::secrets::tests::ensure_remote_http_token_rejects_empty_token_without_overwriting ... ok
+test commands::secrets::tests::get_deepgram_api_key_or_empty_normalizes_output ... ok
+test commands::powerpoint::tests::rejects_unsupported_extension ... ok
+test commands::secrets::tests::get_deepgram_api_key_or_empty_returns_empty_when_not_set ... ok
+test commands::secrets::tests::get_deepgram_api_key_or_empty_returns_stored_value ... ok
+test commands::secrets::tests::has_deepgram_api_key_returns_false_when_empty ... ok
+test commands::secrets::tests::has_deepgram_api_key_returns_false_when_not_set ... ok
+test commands::secrets::tests::get_verification_token_returns_empty_when_missing ... ok
+test commands::secrets::tests::get_verification_token_treats_empty_string_as_absent ... ok
+test commands::secrets::tests::has_remote_http_token_returns_false_when_not_set ... ok
+test commands::secrets::tests::has_remote_http_token_returns_true_when_set ... ok
+test commands::secrets::tests::has_deepgram_api_key_returns_true_when_set ... ok
+test commands::secrets::tests::has_remote_http_token_returns_false_when_empty ... ok
+test commands::secrets::tests::rotate_remote_http_token_generates_and_stores_token ... ok
+test commands::secrets::tests::rotate_remote_http_token_generates_unique_tokens ... ok
+test commands::secrets::tests::keyring_uses_native_windows_persistence ... ok
+test commands::secrets::tests::normalizes_deepgram_key_wrappers ... ok
+test commands::secrets::tests::set_deepgram_api_key_rejects_empty ... ok
+test commands::secrets::tests::rotate_remote_http_token_overwrites_existing ... ok
+test commands::secrets::tests::set_deepgram_api_key_normalizes_input ... ok
+test commands::secrets::tests::set_deepgram_api_key_rejects_whitespace ... ok
+test commands::secrets::tests::set_deepgram_api_key_saves_and_reads_back ... ok
+test commands::detection::tests::to_result_falls_back_to_source_translation_when_active_reference_missing ... ok
+test commands::secrets::tests::set_verification_token_rejects_empty_value ... ok
+test commands::secrets::tests::speechmatics_key_rejects_empty_values ... ok
+test commands::secrets::tests::set_verification_token_round_trips_through_get ... ok
+test commands::secrets::tests::verification_token_is_detected_after_rotation ... ok
+test commands::secrets::tests::speechmatics_key_round_trips_through_secure_store ... ok
+test commands::stt::detection::tests::active_reading_scope_is_not_released_while_verses_still_match ... ok
+test commands::stt::detection::tests::bible_detection_defaults_on_and_can_be_toggled_independently ... ok
+test commands::stt::detection::tests::clamp_to_recent_words_returns_all_when_under_limit ... ok
+test commands::stt::detection::tests::clamp_to_recent_words_keeps_only_trailing_words ... ok
+test commands::stt::detection::tests::deepgram_semantic_buffer_flushes_duplicate_speech_final_boundary ... ok
+test commands::stt::detection::tests::clamp_to_recent_words_normalizes_empty_and_extra_whitespace ... ok
+test commands::stt::detection::tests::choose_reading_candidate_prefers_active_scope_over_stale_first_candidate ... ok
+test commands::stt::detection::tests::chapter_only_hit_does_not_reanchor_within_active_chapter ... ok
+test commands::detection::tests::semantic_live_reference_seeds_next_verse_navigation ... ok
+test commands::stt::detection::tests::deepgram_semantic_buffer_utterance_end_uses_last_final_seq ... ok
+test commands::stt::detection::tests::deepgram_semantic_buffer_waits_until_speech_final ... ok
+test commands::stt::detection::tests::direct_reading_candidates_include_chapter_only_handoffs_below_ninety_percent ... ok
+test commands::stt::detection::tests::defers_to_direct_for_explicit_references_and_commands ... ok
+test commands::stt::detection::tests::different_book_restarts_only_when_explicit ... ok
+test commands::stt::detection::tests::direct_scope_filter_keeps_active_chapter_when_batch_contains_it ... ok
+test commands::detection::tests::to_result_resolves_direct_reference_to_active_translation ... ok
+test commands::stt::detection::tests::direct_scope_filter_allows_new_book_when_active_chapter_absent ... ok
+test commands::stt::detection::tests::does_not_defer_for_sermon_prose ... ok
+test commands::stt::detection::tests::live_semantic_workflow_matches_requested_speed_and_result_window ... ok
+test commands::stt::detection::tests::finalize_live_semantic_results_drops_sub_floor_noise ... ok
+test commands::stt::detection::tests::inactive_reading_mode_always_restarts_on_reference ... ok
+test commands::stt::detection::tests::reading_scope_filter_is_noop_without_active_scope ... ok
+test commands::stt::detection::tests::reanchors_to_specific_verse_within_active_chapter ... ok
+test commands::stt::detection::tests::reading_scope_filter_suppresses_out_of_chapter_semantic_bible_results ... ok
+test commands::stt::detection::tests::same_specific_verse_does_not_restart ... ok
+test commands::stt::detection::tests::repeated_out_of_scope_release_uses_short_live_pause_boundary ... ok
+test commands::detection::tests::to_result_resolves_semantic_vector_id_to_active_translation ... ok
+test commands::stt::detection::tests::same_book_new_chapter_restarts ... ok
+test commands::stt::detection::tests::semantic_enqueue_skips_reference_and_command_windows ... ok
+test commands::stt::detection::tests::semantic_job_slot_recovers_from_poisoned_lock ... ok
+test commands::stt::detection::tests::semantic_job_slot_replace_reports_whether_existing_job_was_replaced ... ok
+test commands::stt::detection::tests::stale_reading_scope_holds_without_a_strong_out_of_scope_hit ... ok
+test commands::stt::detection::tests::stale_reading_scope_releases_on_operator_threshold_hit ... ok
+test commands::stt::detection::tests::stale_reading_scope_releases_on_strong_out_of_book_semantic_hit ... ok
+test commands::stt::detection::tests::strip_reference_scaffolding_removes_afrikaans_reference_words ... ok
+test commands::stt::detection::tests::stale_reading_scope_releases_on_strong_same_book_out_of_chapter_hit ... ok
+test commands::stt::detection::tests::strong_out_of_scope_bible_book_ignores_weak_and_in_scope_hits ... ok
+test commands::stt::detection::tests::stale_same_chapter_previous_verse_does_not_restart ... ok
+test commands::stt::detection::tests::test_detection_paused_state ... ok
+test commands::stt::detection::tests::strip_reference_scaffolding_drops_framing_keeps_verse_content ... ok
+test commands::installation_identity::tests::signature_verifies_with_the_returned_public_key ... ok
+test commands::stt::detection::tests::test_finalize_live_semantic_results_caps_after_dedupe ... ok
+test commands::stt::detection::tests::test_finalize_live_semantic_results_dedupes_and_boosts_overlap ... ok
+test commands::stt::detection::tests::test_sequence_monotonic_increase ... ok
+test commands::stt::detection::tests::test_stale_sequence_suppression ... ok
+test commands::stt::detection::tests::trim_to_sentence_start_drops_leading_partial_sentence ... ok
+test commands::stt::detection::tests::test_stale_detection_with_concurrent_updates ... ok
+test commands::stt::live_session::bible_mode_tests::bible_mode_off_filters_bible_but_preserves_egw_results ... ok
+test commands::stt::live_session::bible_mode_tests::bible_mode_on_preserves_all_detection_results ... ok
+test commands::stt::provider::tests::deepgram_language_for_supports_public_bible_languages ... ok
+test commands::stt::detection::tests::trim_to_sentence_start_drops_multiple_stale_sentences ... ok
+test commands::stt::provider::tests::gladia_uses_removed_provider_error ... ok
+test commands::stt::provider::tests::missing_model_error_mentions_path_and_recovery_steps ... ok
+test commands::stt::provider::tests::missing_worker_error_mentions_path ... ok
+test commands::stt::detection::tests::trim_to_sentence_start_ignores_semicolons_and_no_punctuation ... ok
+test commands::stt::provider::tests::vosk_errors_do_not_hardcode_a_user_profile_path ... ok
+test commands::stt::detection::tests::trim_to_sentence_start_keeps_mixed_window_when_tail_is_too_short ... ok
+test commands::stt::provider::tests::removed_provider_error_points_to_supported_choices ... ok
+test commands::stt::session::tests::a_freshly_claimed_session_is_current ... ok
+test commands::stt::session::tests::claiming_a_new_session_invalidates_the_previous_one ... ok
+test commands::stt::utils::tests::active_provider_partials_can_run_semantic_detection ... ok
+test commands::stt::session::tests::invalidating_the_counter_retires_the_current_session ... ok
+test commands::stt::utils::tests::active_provider_low_confidence_finals_can_run_semantic_detection ... ok
+test commands::stt::utils::tests::active_provider_semantic_policy_matches_production_matrix ... ok
+test commands::stt::utils::tests::debug_build_logs_only_with_optin ... ok
+test commands::stt::utils::tests::low_power_mode_disables_partial_semantic_detection ... ok
+test commands::stt::utils::tests::release_build_never_logs_even_with_optin ... ok
+test commands::theme_files::tests::accepts_valid_theme_shape ... ok
+test commands::theme_files::tests::allows_plain_and_drive_paths ... ok
+test commands::theme_files::tests::accepts_json_at_depth_limit ... ok
+test commands::theme_files::tests::enforces_json_depth_limit ... ok
+test commands::stt::detection::tests::spoken_book_hint_ignores_multi_book_and_complete_refs ... ok
+test commands::stt::detection::tests::spoken_book_hint_scopes_single_bare_book ... ok
+test commands::theme_files::tests::accepts_json_at_nodes_limit ... ok
+test commands::theme_files::tests::enforces_json_nodes_limit ... ok
+test commands::theme_files::tests::rejects_missing_required_field ... ok
+test commands::theme_files::tests::import_rejects_directory_path ... ok
+test commands::theme_files::tests::rejects_system_paths ... ok
+test commands::theme_files::tests::rejects_url_and_network_and_traversal ... ok
+test commands::transcript_router::tests::active_provider_finals_route_hymn_commands_authoritatively ... ok
+test commands::transcript_router::tests::deepgram_partial_complete_reference_can_detect_authoritatively ... ok
+test commands::transcript_router::tests::deepgram_partial_without_complete_reference_does_not_detect_authoritatively ... ok
+test commands::transcript_router::tests::final_matching_dispatched_partial_command_is_consumed ... ok
+test commands::transcript_router::tests::final_only_navigation_command_repeats_are_not_text_deduped ... ok
+test commands::transcript_router::tests::final_speech_goes_to_transcript_and_authoritative_detection ... ok
+test commands::transcript_router::tests::growing_partial_dispatches_navigation_command_once ... ok
+test commands::theme_files::tests::read_image_rejects_directory_path ... ok
+test commands::transcript_router::tests::partial_afrikaans_spoken_number_reference_is_authoritative ... ok
+test commands::transcript_router::tests::partial_afrikaans_reference_is_authoritative ... ok
+test commands::transcript_router::tests::partial_complete_reference_is_authoritative_for_any_provider ... ok
+test commands::transcript_router::tests::partial_spoken_reference_is_authoritative_for_any_provider ... ok
+test commands::transcript_router::tests::ordinary_final_speech_is_transcribed_but_not_previewed ... ok
+test commands::transcript_router::tests::partial_verse_navigation_command_dispatches_immediately ... ok
+test commands::theme_files::tests::read_image_accepts_plain_png_path ... ok
+test commands::transcript_router::tests::partial_without_reference_does_not_preview_or_detect ... ok
+test commands::transcript_router::tests::provider_resend_of_a_queue_command_final_is_still_dropped ... ok
+test commands::transcript_router::tests::repeated_hymn_command_dispatches_again_after_a_new_partial ... ok
+test commands::transcript_router::tests::repeated_navigation_command_utterances_each_dispatch ... ok
+test commands::transcript_router::tests::repeated_ordinary_speech_is_still_deduped ... ok
+test commands::transcript_router::tests::repeated_queue_command_dispatches_again_after_a_new_partial ... ok
+test commands::transcript_router::tests::suppresses_noise_labels_and_duplicate_finals ... ok
+test commands::transcript_router::tests::resent_identical_command_final_without_partials_is_suppressed ... ok
+test commands::validation::tests::bounded_limit_rejects_zero_and_caps_at_max ... ok
+test commands::transcript_router::tests::suppresses_low_confidence_final_when_provider_supplies_confidence ... ok
+test commands::validation::tests::bounded_optional_limit_uses_default_when_none ... ok
+test commands::validation::tests::bounded_text_accepts_within_limit_and_rejects_over ... ok
+test commands::validation::tests::valid_confidence_threshold_clamps_and_rejects_non_finite ... ok
+test commands::validation::tests::valid_port_rejects_zero_and_passes_through ... ok
+test logging::tests::max_log_file_size_holds_a_full_session ... ok
+test logging::tests::rotation_keeps_previous_session_logs ... ok
+test state::tests::initial_translation_id_falls_back_to_first_translation ... ok
+test state::tests::initial_translation_id_prefers_kjv_when_available ... ok
+test state::tests::initial_translation_id_skips_locked_translations ... ok
+test commands::video::tests::accepts_mp4_video ... ok
+test commands::video::tests::accepts_webm_video ... ok
+test commands::video::tests::rejects_traversal_network_url_system_and_bad_extension ... ok
+test commands::video::tests::rejects_oversize_video ... ok
+test commands::theme_files::tests::export_writes_valid_theme_to_plain_path ... ok
+test commands::detection::tests::to_result_resolves_semantic_vector_id_to_spanish_and_french_active_translations ... ok
+test commands::detection::tests::to_result_resolves_direct_reference_to_spanish_and_french_active_translations ... ok
+test commands::stt::session::tests::interruptible_sleep_wakes_early_when_the_session_is_retired ... ok
+test commands::detection::tests::real_sermon_produces_no_egw_quote_detections ... ok
+test commands::stt::session::tests::interruptible_sleep_runs_to_completion_while_current ... ok
+
+test result: ok. 277 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.27s
+
+     Running unittests src\main.rs (src-tauri\target\debug\deps\SabbathCue-e6c61965b896d836.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\tauri_bundle_resources.rs (src-tauri\target\debug\deps\tauri_bundle_resources-4de080a27d76853a.exe)
+
+running 2 tests
+test resources_do_not_include_removed_sherpa_assets ... ok
+test resources_bundle_only_int8_minilm_onnx_model ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests rhema_api
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests rhema_audio
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests rhema_bible
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests rhema_broadcast
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests rhema_detection
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests rhema_stt
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests rhema_lib
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

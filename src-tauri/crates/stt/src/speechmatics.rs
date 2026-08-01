@@ -509,7 +509,10 @@ mod tests {
         )
         .unwrap()
         .0;
-        assert!(matches!(events.as_slice(), [TranscriptEvent::Partial { .. }]));
+        assert!(matches!(
+            events.as_slice(),
+            [TranscriptEvent::Partial { .. }]
+        ));
 
         // The chunk that ends the sentence commits the whole line as one final.
         let events = parse_response(

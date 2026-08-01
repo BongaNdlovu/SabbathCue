@@ -1320,6 +1320,19 @@ mod tests {
     }
 
     #[test]
+    fn load_fixture_cases_reads_closing_sermon_fixture() {
+        let base = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../data/detection-fixtures");
+        let closing = load_fixture_cases(&base.join("closing-sermon-cases.json")).unwrap();
+        assert_eq!(closing.len(), 20);
+        assert!(closing.iter().any(|c| c.category == "closing-noise"));
+        assert!(closing.iter().any(|c| c.category == "closing-fragment"));
+
+        let probe = load_fixture_cases(&base.join("span-window-probe.json")).unwrap();
+        assert_eq!(probe.len(), 6);
+        assert!(probe.iter().any(|c| c.category == "probe-mid-window"));
+    }
+
+    #[test]
     fn fixture_case_accepts_optional_timestamp_metadata() {
         let json = r#"[
           {

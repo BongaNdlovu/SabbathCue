@@ -17,6 +17,7 @@
 
 pub mod command_eval;
 pub mod direct;
+pub mod egw_quote;
 pub mod error;
 pub mod merger;
 pub mod pipeline;
@@ -24,6 +25,12 @@ pub mod reading_mode;
 pub mod semantic;
 pub mod sentence_buffer;
 pub mod types;
+
+pub use egw_quote::{
+    egw_quote_score, longest_shared_content_run, quote_has_negation_conflict, SharedRun,
+    EGW_QUOTE_MAX_CONFIDENCE, EGW_QUOTE_RUN_AUTO_QUEUE, EGW_QUOTE_RUN_CUED_HINT,
+    EGW_QUOTE_RUN_FIRE, EGW_RUN_MAX_GAP,
+};
 
 pub use direct::detector::{is_voice_command_utterance, DirectDetector};
 pub use error::*;

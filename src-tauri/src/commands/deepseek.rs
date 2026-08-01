@@ -355,7 +355,10 @@ mod tests {
             "44:16:25,44:16:26,44:16:27"
         );
         assert_eq!(format_candidate_ids(&[]), "none");
-        assert_eq!(format_candidate_ids(&candidates(12)).matches(',').count(), 7);
+        assert_eq!(
+            format_candidate_ids(&candidates(12)).matches(',').count(),
+            7
+        );
     }
 
     #[test]

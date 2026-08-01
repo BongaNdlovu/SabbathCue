@@ -94,6 +94,7 @@ fn balaam_sermon_quote_surfaces_through_hybrid_fts_overlap() {
         verse: 1,
         rank: -10.0,
         is_broad_match: true,
+        is_phrase_match: false,
         text: "Blessed is the man that walketh not in the counsel of the ungodly, \
                nor standeth in the way of sinners, nor sitteth in the seat of the scornful."
             .to_string(),

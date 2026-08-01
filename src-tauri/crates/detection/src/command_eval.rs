@@ -740,11 +740,14 @@ fn is_command_shaped(text: &str) -> bool {
         ],
     );
     let has_navigation_target = has_presentation_target
-        || contains_phrase(body, &[" forward", " back", " before", " after", " following"]);
+        || contains_phrase(
+            body,
+            &[" forward", " back", " before", " after", " following"],
+        );
 
     if [
-        "hide ", "show ", "clear ", "blank ", "take ", "remove ", "put ", "restore ",
-        "display ", "bring ", "see ", "leave ", "have ",
+        "hide ", "show ", "clear ", "blank ", "take ", "remove ", "put ", "restore ", "display ",
+        "bring ", "see ", "leave ", "have ",
     ]
     .iter()
     .any(|start| body.starts_with(start))
@@ -753,8 +756,16 @@ fn is_command_shaped(text: &str) -> bool {
         return true;
     }
     if [
-        "next ", "previous ", "forward ", "back ", "go ", "move ", "continue ", "advance ",
-        "return ", "rewind ",
+        "next ",
+        "previous ",
+        "forward ",
+        "back ",
+        "go ",
+        "move ",
+        "continue ",
+        "advance ",
+        "return ",
+        "rewind ",
     ]
     .iter()
     .any(|start| body.starts_with(start))

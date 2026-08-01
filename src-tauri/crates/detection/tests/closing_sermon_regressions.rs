@@ -73,6 +73,7 @@ fn closing_prayer_fts_candidate_cannot_reach_live_fire_confidence() {
         verse: 11,
         rank: -24.0,
         is_broad_match: false,
+        is_phrase_match: false,
         text: "And Asa did that which was right in the eyes of the LORD, as did David his father."
             .to_string(),
     }];

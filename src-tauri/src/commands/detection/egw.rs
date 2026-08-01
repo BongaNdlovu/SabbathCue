@@ -29,144 +29,7 @@ fn normalize_reference_text(value: &str) -> String {
         .join(" ")
 }
 
-fn is_negation(word: &str) -> bool {
-    matches!(word, "no" | "not" | "nor" | "never" | "neither" | "without")
-}
-
-fn quote_polarity_tokens(text: &str) -> Vec<String> {
-    text.split(|ch: char| !ch.is_alphanumeric())
-        .map(str::to_lowercase)
-        .filter(|word| word.len() >= 4 || is_negation(word))
-        .collect()
-}
-
-fn negation_context_conflicts(source: &[String], other: &[String]) -> bool {
-    for (index, token) in source.iter().enumerate() {
-        if !is_negation(token) {
-            continue;
-        }
-        let anchor: Vec<&str> = source
-            .iter()
-            .skip(index + 1)
-            .filter(|word| !is_negation(word))
-            .take(2)
-            .map(String::as_str)
-            .collect();
-        if anchor.len() < 2 {
-            continue;
-        }
-
-        let mut found_anchor = false;
-        let mut found_negated_anchor = false;
-        for start in 0..other.len().saturating_sub(1) {
-            if other[start] == anchor[0] && other[start + 1] == anchor[1] {
-                found_anchor = true;
-                found_negated_anchor |= start > 0 && is_negation(other[start - 1].as_str());
-            }
-        }
-        if found_anchor && !found_negated_anchor {
-            return true;
-        }
-    }
-    false
-}
-
-fn quote_has_negation_conflict(window: &str, paragraph: &str) -> bool {
-    let spoken = quote_polarity_tokens(window);
-    let candidate = quote_polarity_tokens(paragraph);
-    negation_context_conflicts(&spoken, &candidate)
-        || negation_context_conflicts(&candidate, &spoken)
-}
-
-/// Longest run of consecutive content words shared, in order, by both texts.
-///
-/// Both sides are first reduced to lowercased tokens of >=4 letters, so short
-/// filler ("the", "of", "and") and STT hiccups cannot split an otherwise
-/// verbatim run, and the run counts substantive words only. Negation is checked
-/// separately so removing "not" cannot turn an opposite statement into quote
-/// evidence. This separates a paragraph being *read aloud* from a paragraph
-/// that merely shares a topic — the failure mode that made the previous
-/// BM25-only attempt unusable.
-/// Longest run of shared content words, and where that run starts in the
-/// paragraph as a UTF-8 **byte** offset. The anchor lets the UI open a long
-/// paragraph at the sentence actually being spoken instead of at its first word.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SharedRun {
-    pub len: usize,
-    pub paragraph_byte_start: usize,
-}
-
-fn longest_shared_content_run(window: &str, paragraph: &str) -> SharedRun {
-    let none = SharedRun {
-        len: 0,
-        paragraph_byte_start: 0,
-    };
-    if quote_has_negation_conflict(window, paragraph) {
-        return none;
-    }
-    let spoken: Vec<String> = rhema_detection::pipeline::content_words(window).collect();
-    let candidate: Vec<(usize, String)> =
-        rhema_detection::pipeline::content_words_indexed(paragraph).collect();
-    if spoken.is_empty() || candidate.is_empty() {
-        return none;
-    }
-
-    let mut previous = vec![0usize; candidate.len() + 1];
-    let mut best = 0;
-    let mut best_end = 0;
-    for spoken_word in &spoken {
-        let mut current = vec![0usize; candidate.len() + 1];
-        for (index, (_, candidate_word)) in candidate.iter().enumerate() {
-            if spoken_word == candidate_word {
-                current[index + 1] = previous[index] + 1;
-                if current[index + 1] > best {
-                    best = current[index + 1];
-                    best_end = index; // index of the run's LAST word
-                }
-            }
-        }
-        previous = current;
-    }
-    if best == 0 {
-        return none;
-    }
-    SharedRun {
-        len: best,
-        paragraph_byte_start: candidate[best_end + 1 - best].0,
-    }
-}
-
-/// Shared-run length at which a paragraph is treated as spoken aloud.
-const EGW_QUOTE_RUN_FIRE: usize = 6;
-/// Shared-run length that, with attribution, is strong enough to auto-queue.
-const EGW_QUOTE_RUN_AUTO_QUEUE: usize = 8;
-/// Shared-run length that becomes an operator hint once attribution is heard.
-const EGW_QUOTE_RUN_CUED_HINT: usize = 4;
-const EGW_QUOTE_MAX_CONFIDENCE: f64 = 0.92;
-
-/// Map a shared-run length to `(confidence, auto_queued)`, or `None` to drop.
-///
-/// BM25 rank is deliberately absent: rank measures how well a paragraph
-/// answers a keyword query, not whether its words were spoken, and treating
-/// rank as confidence is what flooded the panel the first time this was tried.
-#[expect(
-    clippy::cast_precision_loss,
-    reason = "run lengths are single-digit word counts"
-)]
-fn egw_quote_score(run: usize, cue_active: bool) -> Option<(f64, bool)> {
-    if run >= EGW_QUOTE_RUN_AUTO_QUEUE && cue_active {
-        return Some((EGW_QUOTE_MAX_CONFIDENCE, true));
-    }
-    if run >= EGW_QUOTE_RUN_FIRE {
-        let over = (run - EGW_QUOTE_RUN_FIRE).min(4) as f64;
-        return Some(((0.88 + 0.01 * over).min(EGW_QUOTE_MAX_CONFIDENCE), false));
-    }
-    if run >= EGW_QUOTE_RUN_CUED_HINT && cue_active {
-        let over = (run - EGW_QUOTE_RUN_CUED_HINT) as f64;
-        return Some((0.75 + 0.05 * over, false));
-    }
-    None
-}
+use rhema_detection::{egw_quote_score, longest_shared_content_run};
 
 fn integer_token(token: &str) -> Option<i32> {
     if token.chars().all(|ch| ch.is_ascii_digit()) {
@@ -812,7 +675,7 @@ mod cue_ttl_tests {
 
 #[cfg(test)]
 mod quote_score_tests {
-    use super::egw_quote_score;
+    use rhema_detection::egw_quote_score;
 
     #[test]
     fn long_run_with_cue_fires_and_auto_queues() {
@@ -947,7 +810,7 @@ mod cue_tests {
 
 #[cfg(test)]
 mod quote_run_tests {
-    use super::longest_shared_content_run;
+    use rhema_detection::longest_shared_content_run;
 
     #[test]
     fn verbatim_phrase_runs_the_full_content_length() {
@@ -984,22 +847,36 @@ mod quote_run_tests {
     fn mid_window_interruption_breaks_the_run_instead_of_splicing() {
         // Scaffolding spoken mid-quote must break the run. Callers must pass the
         // raw transcript: on scaffolding-stripped text the two fragments splice
-        // into one 8-word run and reach the auto-queue band, on a quote that was
-        // never spoken contiguously.
+        // into one contiguous run. Gap tolerance may bridge a single inserted
+        // token, but a numeric interjection still cannot reach the spliced length.
         let paragraph = "The shepherd does not remain in the fold waiting for the wandering sheep to return of itself, but he goes forth into the wilderness.";
         let interrupted =
             "the shepherd does not remain in the fold verse 12 waiting for the wandering sheep to return";
         let spliced =
             "the shepherd does not remain in the fold waiting for the wandering sheep to return";
 
-        assert_eq!(longest_shared_content_run(interrupted, paragraph).len, 4);
-        assert_eq!(longest_shared_content_run(spliced, paragraph).len, 8);
+        let interrupted_len = longest_shared_content_run(interrupted, paragraph).len;
+        let spliced_len = longest_shared_content_run(spliced, paragraph).len;
+        assert!(
+            spliced_len >= 8,
+            "contiguous quote must reach a strong run, got {spliced_len}"
+        );
+        assert!(
+            interrupted_len < spliced_len,
+            "scaffolding mid-quote must not match the full spliced run ({interrupted_len} vs {spliced_len})"
+        );
     }
 
     #[test]
     fn empty_inputs_have_no_run() {
-        assert_eq!(longest_shared_content_run("", "history great conflict").len, 0);
-        assert_eq!(longest_shared_content_run("history great conflict", "").len, 0);
+        assert_eq!(
+            longest_shared_content_run("", "history great conflict").len,
+            0
+        );
+        assert_eq!(
+            longest_shared_content_run("history great conflict", "").len,
+            0
+        );
     }
 
     #[test]
@@ -1030,7 +907,8 @@ mod quote_run_tests {
 
     #[test]
     fn shared_run_anchor_is_zero_when_nothing_matches() {
-        let run = longest_shared_content_run("completely unrelated speech", "Balaam loved the wages.");
+        let run =
+            longest_shared_content_run("completely unrelated speech", "Balaam loved the wages.");
         assert_eq!(run.len, 0);
         assert_eq!(run.paragraph_byte_start, 0);
     }

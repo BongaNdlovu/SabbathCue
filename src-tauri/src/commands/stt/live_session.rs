@@ -537,9 +537,10 @@ pub(crate) fn run_semantic_detection(
             return;
         };
         (
-            app_state.bible_db.as_ref().and_then(|db| {
-                db.search_verses_bm25_scoped(&query, 10, book_hint).ok()
-            }),
+            app_state
+                .bible_db
+                .as_ref()
+                .and_then(|db| db.search_verses_bm25_scoped(&query, 10, book_hint).ok()),
             app_state.active_translation_id,
         )
     };

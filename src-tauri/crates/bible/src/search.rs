@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use std::sync::LazyLock;
+use std::sync::OnceLock;
 
 use rusqlite::Connection;
 
@@ -17,6 +17,8 @@ pub struct Bm25Result {
     pub chapter: i32,
     pub verse: i32,
     pub is_broad_match: bool,
+    /// True when this hit came from the quoted-phrase tier (contiguous span).
+    pub is_phrase_match: bool,
     /// The matched verse's text, for downstream quote-overlap verification.
     pub text: String,
 }
@@ -40,11 +42,12 @@ const STOP_WORDS: &[&str] = &[
     "wat", "wie", "waar", "hoe", "wanneer", "al", "alles", "elke", "almal",
 ];
 
-static STOP_WORD_SET: LazyLock<HashSet<&str>> =
-    LazyLock::new(|| STOP_WORDS.iter().copied().collect());
+static STOP_WORD_SET: OnceLock<HashSet<&str>> = OnceLock::new();
 
 fn is_stop_word(word: &str) -> bool {
-    STOP_WORD_SET.contains(word.to_lowercase().as_str())
+    STOP_WORD_SET
+        .get_or_init(|| STOP_WORDS.iter().copied().collect())
+        .contains(word.to_lowercase().as_str())
 }
 
 /// Reference-mechanics tokens from spoken citations ("Verse 27", "chapter 2")
@@ -97,28 +100,86 @@ pub(crate) fn build_phrase_query(input: &str) -> String {
 /// Minimum terms in a phrase span. Below four, common word runs
 /// ("and he said unto") match hundreds of verses and pollute the pool.
 const MIN_PHRASE_SPAN_TERMS: usize = 4;
-/// Upper bound on SQL round trips added by the phrase tier.
-const MAX_PHRASE_SPANS: usize = 8;
+/// After stripping a leading stop word from an end-anchored span, allow this
+/// short distinctive length ("the everlasting gospel") — still too short for
+/// the primary ladder, so it is only emitted as a stop-stripped variant.
+const MIN_STRIPPED_PHRASE_TERMS: usize = 3;
+/// Longest span worth issuing. A verse is rarely more than this many words,
+/// so longer spans cannot match and would only consume the round-trip budget.
+const MAX_PHRASE_SPAN_TERMS: usize = 12;
+/// Upper bound on end-anchored SQL round trips added by the phrase tier
+/// (includes stop-stripped short variants appended after the primary ladder).
+const MAX_PHRASE_SPANS: usize = 12;
+/// Length used for interior (non-tail) spans. One length only: sliding every
+/// length over every offset is O(n^2) SQL round trips.
+const INTERIOR_SPAN_TERMS: usize = 4;
+/// Upper bound on interior spans, on top of `MAX_PHRASE_SPANS`.
+const MAX_INTERIOR_SPANS: usize = 6;
 
-/// Quoted phrase queries for the input, longest first, each anchored at the
-/// end of the window.
-///
-/// The live window slides forward as the speaker talks, so a quotation is
-/// finished at the window's tail while its head still holds framing prose
-/// ("...and he's saying, maybe it was for such a time as this"). Trying only
-/// the whole window means the phrase tier never fires on such quotes; trying
-/// every substring costs O(n^2) SQL round trips. End-anchored spans cost at
-/// most `MAX_PHRASE_SPANS` and catch the case that actually occurs.
-pub(crate) fn build_phrase_spans(input: &str) -> Vec<String> {
-    let terms: Vec<&str> = query_terms(input).collect();
-    if terms.len() < MIN_PHRASE_SPAN_TERMS {
-        return Vec::new();
+fn push_unique_span(spans: &mut Vec<String>, terms: &[&str]) {
+    if terms.len() < MIN_STRIPPED_PHRASE_TERMS {
+        return;
     }
-    (MIN_PHRASE_SPAN_TERMS..=terms.len())
-        .rev()
-        .take(MAX_PHRASE_SPANS)
-        .map(|len| format!("\"{}\"", terms[terms.len() - len..].join(" ")))
-        .collect()
+    let span = format!("\"{}\"", terms.join(" "));
+    if !spans.contains(&span) {
+        spans.push(span);
+    }
+}
+
+/// Build phrase spans and report how many leading entries are end-anchored
+/// (the rest, if any, are interior).
+///
+/// End-anchored spans come first (quotation finishes at the window tail).
+/// Stop-stripped short variants of the tail cover three-word quotes that
+/// follow a light verb ("it is the everlasting gospel"). If those cannot
+/// match, bounded interior 4-grams walk from the tail so mid-window quotes
+/// remain reachable without O(n^2) SQL. Total length of this list is at most
+/// `MAX_PHRASE_SPANS + MAX_INTERIOR_SPANS`.
+pub(crate) fn build_phrase_spans_with_end_count(input: &str) -> (Vec<String>, usize) {
+    let terms: Vec<&str> = query_terms(input).collect();
+    if terms.len() < MIN_STRIPPED_PHRASE_TERMS {
+        return (Vec::new(), 0);
+    }
+    let mut spans = Vec::new();
+    if terms.len() >= MIN_PHRASE_SPAN_TERMS {
+        let longest = terms.len().min(MAX_PHRASE_SPAN_TERMS);
+        for len in (MIN_PHRASE_SPAN_TERMS..=longest).rev() {
+            if spans.len() >= MAX_PHRASE_SPANS {
+                break;
+            }
+            push_unique_span(&mut spans, &terms[terms.len() - len..]);
+        }
+    }
+
+    // Stop-stripped tail variants: "is the everlasting gospel" → also try
+    // "the everlasting gospel". Budget-limited; only leading stops dropped.
+    if terms.len() >= MIN_PHRASE_SPAN_TERMS && spans.len() < MAX_PHRASE_SPANS {
+        let tail = &terms[terms.len() - MIN_PHRASE_SPAN_TERMS..];
+        if is_stop_word(tail[0]) {
+            push_unique_span(&mut spans, &tail[1..]);
+        }
+    }
+
+    let end_n = spans.len();
+
+    // Interior spans only after end-anchored set is built. The SQL runner
+    // tries end-anchored first and only continues to interior when those
+    // return no rows (see search_verses_bm25_scoped).
+    if terms.len() > INTERIOR_SPAN_TERMS {
+        for start in (0..=terms.len() - INTERIOR_SPAN_TERMS).rev() {
+            if spans.len() >= end_n + MAX_INTERIOR_SPANS {
+                break;
+            }
+            push_unique_span(&mut spans, &terms[start..start + INTERIOR_SPAN_TERMS]);
+        }
+    }
+    (spans, end_n)
+}
+
+/// Quoted phrase queries for the input, longest first (end-anchored then interior).
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) fn build_phrase_spans(input: &str) -> Vec<String> {
+    build_phrase_spans_with_end_count(input).0
 }
 
 /// AND query with stop words removed — all significant words must be present.
@@ -182,6 +243,7 @@ fn run_fts_query(
     fts_query: &str,
     limit: usize,
     is_broad_match: bool,
+    is_phrase_match: bool,
     book_hint: Option<i32>,
 ) -> Result<Vec<Bm25Result>, BibleError> {
     if fts_query.is_empty() {
@@ -209,6 +271,7 @@ fn run_fts_query(
                 chapter: row.get(3)?,
                 verse: row.get(4)?,
                 is_broad_match,
+                is_phrase_match,
                 text: row.get(5)?,
             })
         },
@@ -231,13 +294,16 @@ fn dedup_results(results: Vec<Bm25Result>, limit: usize) -> Vec<Bm25Result> {
         match best.get_mut(&key) {
             Some(existing) if result.rank < existing.rank => {
                 let is_broad_match = existing.is_broad_match && result.is_broad_match;
+                let is_phrase_match = existing.is_phrase_match || result.is_phrase_match;
                 *existing = Bm25Result {
                     is_broad_match,
+                    is_phrase_match,
                     ..result
                 };
             }
             Some(existing) => {
                 existing.is_broad_match &= result.is_broad_match;
+                existing.is_phrase_match |= result.is_phrase_match;
             }
             None => {
                 order.push(key);
@@ -348,19 +414,27 @@ impl BibleDb {
         // itself is available in debug builds via the gated app-layer
         // `[DET-SEMANTIC] Running on:` line.
 
-        // Tier 1: Exact phrase match, end-anchored spans longest first.
-        // Stops at the first span that returns rows — a longer verbatim match
-        // is always the better evidence, so there is nothing to gain by
-        // continuing to shorter spans once one has hit.
-        log::debug!(
-            "[FTS5-BM25] phrase tier: {} terms",
-            query_terms(query).count()
-        );
+        // Tier 1: Exact phrase match.
+        // Phase A: end-anchored spans longest first — stop at first hit.
+        // Phase B: only if phase A returned nothing, try interior spans
+        // (mid-window quotes). Never skip interiors just because a long
+        // end-anchored span was *attempted*; only skip when a hit exists.
+        let term_count = query_terms(query).count();
+        log::debug!("[FTS5-BM25] phrase tier: {term_count} terms");
+        let (spans, end_n) = build_phrase_spans_with_end_count(query);
         let mut all_results = Vec::new();
-        for span in build_phrase_spans(query) {
-            all_results = run_fts_query(&conn, &span, fetch_limit, false, book_hint)?;
+        for span in spans.iter().take(end_n) {
+            all_results = run_fts_query(&conn, span, fetch_limit, false, true, book_hint)?;
             if !all_results.is_empty() {
                 break;
+            }
+        }
+        if all_results.is_empty() {
+            for span in spans.iter().skip(end_n) {
+                all_results = run_fts_query(&conn, span, fetch_limit, false, true, book_hint)?;
+                if !all_results.is_empty() {
+                    break;
+                }
             }
         }
 
@@ -376,6 +450,7 @@ impl BibleDb {
                     &conn,
                     &and_q,
                     fetch_limit,
+                    false,
                     false,
                     book_hint,
                 )?);
@@ -395,6 +470,7 @@ impl BibleDb {
                     &or_q,
                     fetch_limit,
                     true,
+                    false,
                     book_hint,
                 )?);
             }
@@ -471,6 +547,7 @@ mod tests {
             chapter,
             verse,
             is_broad_match,
+            is_phrase_match: false,
             text: String::new(),
         }
     }
@@ -481,18 +558,92 @@ mod tests {
 
     #[test]
     fn phrase_spans_are_end_anchored_longest_first() {
-        let spans = build_phrase_spans("he was saying such a time as this");
+        let (spans, end_n) = build_phrase_spans_with_end_count("he was saying such a time as this");
         assert_eq!(spans[0], "\"he was saying such a time as this\"");
         assert_eq!(spans[1], "\"was saying such a time as this\"");
         assert!(spans.contains(&"\"such a time as this\"".to_string()));
-        // Never emits a span shorter than the minimum.
-        assert!(spans.iter().all(|s| s.split_whitespace().count() >= 4));
+        // Primary ladder stays at the four-term floor; exactly one derived
+        // stop-stripped 3-gram may follow it.
+        let short_end_spans: Vec<&str> = spans
+            .iter()
+            .take(end_n)
+            .filter(|span| span.split_whitespace().count() < MIN_PHRASE_SPAN_TERMS)
+            .map(String::as_str)
+            .collect();
+        assert_eq!(short_end_spans, vec!["\"time as this\""]);
     }
 
     #[test]
     fn phrase_spans_are_bounded_and_skip_short_input() {
-        assert!(build_phrase_spans("only three words").is_empty());
-        assert!(build_phrase_spans(&"word ".repeat(60)).len() <= 8);
+        assert!(build_phrase_spans("only two").is_empty());
+        assert!(
+            build_phrase_spans(&"word ".repeat(60)).len() <= MAX_PHRASE_SPANS + MAX_INTERIOR_SPANS
+        );
+    }
+
+    #[test]
+    fn three_word_input_without_a_stripped_stop_does_not_enter_phrase_tier() {
+        assert!(
+            build_phrase_spans("ordinary sermon language").is_empty(),
+            "three-word phrases are too collision-prone unless derived by stripping a leading stop word"
+        );
+    }
+
+    #[test]
+    fn phrase_spans_reach_verse_length_on_long_windows() {
+        let spans = build_phrase_spans(
+            "unless we are in our secret closet at home praying you will not stand the wiles of the devil",
+        );
+        assert!(
+            spans.iter().any(|s| s == "\"wiles of the devil\""),
+            "long window must still try a verse-sized span, got {spans:?}"
+        );
+    }
+
+    #[test]
+    fn phrase_spans_stay_bounded_and_ordered_longest_first() {
+        let (spans, end_n) = build_phrase_spans_with_end_count(&"word ".repeat(60));
+        assert!(
+            spans.len() <= MAX_PHRASE_SPANS + MAX_INTERIOR_SPANS,
+            "got {} spans",
+            spans.len()
+        );
+        let lengths: Vec<usize> = spans
+            .iter()
+            .take(end_n)
+            .map(|s| s.split_whitespace().count())
+            .filter(|n| *n >= MIN_PHRASE_SPAN_TERMS)
+            .collect();
+        assert!(
+            lengths.windows(2).all(|w| w[0] > w[1]),
+            "primary end-anchored spans must be strictly longest-first, got {lengths:?}"
+        );
+        assert_eq!(*lengths.last().unwrap(), MIN_PHRASE_SPAN_TERMS);
+    }
+
+    #[test]
+    fn phrase_spans_include_interior_windows() {
+        let spans =
+            build_phrase_spans("the three angels messages it is the everlasting gospel to preach");
+        assert!(
+            spans
+                .iter()
+                .any(|s| s == "\"the everlasting gospel to preach\""
+                    || s == "\"everlasting gospel to preach\""
+                    || s == "\"the everlasting gospel\""),
+            "an interior or stripped quoted phrase must be reachable, got {spans:?}"
+        );
+    }
+
+    #[test]
+    fn phrase_spans_reach_stripped_three_word_tail() {
+        let spans = build_phrase_spans(
+            "And so we have the final messages the three angels messages going out to the whole world. It is the everlasting gospel.",
+        );
+        assert!(
+            spans.iter().any(|s| s == "\"the everlasting gospel\""),
+            "stop-stripped three-word quote must be tried, got {spans:?}"
+        );
     }
 
     #[test]

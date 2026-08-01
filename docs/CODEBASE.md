@@ -91,7 +91,8 @@ Core modules:
 | STT session lifetime guard    | src-tauri/src/commands/stt/session.rs:8                                                                                                                                | Claims a monotonic audio-capture generation before provider setup, retires stale fanout threads, and makes reconnect waits cancellable                                                                                  | STT start/stop lifecycle                                              |
 | Live Bible-mode policy        | src-tauri/src/commands/stt/live_session.rs:243, src-tauri/src/commands/detection.rs:241                                                                               | Separately gates live Bible direct/semantic/reading-mode output while preserving transcription, operator commands, queued scripture, and EGW detection                                                                | Detection settings sync and live STT workers                          |
 | Direct scripture scope        | src-tauri/crates/detection/src/direct/context.rs:3, src-tauri/crates/detection/src/direct/detector.rs:674                                                             | Keeps the active book/chapter until another resolved citation replaces it and promotes explicit in-scope verse phrases as direct citations                                                                            | Live STT scripture detection                                          |
-| Verse ranking and calibration | src-tauri/crates/detection/src/semantic/detector.rs:128, src-tauri/crates/detection/src/pipeline.rs:173, src-tauri/crates/detection/src/bin/detection_accuracy.rs:607, src-tauri/crates/bible/src/search.rs, src-tauri/crates/bible/tests/retrieval_recall.rs | Keeps rank evidence separate from match strength; FTS phrase tier uses end-anchored spans; optional spoken-book BM25 scope; broad OR hits keep honest rank confidence (no 0.70 floor); DeepSeek ranker gets confidence + longer summaries (max 8×240). Plan: docs/superpowers/plans/2026-07-31-retrieval-recall.md | Live STT detection, frontend detection workflow, desktop CI           |
+| Verse ranking and calibration | src-tauri/crates/detection/src/semantic/detector.rs:128, src-tauri/crates/detection/src/pipeline.rs:173, src-tauri/crates/detection/src/bin/detection_accuracy.rs:607, src-tauri/crates/bible/src/search.rs, src-tauri/crates/bible/tests/retrieval_recall.rs | Keeps retrieval rank separate from quote confidence; FTS phrase retrieval uses bounded end and interior spans, while auto-live quote strength requires verified overlap or a sufficiently complete contiguous quote; optional spoken-book BM25 scope; broad OR hits keep honest rank confidence. Plan: docs/superpowers/plans/2026-07-31-retrieval-recall.md | Live STT detection, frontend detection workflow, desktop CI           |
+| EGW quote evidence            | src-tauri/crates/detection/src/egw_quote.rs:79, src-tauri/src/commands/detection/egw.rs:324, src-tauri/crates/detection/src/bin/egw_accuracy.rs:1                                                | Owns reusable negation-aware consecutive-content matching and confidence policy; the Tauri adapter handles session cues/queueing, and the standalone labeled harness verifies misses and false fires.                                                                                | Live EGW detection and deterministic calibration                      |
 | Command-classifier experiment | src-tauri/crates/detection/src/command_eval.rs:1, src-tauri/crates/detection/src/bin/command_benchmark.rs:1                                                           | Compares deterministic rules with a trained MiniLM linear head against isolated quality/safety partitions without executing commands                                                                                  | Developer benchmark and shadow replay only                            |
 | Theme catalog page            | src/components/broadcast/KineticThemesPage.tsx:132                                                                                                                    | User-facing Themes workspace with static and kinetic columns                                                                                                                                                          | Workspace nav                                                         |
 | Quick search helper           | src/lib/quick-search.ts:167                                                                                                                                           | Prefix-safe ghost suggestion suffix                                                                                                                                                                                   | Preview and Search quick inputs                                       |
@@ -268,12 +269,17 @@ Each transcription session owns one cue timestamp shared by its partial and fina
 The latest-wins workers carry that session state into semantic detection
   -> src-tauri/src/commands/stt/tasks.rs:42
 Author or multiword-book cues activate a bounded attribution window; BM25 nominates
-paragraphs and a negation-aware consecutive-content run verifies quotation evidence
-  -> src-tauri/src/commands/detection/egw.rs:358
-  -> src-tauri/src/commands/detection/egw.rs:437
+paragraphs and the reusable negation-aware consecutive-content matcher verifies and
+scores quotation evidence
+  -> src-tauri/src/commands/detection/egw.rs:327
+  -> src-tauri/crates/detection/src/egw_quote.rs:79
+  -> src-tauri/crates/detection/src/egw_quote.rs:108
+  -> src-tauri/crates/detection/src/egw_quote.rs:204
 Low-confidence STT dampening and the configured Manual/Auto threshold are applied
 before EGW results join the normal detection event
   -> src-tauri/src/commands/stt/live_session.rs:367
+The standalone labeled harness fails on either required misses or false fires
+  -> src-tauri/crates/detection/src/bin/egw_accuracy.rs:49
 ```
 
 ### Flow: collected detections
@@ -685,6 +691,15 @@ cargo test --workspace
 cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 # Result after int8 embedding implementation: passed.
 # Result after command-classifier experiment: passed.
+# Current changed-tree CI form (`--all-targets`, without all features): passed.
+
+cargo run --manifest-path src-tauri/Cargo.toml -p rhema-detection --features precompute-bin --release --bin detection_accuracy -- --threshold 0.90 --embeddings embeddings/public-minilm-l6-v2-q8.bin --ids embeddings/public-minilm-l6-v2-q8-ids.bin --min-precision 0.988 --min-recall 0.80
+# Current result: passed 250 cases with 158 true positives, 0 false positives,
+# 4 false negatives, 100.0% precision, and 97.5% recall.
+
+cargo deny check
+# Current result: advisories, bans, licenses, and sources passed; only allowed
+# duplicate-version warnings for der and pem-rfc7468 were reported.
 
 npm.cmd run benchmark:commands
 # Result with the generated transcript training sample: deterministic 16.7%
@@ -861,3 +876,4 @@ Top risks (ranked): 1. STT provider removal can leave stale docs or tests if his
 | 2026-07-31 | Hardened optional AI ranking with recent-direct and decisive-retrieval gates, a 400 ms stability debounce, canonical shortlist caching, newest-batch handoff, candidate-id request logging, spoken-book boosting before the live cap, and modern-to-KJV FTS name expansion. | 5-7, 10-12, 15 |
 | 2026-07-31 | Added generation-scoped STT fanout retirement before provider setup, resend-aware final command routing, explicit queue-item live identity for safe retries, and privacy-safe routing/queue outcome traces. | 4-7, 10-12, 15 |
 | 2026-07-31 | Required a two-point semantic winner margin before repeated evidence can auto-live, keeping ambiguous paraphrases visible for review while preserving direct-reference behavior. | 5-7, 10-11, 15 |
+| 2026-08-01 | Added bounded interior Bible phrase recall and reusable EGW quote scoring/calibration, separated BM25 relevance from quote certainty, required short exact spans to cover most of their spoken fragment, restored the Rust 1.77 synchronization primitive, and made both accuracy harnesses fail on misses. | 5, 6, 10, 11, 15 |

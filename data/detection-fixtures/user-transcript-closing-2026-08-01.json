@@ -1,0 +1,93 @@
+[
+  {
+    "language": "en",
+    "category": "t-direct",
+    "mode": "fire",
+    "timestamp": "01:25:33",
+    "text": "What is the definition of sin? 1 John 3:4 says, Sin is the transgression of the law.",
+    "expected": "1 John 3:4"
+  },
+  {
+    "language": "en",
+    "category": "t-quote",
+    "mode": "fire",
+    "timestamp": "01:25:33",
+    "text": "There will be a people who are keeping God's commandments. They are keeping all 10 of them. They will go through because their faith is in Jesus and they have the faith of Jesus.",
+    "expectedAny": ["Revelation 14:12"]
+  },
+  {
+    "language": "en",
+    "category": "t-noise",
+    "mode": "silent",
+    "timestamp": "01:26:06",
+    "text": "You know, the song writer says, Nothing between me and my savior."
+  },
+  {
+    "language": "en",
+    "category": "t-noise",
+    "mode": "silent",
+    "timestamp": "01:26:06",
+    "text": "If it's your phone, I can tell you this, you can pick up my phone. I'm not ashamed to give it to you. You will see where I spend most of my time."
+  },
+  {
+    "language": "en",
+    "category": "t-noise",
+    "mode": "silent",
+    "timestamp": "01:26:41",
+    "text": "There's no sites that I've visited there that I shouldn't be visiting. If it's a vice, get rid of it."
+  },
+  {
+    "language": "en",
+    "category": "t-fragment",
+    "mode": "fire",
+    "timestamp": "01:26:41",
+    "text": "How can we do so? It says they overcame him by the blood of the lamb and by the word of their testimony.",
+    "expected": "Revelation 12:11"
+  },
+  {
+    "language": "en",
+    "category": "t-fragment",
+    "mode": "fire",
+    "timestamp": "01:26:41",
+    "text": "I want that blood. The lamb slain from the foundation of the world.",
+    "expected": "Revelation 13:8",
+    "forbidden": ["Luke 11:50"]
+  },
+  {
+    "language": "en",
+    "category": "t-hint",
+    "mode": "hint",
+    "timestamp": "01:27:13",
+    "text": "Spiritualism in all forms is prevalent in our society today and people don't know that the dead know nothing.",
+    "expectedAny": ["Ecclesiastes 9:5"]
+  },
+  {
+    "language": "en",
+    "category": "t-noise",
+    "mode": "silent",
+    "timestamp": "01:27:49",
+    "text": "But I pray this morning, Father, take the world, but give us Jesus."
+  },
+  {
+    "language": "en",
+    "category": "t-fragment",
+    "mode": "fire",
+    "timestamp": "01:27:49",
+    "text": "And we need to be separate from among them and touch not the unclean thing.",
+    "expected": "2 Corinthians 6:17"
+  },
+  {
+    "language": "en",
+    "category": "t-noise",
+    "mode": "silent",
+    "timestamp": "01:28:25",
+    "text": "I pray that you will send revival into our hearts. That you will remove those things that are the besetting sins that easily trip us."
+  },
+  {
+    "language": "en",
+    "category": "t-noise",
+    "mode": "silent",
+    "timestamp": "01:29:04",
+    "text": "Can we please stand as we sing our closing hymn?"
+  }
+]

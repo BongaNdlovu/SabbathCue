@@ -1,0 +1,64 @@
+[
+  {
+    "language": "en",
+    "category": "seg-ps119",
+    "mode": "fire",
+    "timestamp": "01:23:29",
+    "text": "He says, Hide my word against me. Hide thy word in me so that I may not sin against thee.",
+    "expected": "Psalms 119:11"
+  },
+  {
+    "language": "en",
+    "category": "seg-ps119",
+    "mode": "fire",
+    "timestamp": "01:23:29",
+    "text": "Wherewith shall a young man cleanse his ways by taking heed there according to thy word.",
+    "expected": "Psalms 119:9"
+  },
+  {
+    "language": "en",
+    "category": "seg-rev146",
+    "mode": "fire",
+    "timestamp": "01:23:29",
+    "text": "And so, we have the final messages, the three angels' messages going out to the whole world. It is the everlasting gospel.",
+    "expected": "Revelation 14:6"
+  },
+  {
+    "language": "en",
+    "category": "seg-eph611",
+    "mode": "fire",
+    "timestamp": "01:23:57",
+    "text": "unless we are in our secret closet at home praying, you will not stand the wiles of the devil",
+    "expected": "Ephesians 6:11"
+  },
+  {
+    "language": "en",
+    "category": "seg-egw-bible",
+    "mode": "silent",
+    "timestamp": "01:23:57",
+    "text": "Only those whose minds are fortified with the word of God will be able to stand in these last days and go through to the heavenly Canaan."
+  },
+  {
+    "language": "en",
+    "category": "seg-col127",
+    "mode": "fire",
+    "timestamp": "01:24:31",
+    "text": "We need to spend time pointing men and women to Jesus Christ, the hope of glory.",
+    "expected": "Colossians 1:27"
+  },
+  {
+    "language": "en",
+    "category": "seg-rev1412",
+    "mode": "fire",
+    "timestamp": "01:24:31",
+    "text": "It says, Here are those who keep the commandments of God and the faith of Jesus.",
+    "expected": "Revelation 14:12"
+  },
+  {
+    "language": "en",
+    "category": "seg-noise",
+    "mode": "silent",
+    "timestamp": "01:24:31",
+    "text": "So, we got to take time, friends, in God's word. We've got to take time to pray. And we've got to take time to be holy."
+  }
+]
