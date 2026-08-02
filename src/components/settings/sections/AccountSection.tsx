@@ -51,8 +51,8 @@ import {
 } from "@/lib/supabase/devices"
 
 const ACCESS_EXTENSION_OPTIONS = [
-  { days: 30, label: "Extend 30 days", toastLabel: "30 days" },
-  { days: 365, label: "Extend 1 year", toastLabel: "1 year" },
+  { days: 30, label: "Add 30 days", toastLabel: "30 days" },
+  { days: 365, label: "Add 1 year", toastLabel: "1 year" },
 ] as const
 
 const OFFLINE_LEASE_OPTIONS = [
@@ -394,16 +394,41 @@ function AdminAccountsPanel() {
     account: AdminAccountRow,
     option: (typeof ACCESS_EXTENSION_OPTIONS)[number]
   ) {
+    const label = account.email ?? account.user_id
+    // Held until the follow-up lookup and the list refresh are done too, so a
+    // second click cannot buy another period while this one is in flight.
     setBusyUserId(account.user_id)
-    const result = await adminSetAccess(account.user_id, option.days)
-    setBusyUserId(null)
-    if (result.ok) {
-      toast.success(
-        `Extended ${account.email ?? account.user_id} for ${option.toastLabel}`
-      )
+    try {
+      const result = await adminSetAccess(account.user_id, option.days)
+      if (!result.ok) {
+        toast.error(result.message)
+        return
+      }
+
+      // The grant has already happened. This lookup is read-only follow-up
+      // guidance, so if it fails the renewal is still reported as the success
+      // it was - re-running the mutation to recover a failed read would add a
+      // second period.
+      const devices = await adminListDevices(account.user_id)
+      const pendingCount = devices.ok
+        ? devices.devices.filter((device) => device.status === "pending").length
+        : 0
+
+      if (pendingCount > 0) {
+        toast.warning(
+          `Added ${option.toastLabel} to ${label}. ${pendingCount} computer${
+            pendingCount === 1 ? " is" : "s are"
+          } still waiting for approval. Open Manage computers below to approve ${
+            pendingCount === 1 ? "it" : "them"
+          }.`
+        )
+      } else {
+        toast.success(`Added ${option.toastLabel} to ${label}`)
+      }
+
       await refresh()
-    } else {
-      toast.error(result.message)
+    } finally {
+      setBusyUserId(null)
     }
   }
 
@@ -452,6 +477,12 @@ function AdminAccountsPanel() {
           Refresh
         </Button>
       </div>
+
+      <p className="text-xs text-muted-foreground">
+        Adding access time renews the account only. It does not approve a
+        computer that is waiting for activation - use Manage computers to
+        approve that named device.
+      </p>
 
       {loading ? (
         <p className="text-xs text-muted-foreground">Loading accounts...</p>

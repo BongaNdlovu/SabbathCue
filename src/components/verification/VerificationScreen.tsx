@@ -293,8 +293,16 @@ function authFeedback({
   const storeError =
     status === "error" ? formatErrorMessage(errorCode, error) : null
 
+  // device_pending is retryable because the saved session is still valid: once
+  // an administrator approves this named computer, the same signed
+  // registration call succeeds. Every other device/account block needs an
+  // explicit administrative decision first, so it gets no Retry.
+  const retryableError =
+    status === "error" &&
+    (errorCode === "network" || errorCode === "device_pending")
+
   return {
-    canRetry: (status === "error" && errorCode === "network") || staleSession,
+    canRetry: retryableError || staleSession,
     message: localMessage ?? storeError ?? storeNotice,
     staleSession,
     tone:
