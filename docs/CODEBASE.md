@@ -192,6 +192,38 @@ mint portal session with PADDLE_API_KEY (never trust a client-supplied customer 
   -> src/components/billing/ManageSubscriptionButton.tsx
 ```
 
+### Flow: admin access extension and pending-device recovery
+
+```text
+Admin renewal offers only 30 and 365 days and labels them as additions, not resets
+  -> src/components/settings/sections/AccountSection.tsx:53
+admin_set_access adds the granted days to GREATEST(current expiry, now()) in one
+atomic upsert, so an expired account starts from now() and an active account keeps
+the time it has left
+  -> supabase/migrations/013_additive_admin_access.sql:13
+  -> supabase/migrations/013_additive_admin_access.sql:39
+The grant writes account_flags.access_expires_at only: suspension, Paddle-owned
+paddle_access_expires_at, and every devices row are left untouched, so renewing
+neither reinstates a suspended account nor approves a waiting computer
+  -> supabase/migrations/013_additive_admin_access.sql:35
+  -> supabase/tests/admin_access_workflows.test.sql:1
+After a successful grant the admin UI runs one read-only device lookup for that
+account and warns when computers are still pending; a failed lookup still reports
+the renewal as successful and never replays the mutation
+  -> src/components/settings/sections/AccountSection.tsx:393
+  -> src/components/settings/sections/AccountSection.tsx:412
+  -> src/components/settings/sections/AccountSection.tsx:482
+register_device_verified reports expiry before device status, so renewal clears the
+trial_expired gate and the next answer is the independent device_pending gate
+  -> supabase/migrations/009_device_activation_management.sql:79
+  -> supabase/migrations/009_device_activation_management.sql:106
+device_pending is the only device state offered Retry; it reuses the saved refresh
+token through the existing refresh path instead of collecting the password again
+  -> src/components/verification/VerificationScreen.tsx:300
+  -> src/components/verification/VerificationScreen.tsx:981
+  -> src/lib/verification/verification-provider.ts:327
+```
+
 ### Flow: STT provider selection
 
 ```text
@@ -608,6 +640,8 @@ src/components/settings/sections/AiRankingSection.tsx:186.
 
 Account/access schema changes are versioned in `/supabase/migrations`; migration 008 extends the existing trial/device/admin RPC contract with the optional church organization profile. Receipt: supabase/migrations/008_church_organization_profiles.sql:1.
 
+Migration 013 redefines `admin_set_access` so a manual grant adds to `GREATEST(account_flags.access_expires_at, now())` instead of resetting the expiry, and writes that one column only - `paddle_access_expires_at`, `suspended`, and the `devices` rows keep their own owners. Receipts: supabase/migrations/013_additive_admin_access.sql:13, supabase/migrations/013_additive_admin_access.sql:39, supabase/tests/admin_access_workflows.test.sql:1.
+
 ## 8 - Interfaces & integrations
 
 Public interfaces:
@@ -878,3 +912,4 @@ Top risks (ranked): 1. STT provider removal can leave stale docs or tests if his
 | 2026-07-31 | Required a two-point semantic winner margin before repeated evidence can auto-live, keeping ambiguous paraphrases visible for review while preserving direct-reference behavior. | 5-7, 10-11, 15 |
 | 2026-08-01 | Added bounded interior Bible phrase recall and reusable EGW quote scoring/calibration, separated BM25 relevance from quote certainty, required short exact spans to cover most of their spoken fragment, restored the Rust 1.77 synchronization primitive, and made both accuracy harnesses fail on misses. | 5, 6, 10, 11, 15 |
 | 2026-08-01 | Raised interior Bible phrase evidence to six-word spans after four-word collisions regressed noise and paraphrase categories, required an adjacent word pair before bag-of-words overlap can claim quote confidence, and retained visible below-threshold runners for auto-live ambiguity checks. | 5, 6, 10, 11, 15 |
+| 2026-08-02 | Made admin access renewal additive from GREATEST(current expiry, now()) in migration 013 without touching suspension, Paddle-owned expiry, or any device row, added a post-grant pending-computer warning that survives a failed device lookup, and offered Retry to a pending computer through the existing saved-session refresh. | 6, 7, 10, 15 |
