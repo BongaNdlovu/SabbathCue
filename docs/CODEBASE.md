@@ -392,6 +392,11 @@ An explicit later "verse N" or "chapter N verse M" fills missing fields from tha
 A different explicitly named book anywhere in the fragment preempts stale pending
 continuation context before its chapter/verse is parsed
   -> src-tauri/crates/detection/src/direct/detector.rs:971
+Each book mention parses only until the next book mention, preventing an earlier
+book from consuming a later citation's chapter/verse; a full same-fragment citation
+also replaces its temporary same-book/chapter verse-1 placeholder
+  -> src-tauri/crates/detection/src/direct/detector.rs:1117
+  -> src-tauri/crates/detection/src/direct/detector.rs:1271
 The resolved phrase remains a DirectReference and clears the 90% Live threshold
   -> src-tauri/crates/detection/src/direct/detector.rs:1436
 Common prose words that collide with fuzzy book names are rejected before parsing
@@ -913,3 +918,4 @@ Top risks (ranked): 1. STT provider removal can leave stale docs or tests if his
 | 2026-08-01 | Added bounded interior Bible phrase recall and reusable EGW quote scoring/calibration, separated BM25 relevance from quote certainty, required short exact spans to cover most of their spoken fragment, restored the Rust 1.77 synchronization primitive, and made both accuracy harnesses fail on misses. | 5, 6, 10, 11, 15 |
 | 2026-08-01 | Raised interior Bible phrase evidence to six-word spans after four-word collisions regressed noise and paraphrase categories, required an adjacent word pair before bag-of-words overlap can claim quote confidence, and retained visible below-threshold runners for auto-live ambiguity checks. | 5, 6, 10, 11, 15 |
 | 2026-08-02 | Made admin access renewal additive from GREATEST(current expiry, now()) in migration 013 without touching suspension, Paddle-owned expiry, or any device row, added a post-grant pending-computer warning that survives a failed device lookup, and offered Retry to a pending computer through the existing saved-session refresh. | 6, 7, 10, 15 |
+| 2026-08-02 | Bounded each direct-reference parse at the next spoken book and removed same-chapter placeholders after an in-fragment full citation, preventing earlier books and temporary verse-1 results from shadowing the intended reference. | 6, 10, 11, 15 |
