@@ -205,30 +205,39 @@ pub(crate) fn build_and_query(input: &str) -> String {
 /// to prevent expensive queries while leaving room for a few expansions.
 pub(crate) fn build_or_query(input: &str) -> String {
     let mut seen: HashSet<String> = HashSet::new();
-    let mut tokens = Vec::new();
-    for word in query_terms(input) {
+    let mut candidates = Vec::new();
+    for (position, word) in query_terms(input).enumerate() {
         if word.len() < 3 || is_stop_word(word) || is_reference_noise_token(word) {
             continue;
         }
         if seen.insert(word.to_ascii_lowercase()) {
-            tokens.push(format!("\"{word}\""));
+            candidates.push((position, word.to_string()));
         }
         for variant in crate::kjv_names::kjv_variants(word) {
             if seen.insert((*variant).to_string()) {
-                tokens.push(format!("\"{variant}\""));
+                candidates.push((position, (*variant).to_string()));
             }
-            if tokens.len() >= 12 {
-                break;
-            }
-        }
-        if tokens.len() >= 12 {
-            break;
         }
     }
-    if tokens.is_empty() {
+    // Longer words carry more retrieval information in fallback OR searches.
+    // Select them before applying the fixed query budget, then restore speech
+    // order to keep generated queries deterministic and readable.
+    candidates.sort_by(|(left_position, left), (right_position, right)| {
+        right
+            .len()
+            .cmp(&left.len())
+            .then_with(|| left_position.cmp(right_position))
+    });
+    candidates.truncate(12);
+    candidates.sort_by_key(|(position, _)| *position);
+    if candidates.is_empty() {
         return String::new();
     }
-    tokens.join(" OR ")
+    candidates
+        .into_iter()
+        .map(|(_, token)| format!("\"{token}\""))
+        .collect::<Vec<_>>()
+        .join(" OR ")
 }
 
 // ── SQL runner ──────────────────────────────────────────────────────
@@ -324,6 +333,20 @@ fn dedup_count(results: &[Bm25Result]) -> usize {
         .iter()
         .filter(|r| seen.insert((r.book_number, r.chapter, r.verse)))
         .count()
+}
+
+fn build_short_clause_and_queries(input: &str) -> Vec<String> {
+    let mut clauses: Vec<(usize, String)> = input
+        .split(['.', '!', '?'])
+        .filter_map(|clause| {
+            let query = build_and_query(clause);
+            let terms = query.split_whitespace().count();
+            (3..=6).contains(&terms).then_some((terms, query))
+        })
+        .collect();
+    clauses.sort_by_key(|(terms, _)| *terms);
+    clauses.truncate(4);
+    clauses.into_iter().map(|(_, query)| query).collect()
 }
 
 // ── BibleDb methods ─────────────────────────────────────────────────
@@ -440,6 +463,16 @@ impl BibleDb {
 
         // Tier 2: AND with stop words filtered (~5-20ms)
         if dedup_count(&all_results) < limit {
+            for clause_query in build_short_clause_and_queries(query) {
+                all_results.extend(run_fts_query(
+                    &conn,
+                    &clause_query,
+                    fetch_limit,
+                    false,
+                    false,
+                    book_hint,
+                )?);
+            }
             let and_q = build_and_query(query);
             if !and_q.is_empty() {
                 log::debug!(
@@ -554,6 +587,30 @@ mod tests {
 
     fn bm25(rank: f64, book_number: i32, chapter: i32, verse: i32) -> Bm25Result {
         bm25_with_broad_match(rank, book_number, chapter, verse, false)
+    }
+
+    #[test]
+    fn broad_query_keeps_distinctive_late_quote_terms() {
+        let query = build_or_query(
+            "Many will not be lost because of great and terrible sins but because of small +             compromises and indecision. We hear the story of Belshazzar and Nebuchadnezzar +             and lift our eyes to heaven and say Lord help me. I believe but help my unbelief. +             Deliver me from myself and from the power of the enemy.",
+        );
+
+        assert!(
+            query.contains("\"unbelief\""),
+            "the bounded fallback query must retain distinctive late quote terms: {query}"
+        );
+    }
+
+    #[test]
+    fn short_clause_queries_isolate_an_embedded_modern_quote() {
+        let queries = build_short_clause_and_queries(
+            "We lift our eyes to heaven and say Lord help me. I believe but help my unbelief. Deliver me from the enemy.",
+        );
+
+        assert!(
+            queries.iter().any(|query| query == "believe help unbelief"),
+            "short embedded quotation must receive its own strict query: {queries:?}"
+        );
     }
 
     #[test]

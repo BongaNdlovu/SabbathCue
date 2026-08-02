@@ -1271,19 +1271,12 @@ impl DirectDetector {
         let refined_chapters = detections
             .iter()
             .filter(|detection| !detection.is_chapter_only)
-            .map(|detection| {
-                (
-                    detection.verse_ref.book_number,
-                    detection.verse_ref.chapter,
-                )
-            })
+            .map(|detection| (detection.verse_ref.book_number, detection.verse_ref.chapter))
             .collect::<HashSet<_>>();
         detections.retain(|detection| {
             !detection.is_chapter_only
-                || !refined_chapters.contains(&(
-                    detection.verse_ref.book_number,
-                    detection.verse_ref.chapter,
-                ))
+                || !refined_chapters
+                    .contains(&(detection.verse_ref.book_number, detection.verse_ref.chapter))
         });
 
         // Fallback: an explicit "verse N" / "chapter N verse M" citation with
