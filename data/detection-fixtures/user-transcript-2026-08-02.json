@@ -1,0 +1,98 @@
+[
+  {
+    "language": "en",
+    "category": "user-transcript-quote",
+    "mode": "hint",
+    "timestamp": "53:08",
+    "text": "were open and everyone's chains were loosened. Oh, church. Paul and Silas were in prison. They were locked behind a jail cell. Their feets were in stalks. Everyone else were also in chains. But when they start singing at midnight, an earthquake happens and everyone else is blessed based on Paul and Silas.",
+    "expectedAny": ["Acts 16:25", "Acts 16:26"]
+  },
+  {
+    "language": "en",
+    "category": "user-transcript-noise",
+    "mode": "silent",
+    "timestamp": "53:28",
+    "text": "Let me tell you a story. This is what I love about this story. I was arrested a few times, but let me tell you the one time because it applies to the story. The cops pick me up and they put me in between them in the front of the van. It was late at night, very cold.",
+    "forbidden": ["Acts 16:26"]
+  },
+  {
+    "language": "en",
+    "category": "user-transcript-noise",
+    "mode": "silent",
+    "timestamp": "54:14",
+    "text": "They drove me to a police station near the harbor. Along the way they were telling me I was in trouble, what happens to people who go into jail, that they would keep me overnight and needed my parents' details.",
+    "forbidden": ["Acts 16:26"]
+  },
+  {
+    "language": "en",
+    "category": "user-transcript-noise",
+    "mode": "silent",
+    "timestamp": "54:50",
+    "text": "They took me to the police station. I was in the wrong and by right they should have detained me. They took me to the cell and said here's your room for the night, showed me how it looks, and started to take my details.",
+    "forbidden": ["Acts 16:26"]
+  },
+  {
+    "language": "en",
+    "category": "user-transcript-noise",
+    "mode": "silent",
+    "timestamp": "55:24",
+    "text": "They said they were going to let me go and give me a fine. I was overjoyed. The next step was to get out because when you are on the wrong side of the law, the police are not your friends. When they said I was free to go I did not ask to stay for coffee.",
+    "forbidden": ["Acts 16:26"]
+  },
+  {
+    "language": "en",
+    "category": "user-transcript-quote",
+    "mode": "hint",
+    "timestamp": "56:06",
+    "text": "When those prison doors were opened and the jailer wakes up and sees it is pitch black, he thinks all the prisoners have escaped. He decides his life is going to be taken and tries to kill himself. Paul shouts out, Do not harm yourself, for we are all here.",
+    "expectedAny": ["Acts 16:27", "Acts 16:28"]
+  },
+  {
+    "language": "en",
+    "category": "user-transcript-context",
+    "mode": "fire",
+    "timestamp": "56:55",
+    "text": "Those prisoners who were there because they were guilty were converted by the experience of Paul and Silas. Just by your praying and singing hymns to God, someone else's life can be changed. For we are all here. Don't harm yourself. They called for lights and he fell down before Paul and Silas.",
+    "expectedAny": ["Acts 16:28", "Acts 16:29"]
+  },
+  {
+    "language": "en",
+    "category": "user-transcript-quote",
+    "mode": "fire",
+    "timestamp": "57:45",
+    "text": "He asked one of the most famous questions in the Bible. Sirs, what must I do to be saved? Believe on the Lord Jesus Christ and you will be saved, you and your household. The Bible says he and his family were baptized in the name of Jesus.",
+    "expectedAny": ["Acts 16:30", "Acts 16:31", "Acts 16:33"]
+  },
+  {
+    "language": "en",
+    "category": "user-transcript-context",
+    "mode": "abstain",
+    "timestamp": "58:35",
+    "text": "If he was not thrown into jail, he would not have met that jailer. If he was not released from prison in a miraculous way, the jailer would not have tried to take his own life. If the jailer did not try to take his own life, Paul would not have shouted out, Do not harm yourself. We are still here.",
+    "expected": "Acts 16:28"
+  },
+  {
+    "language": "en",
+    "category": "user-transcript-context",
+    "mode": "fire",
+    "timestamp": "59:09",
+    "text": "If Paul did not shout do not harm yourself, then the jailer would not have asked, Sirs, what must I do to be saved? Bad things happen to good people so that good things can happen to someone bad and someone can earn salvation in Jesus Christ.",
+    "expectedAny": ["Acts 16:28", "Acts 16:30"]
+  },
+  {
+    "language": "en",
+    "category": "user-transcript-noise",
+    "mode": "silent",
+    "timestamp": "59:47",
+    "text": "Why is this happening to me? He went with it because he knew that bad things happen to him so someone else can be saved. Let's talk about Jesus. If there is anyone who was good, who is the definition of good, it is Jesus Christ. Something terrible happened to him, but if that did not happen to him, we would not have been saved. The next time you go through a tough situation, maybe the Lord is allowing it so someone else can gain experience or salvation in Jesus Christ.",
+    "forbidden": ["Acts 16:26", "Acts 16:28", "Acts 16:30", "Acts 16:31"]
+  },
+  {
+    "language": "en",
+    "category": "user-transcript-noise",
+    "mode": "silent",
+    "timestamp": "01:00:38",
+    "text": "Why do bad things happen to good people? The Lord knows why. May the Lord bless you. Amen. Amen.",
+    "forbidden": ["Acts 16:26", "Acts 16:28", "Acts 16:30", "Acts 16:31"]
+  }
+]

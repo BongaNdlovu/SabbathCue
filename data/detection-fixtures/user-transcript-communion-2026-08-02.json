@@ -1,0 +1,99 @@
+[
+  {
+    "language": "en",
+    "category": "communion-noise",
+    "mode": "silent",
+    "timestamp": "47:49",
+    "text": "It came at a cost, the cost of the dear Son of God. May the Lord bless us. Let us bow our heads as we pray. Loving Father, thank you for your costly grace that cost your life and precious blood. As we go into the foot washing, may we reflect upon your amazing grace. Bless each one as they participate and lead and guide us always. In Jesus name, amen."
+  },
+  {
+    "language": "en",
+    "category": "communion-noise",
+    "mode": "silent",
+    "timestamp": "48:38",
+    "text": "We practice an open invitation to everyone. As part of the foot washing, all are freely welcome in the hall. We will have ladies and men separately, and couples in the classrooms. We will now break for foot washing. Almighty and loving Father, lead us in this solemn yet beautiful service. I pray for your Spirit to guide us."
+  },
+  {
+    "language": "en",
+    "category": "communion-direct",
+    "mode": "fire",
+    "timestamp": "01:15:06",
+    "text": "I am going to read from 1 Corinthians chapter 11 as we prepare for the emblems. The last time I shared from Matthew 26, but we will read from 1 Corinthians chapter 11 and I will start reading from verse 23. Paul says, For I received from the Lord that which I also delivered to you, that",
+    "expected": "1 Corinthians 11:23",
+    "forbidden": ["Matthew 11:23", "1 Corinthians 11:1"]
+  },
+  {
+    "language": "en",
+    "category": "communion-quote",
+    "mode": "fire",
+    "timestamp": "01:16:33",
+    "text": "the Lord Jesus on the night in which he was betrayed took bread, and when he had given thanks he broke it and said, Take, eat. This is my body which is broken for you. Do this in remembrance of me. At this time we will kneel as prayer is offered for the bread.",
+    "expectedAny": ["1 Corinthians 11:23", "1 Corinthians 11:24"]
+  },
+  {
+    "language": "en",
+    "category": "communion-noise",
+    "mode": "silent",
+    "timestamp": "01:17:25",
+    "text": "Our Father in heaven, we humbly come before you and thank you for what you did for us. We thank you for dying for us. As we partake of this bread, a symbol of your body, help us remember that this was not free, but that you paid the ultimate price for all our sins. You died for all who are on this earth."
+  },
+  {
+    "language": "en",
+    "category": "communion-quote",
+    "mode": "fire",
+    "timestamp": "01:22:27",
+    "text": "We thank the Lord that his grace is sufficient for us. Let me repeat what Jesus said on the night in which he was betrayed. He said to his disciples, Take, eat. This is my body which is broken for you. Do this in remembrance of me.",
+    "expected": "1 Corinthians 11:24"
+  },
+  {
+    "language": "en",
+    "category": "communion-direct",
+    "mode": "fire",
+    "timestamp": "01:23:17",
+    "text": "I am going to continue reading in 1 Corinthians chapter 11 verse 25. It says, In the same manner, he also took the cup after supper, saying, This cup is the new covenant in my blood. Do this as often as you drink it in remembrance of me.",
+    "expected": "1 Corinthians 11:25"
+  },
+  {
+    "language": "en",
+    "category": "communion-noise",
+    "mode": "silent",
+    "timestamp": "01:24:30",
+    "text": "Heavenly Father, we look at this emblem of the blood, the grape juice that symbolizes the blood shed upon the cross. It was done for each one of us. As we reflect on the suffering and agony you bore, may we be renewed in mindset and strength, knowing that you became man and died on that cross for each one of us."
+  },
+  {
+    "language": "en",
+    "category": "communion-direct",
+    "mode": "fire",
+    "timestamp": "01:29:13",
+    "text": "Jesus said, This cup is the new covenant in my blood. Do this as often as you drink it in remembrance of me. Allow me to read a final text before we close. The Bible says 1 Corinthians 11:26, For as often as you eat this bread and drink this cup, you proclaim the Lord's death until he returns.",
+    "expected": "1 Corinthians 11:26"
+  },
+  {
+    "language": "en",
+    "category": "communion-hymn-noise",
+    "mode": "silent",
+    "timestamp": "01:32:00",
+    "text": "And can it be that I should gain an interest in the Savior's blood? Died he for me who caused his pain, for me who him to death pursued? Amazing love, how can it be that thou my God should die for me? He left his Father's throne above, so free, so infinite his grace."
+  },
+  {
+    "language": "en",
+    "category": "communion-hymn-noise",
+    "mode": "silent",
+    "timestamp": "01:33:13",
+    "text": "Emptied himself of all but love and bled for Adam's helpless race. It is mercy all, immense and free, for O my God it found out me. Amazing love, how can it be that thou my God should die for me? Long my imprisoned spirit lay, fast bound in sin and nature's night."
+  },
+  {
+    "language": "en",
+    "category": "communion-hymn-noise",
+    "mode": "silent",
+    "timestamp": "01:34:26",
+    "text": "Thine eye diffused a quickening ray. I woke, the dungeon flamed with light. My chains fell off, my heart was free. I rose, went forth, and followed thee. No condemnation now I dread. Jesus and all in him is mine. Alive in him, my living head, and clothed in righteousness divine. Bold I approach the eternal throne and claim the crown through Christ my own."
+  },
+  {
+    "language": "en",
+    "category": "communion-noise",
+    "mode": "silent",
+    "timestamp": "01:35:41",
+    "text": "Almighty loving Father, what a joy it is to celebrate Holy Communion. As we partook today, may we reflect upon your great love for us. Going forward, help us look with anticipation for your soon return. Please come soon so we can have this meal with you in the kingdom of heaven. In Jesus loving name, amen."
+  }
+]

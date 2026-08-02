@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use super::automaton::{BookMatch, BookMatcher};
@@ -1114,6 +1114,14 @@ impl DirectDetector {
 
         // Step 2 & 3: Parse references and resolve context
         for book_match in effective_matches {
+            let parse_end = effective_matches
+                .iter()
+                .filter(|candidate| candidate.start >= book_match.end)
+                .map(|candidate| candidate.start)
+                .min()
+                .unwrap_or(text.len());
+            let reference_text = &text[..parse_end];
+
             // Abbreviation/alias and fuzzy matches (e.g. "act", "mic", "pro",
             // "gal", "psalm") collide with everyday words. Honor them only when an
             // explicit chapter/verse reference immediately follows. A full
@@ -1124,7 +1132,7 @@ impl DirectDetector {
                 continue;
             }
             if let Some(candidates) =
-                parser::parse_ambiguous_three_number_reference(text, book_match)
+                parser::parse_ambiguous_three_number_reference(reference_text, book_match)
             {
                 self.incomplete = None;
                 for candidate in candidates {
@@ -1140,7 +1148,7 @@ impl DirectDetector {
                 }
                 continue;
             }
-            if let Some(verse_ref) = parser::parse_reference(text, book_match) {
+            if let Some(verse_ref) = parser::parse_reference(reference_text, book_match) {
                 // Resolve any partial references using context
                 let mut resolved = self.context.resolve(&verse_ref);
 
@@ -1259,6 +1267,24 @@ impl DirectDetector {
                 self.save_context_if_requested(&lower_text, &resolved);
             }
         }
+
+        let refined_chapters = detections
+            .iter()
+            .filter(|detection| !detection.is_chapter_only)
+            .map(|detection| {
+                (
+                    detection.verse_ref.book_number,
+                    detection.verse_ref.chapter,
+                )
+            })
+            .collect::<HashSet<_>>();
+        detections.retain(|detection| {
+            !detection.is_chapter_only
+                || !refined_chapters.contains(&(
+                    detection.verse_ref.book_number,
+                    detection.verse_ref.chapter,
+                ))
+        });
 
         // Fallback: an explicit "verse N" / "chapter N verse M" citation with
         // no (usable) book name in the fragment — resolve the book from recent
@@ -1532,6 +1558,29 @@ fn ceil_char_boundary(text: &str, mut idx: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn later_book_reference_does_not_rewrite_earlier_book_and_refines_chapter_placeholder() {
+        let mut detector = DirectDetector::new();
+        let results = detector.detect(
+            "I am going to read from 1 Corinthians chapter 11 as we prepare for the emblems. The last time I was here, I shared from Matthew 26. But we will read from 1 Corinthians chapter 11 and I will start reading from verse 23.",
+        );
+        let references = results
+            .iter()
+            .map(|result| {
+                (
+                    result.verse_ref.book_name.as_str(),
+                    result.verse_ref.chapter,
+                    result.verse_ref.verse_start,
+                )
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            references,
+            vec![("Matthew", 26, 1), ("1 Corinthians", 11, 23)]
+        );
+    }
 
     #[test]
     fn lone_book_name_without_chapter_is_not_emitted() {
