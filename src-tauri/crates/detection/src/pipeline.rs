@@ -356,6 +356,9 @@ fn live_fts_candidate_confidence(
 ) -> Option<(f64, Option<f64>)> {
     let overlap_confidence = quote_overlap_confidence(text, &fts.text);
     let exact_phrase_confidence = exact_quote_confidence(exact_phrase_keys, fts);
+    let short_quote_confidence = (exact_phrase_keys.len() <= 1)
+        .then(|| short_quote_confidence(text, &fts.text))
+        .flatten();
     let mut rank_confidence = fts_confidence(rank, fts.rank, fts.is_broad_match);
     // Contiguous phrase-tier hits (and verified exact spoken spans) get a
     // floor above typical vector-only scores. AND/OR keyword hits do not.
@@ -367,6 +370,7 @@ fn live_fts_candidate_confidence(
         overlap_confidence
             .into_iter()
             .chain(exact_phrase_confidence)
+            .chain(short_quote_confidence)
             .fold(rank_confidence, f64::max),
     );
     log::debug!(
@@ -396,6 +400,37 @@ fn live_fts_candidate_confidence(
     Some((confidence, overlap_confidence))
 }
 
+fn short_quote_confidence(fragment: &str, verse_text: &str) -> Option<f64> {
+    let verse_words: Vec<String> = content_words(verse_text).collect();
+    fragment
+        .split(['.', '!', '?'])
+        .filter_map(|clause| {
+            let clause_words: Vec<String> = content_words(clause).collect();
+            if !(3..=6).contains(&clause_words.len()) {
+                return None;
+            }
+            let shared = longest_ordered_shared_words(&clause_words, &verse_words);
+            (shared >= 3 && shared * 4 >= clause_words.len() * 3).then_some(0.92)
+        })
+        .max_by(f64::total_cmp)
+}
+
+fn longest_ordered_shared_words(left: &[String], right: &[String]) -> usize {
+    let mut previous = vec![0usize; right.len() + 1];
+    for left_word in left {
+        let mut current = vec![0usize; right.len() + 1];
+        for (index, right_word) in right.iter().enumerate() {
+            if left_word == right_word {
+                current[index + 1] = previous[index] + 1;
+            } else {
+                current[index + 1] = current[index].max(previous[index + 1]);
+            }
+        }
+        previous = current;
+    }
+    previous.last().copied().unwrap_or(0)
+}
+
 /// Confidence earned by quote overlap: the fraction of the candidate verse's
 /// content vocabulary present in the spoken fragment, mapped onto
 /// hint-to-quote confidence. `None` when the evidence is too thin to count
@@ -410,15 +445,29 @@ fn quote_overlap_confidence(fragment: &str, verse_text: &str) -> Option<f64> {
     if verse_text.is_empty() {
         return None;
     }
-    let fragment_words: HashSet<String> = content_words(fragment).collect();
+    let fragment_words: Vec<String> = content_words(fragment).collect();
     let verse_words: HashSet<String> = content_words(verse_text).collect();
     if verse_words.len() < QUOTE_OVERLAP_MIN_VERSE_WORDS {
         return None;
     }
-    let matched = verse_words
-        .iter()
-        .filter(|word| fragment_words.contains(*word))
-        .count();
+    // Limit bag-of-words evidence to a local region. Without this bound,
+    // unrelated words spread across a long STT block can assemble into a
+    // short verse that was never spoken.
+    let window_len = verse_words
+        .len()
+        .saturating_mul(2)
+        .max(QUOTE_OVERLAP_MIN_MATCHED);
+    let matched = fragment_words
+        .windows(window_len.min(fragment_words.len()).max(1))
+        .map(|window| {
+            let local: HashSet<&str> = window.iter().map(String::as_str).collect();
+            verse_words
+                .iter()
+                .filter(|word| local.contains(word.as_str()))
+                .count()
+        })
+        .max()
+        .unwrap_or(0);
     if matched < QUOTE_OVERLAP_MIN_MATCHED {
         return None;
     }
@@ -497,7 +546,10 @@ fn is_exact_quote_fragment(fragment: &str, verse_text: &str) -> bool {
 fn exact_quote_keys(fragment: &str, fts_results: &[Bm25Result]) -> HashSet<(i32, i32, i32)> {
     fts_results
         .iter()
-        .filter(|fts| is_exact_quote_fragment(fragment, &fts.text))
+        .filter(|fts| {
+            is_exact_quote_fragment(fragment, &fts.text)
+                || short_quote_confidence(fragment, &fts.text).is_some()
+        })
         .map(|fts| (fts.book_number, fts.chapter, fts.verse))
         .collect()
 }
@@ -1451,6 +1503,54 @@ mod tests {
             results.is_empty(),
             "scattered keyword overlap must stay suppressed: {results:?}"
         );
+    }
+
+    #[test]
+    fn distant_words_in_long_sermon_do_not_form_a_genesis_quote() {
+        let transcript = "I know from someone I personally know the reason they kept on practicing the witchcraft and they kept on going back to the devil and asking him for power to cast spells on and to seduce people is because they were told by the devil, If you stop, I'm going to kill you and I'm going to kill your whole family. I have a word for you. The God of heaven is far greater than Satan. If you yield your life to Christ, Satan and his forces do not stand a chance. He always loses when confronted with";
+        let genesis = "You know that I have served your father with all of my strength.";
+
+        assert_eq!(
+            quote_overlap_confidence(transcript, genesis),
+            None,
+            "distant topical words must not assemble into quote evidence"
+        );
+    }
+
+    #[test]
+    fn short_shared_phrase_stays_in_review_band() {
+        let confidence = live_fts_candidate_confidence(
+            "If you hear his voice, harden not your heart.",
+            &Bm25Result {
+                book_number: 19,
+                book_name: "Psalms".to_string(),
+                chapter: 95,
+                verse: 8,
+                rank: -11.0,
+                is_broad_match: false,
+                is_phrase_match: true,
+                text: "Harden not your heart, as in the provocation.".to_string(),
+            },
+            0,
+            &HashSet::new(),
+        )
+        .expect("phrase-tier quote")
+        .0;
+
+        assert!(
+            (0.80..0.90).contains(&confidence),
+            "short phrases shared across scripture need operator review: {confidence}"
+        );
+    }
+
+    #[test]
+    fn short_modernized_quote_reaches_live_threshold() {
+        let confidence = short_quote_confidence(
+            "We say, Lord, help me. I believe, but help my unbelief. Deliver me.",
+            "And straightway the father of the child cried out, and said with tears, Lord, I believe; help thou mine unbelief.",
+        );
+
+        assert_eq!(confidence, Some(0.92));
     }
 
     #[test]
