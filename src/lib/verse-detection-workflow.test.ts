@@ -1408,6 +1408,115 @@ describe("verse detection workflow", () => {
       await Promise.all([first, second])
     })
 
+    it("abandons the AI ranking await when a newer batch supersedes it", async () => {
+      // Semantic-only batches await ranking before acting. A newer batch must
+      // free that await without waiting for the ranker to finish — even when
+      // the ranker promise never settles (real scheduleRanking usually
+      // supersedes with null; this asserts workflow generation alone is enough).
+      scheduleRankingMock.mockReturnValueOnce(
+        new Promise<DetectionResult | null>(() => {
+          // Intentionally never resolves: if the stale batch still awaits
+          // this promise, `first` never settles.
+        })
+      )
+      scheduleRankingMock.mockResolvedValueOnce(null)
+
+      const first = handleVerseDetections([
+        makeSemantic(),
+        makeSemantic({ verse_ref: "Acts 12:5", chapter: 12, verse: 5 }),
+      ])
+      await Promise.resolve()
+      await Promise.resolve()
+
+      const second = handleVerseDetections([
+        makeDetection({ auto_queued: false }),
+      ])
+      await Promise.resolve()
+      await Promise.resolve()
+      await vi.runAllTicks()
+
+      await expect(first).resolves.toBeUndefined()
+      await second
+      expect(useBibleStore.getState().selectedVerse).toMatchObject({
+        book_number: 43,
+        chapter: 3,
+        verse: 16,
+      })
+    })
+
+    it("does not stage preview from a stale batch after a slow verse lookup", async () => {
+      let resolveFirstFetch: (value: null) => void = () => {}
+      let getVerseCalls = 0
+      invokeMock.mockImplementation((cmd: string) => {
+        if (cmd === "get_verse") {
+          getVerseCalls += 1
+          if (getVerseCalls === 1) {
+            return new Promise((resolve) => {
+              resolveFirstFetch = resolve
+            })
+          }
+          return Promise.resolve({
+            id: 16,
+            translation_id: 7,
+            book_number: 43,
+            book_name: "John",
+            book_abbreviation: "John",
+            chapter: 3,
+            verse: 16,
+            text: "For God so loved the world",
+          })
+        }
+        return Promise.resolve(null)
+      })
+
+      const first = handleVerseDetections([
+        makeDetection({
+          auto_queued: false,
+          confidence: 0.99,
+          verse_ref: "Acts 16:25",
+          book_name: "Acts",
+          book_number: 44,
+          chapter: 16,
+          verse: 25,
+          verse_text: "stale batch text",
+        }),
+      ])
+      await Promise.resolve()
+      await Promise.resolve()
+
+      const second = handleVerseDetections([
+        makeDetection({
+          auto_queued: false,
+          confidence: 0.99,
+          verse_ref: "John 3:16",
+          book_name: "John",
+          book_number: 43,
+          chapter: 3,
+          verse: 16,
+          verse_text: "For God so loved the world",
+        }),
+      ])
+      await Promise.resolve()
+      await Promise.resolve()
+      await vi.runAllTicks()
+
+      await second
+      expect(useBibleStore.getState().selectedVerse).toMatchObject({
+        book_number: 43,
+        chapter: 3,
+        verse: 16,
+      })
+
+      resolveFirstFetch(null)
+      await first
+      // Stale Acts lookup must not overwrite the newer John preview.
+      expect(useBibleStore.getState().selectedVerse).toMatchObject({
+        book_number: 43,
+        chapter: 3,
+        verse: 16,
+      })
+    })
+
     it("does not let a lower-confidence AI winner displace a stronger direct hit", async () => {
       // Ranker picks the semantic Acts hit, but a strong direct John hit is
       // present: preview must still follow the deterministic direct path.

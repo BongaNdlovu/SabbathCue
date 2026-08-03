@@ -348,6 +348,11 @@ async function queueDetectedVerse(
 
 let detectionHandlingChain: Promise<void> = Promise.resolve()
 let detectionHandlingGeneration = 0
+/** Resolvers woken when `detectionHandlingGeneration` advances past a batch. */
+const staleBatchWaiters: Array<{
+  batchGeneration: number
+  resolve: () => void
+}> = []
 const DETECTION_ARBITRATION_WINDOW_MS = 400
 let pendingDetectionBatch: DetectionResult[] = []
 let detectionArbitrationTimer: ReturnType<typeof setTimeout> | null = null
@@ -356,6 +361,50 @@ const SEMANTIC_SINGLE_PASS_MATCH_STRENGTH = 0.95
 const SEMANTIC_AUTO_LIVE_MIN_MARGIN = 0.02
 const SEMANTIC_CONFIRMATION_WINDOW_MS = 8_000
 const pendingSemanticConfirmations = new Map<string, number>()
+
+function notifyStaleBatchWaiters(): void {
+  const current = detectionHandlingGeneration
+  for (let i = staleBatchWaiters.length - 1; i >= 0; i -= 1) {
+    if (staleBatchWaiters[i].batchGeneration !== current) {
+      const [waiter] = staleBatchWaiters.splice(i, 1)
+      waiter.resolve()
+    }
+  }
+}
+
+/** Resolves as soon as `batchGeneration` is no longer the latest handling generation. */
+function whenBatchBecomesStale(batchGeneration: number): Promise<void> {
+  return new Promise((resolve) => {
+    if (batchGeneration !== detectionHandlingGeneration) {
+      resolve()
+      return
+    }
+    staleBatchWaiters.push({ batchGeneration, resolve })
+    // If generation advanced between the check and the push, notify now so
+    // this waiter cannot sit forever (single-threaded, but keeps the invariant
+    // obvious and safe under future re-entry).
+    if (batchGeneration !== detectionHandlingGeneration) {
+      notifyStaleBatchWaiters()
+    }
+  })
+}
+
+function discardStaleDetectionBatch(
+  generation: number,
+  acceptedCount: number
+): boolean {
+  if (generation === detectionHandlingGeneration) return false
+  recordWorkflowTrace(
+    "detection.preview.skipped",
+    "Stale detection batch discarded after newer speech",
+    {
+      generation,
+      latestGeneration: detectionHandlingGeneration,
+      count: acceptedCount,
+    }
+  )
+  return true
+}
 
 export function resetSemanticConfirmationForTests() {
   pendingSemanticConfirmations.clear()
@@ -489,17 +538,29 @@ async function handleVerseDetectionsInternal(
       !detection.is_chapter_only &&
       (isEgwDetection(detection) || detection.book_number > 0)
   )
-  const aiWinner = autoPreview && !hasStrongDirectHit ? await aiSuggestion : null
-  if (autoPreview && generation !== detectionHandlingGeneration) {
-    recordWorkflowTrace(
-      "detection.preview.skipped",
-      "Stale detection batch discarded after newer speech",
-      {
-        generation,
-        latestGeneration: detectionHandlingGeneration,
-        count: acceptedDetections.length,
-      }
-    )
+  // Strong direct hits skip the ranking await entirely. Ambiguous Auto Preview
+  // batches wait for ranking only while they remain the latest generation —
+  // a newer batch must not leave this handler blocked on a stale flight.
+  // Manual mode serializes batches and still processes older generations, so
+  // staleness discard applies only when autoPreview is on.
+  //
+  // Note: `scheduleRanking` also supersedes prior flights with null when a
+  // newer batch schedules. The generation race is defense-in-depth so this
+  // handler cannot hang if ranking never settles (tests, circuit changes).
+  let aiWinner: DetectionResult | null = null
+  if (autoPreview && !hasStrongDirectHit) {
+    if (discardStaleDetectionBatch(generation, acceptedDetections.length)) {
+      return
+    }
+    aiWinner = await Promise.race([
+      aiSuggestion,
+      whenBatchBecomesStale(generation).then(() => null),
+    ])
+  }
+  if (
+    autoPreview &&
+    discardStaleDetectionBatch(generation, acceptedDetections.length)
+  ) {
     return
   }
   const selectedHit = autoPreview
@@ -536,6 +597,14 @@ async function handleVerseDetectionsInternal(
       }
     } else {
       const resolved = await resolveDetectionVerse(previewHit)
+      // Verse lookup can outlive a newer batch the same way ranking can;
+      // never stage preview/live from a superseded generation.
+      if (
+        autoPreview &&
+        discardStaleDetectionBatch(generation, acceptedDetections.length)
+      ) {
+        return
+      }
       resolvedDetections.set(previewHit, resolved)
       recordWorkflowTrace(
         "detection.preview.selected",
@@ -583,6 +652,7 @@ async function handleVerseDetectionsInternal(
 
 export function handleVerseDetections(detections: DetectionResult[]): Promise<void> {
   const generation = ++detectionHandlingGeneration
+  notifyStaleBatchWaiters()
   const autoMode = useSettingsStore.getState().autoMode
   const task = autoMode
     ? handleVerseDetectionsInternal(detections, generation)
@@ -634,6 +704,7 @@ export function resetDetectionArbitrationForTests(): void {
   // Invalidate any Auto Preview task that was still awaiting a lookup or
   // ranking promise when the test/session arbitration state was reset.
   detectionHandlingGeneration += 1
+  notifyStaleBatchWaiters()
   detectionHandlingChain = Promise.resolve()
 }
 
