@@ -7,6 +7,7 @@ mod state;
 
 use std::io;
 use std::panic;
+use std::path::{Path, PathBuf};
 use std::sync::{Mutex, Once};
 
 use rhema_detection::semantic::embedder::TextEmbedder;
@@ -62,6 +63,125 @@ fn semantic_index_sanity_check(
     }
 }
 
+/// Walk embedding candidates in resolution order; first load that passes the
+/// self-similarity sanity check wins. A stale app-data file must not disable
+/// vector search while a healthy bundled/dev copy exists.
+fn load_first_healthy_index(
+    embedder: &rhema_detection::OnnxEmbedder,
+    model_path: &Path,
+    tokenizer_path: &Path,
+    embedding_candidates: &[(PathBuf, PathBuf)],
+) -> Option<(rhema_detection::HnswVectorIndex, PathBuf)> {
+    let dim = embedder.dimension();
+    for (embeddings_path, ids_path) in embedding_candidates {
+        if !asset_paths::semantic_assets_are_compatible(
+            model_path,
+            tokenizer_path,
+            embeddings_path,
+            ids_path,
+        ) {
+            log::warn!(
+                "Skipping embeddings candidate from a different model family: {}",
+                embeddings_path.display()
+            );
+            continue;
+        }
+        match rhema_detection::HnswVectorIndex::load(embeddings_path, ids_path, dim) {
+            Ok(index) => match semantic_index_sanity_check(embedder, &index) {
+                Ok(similarity) => {
+                    log::info!(
+                        "Resolved embeddings path: {} (sanity check passed, self-similarity {similarity:.3})",
+                        embeddings_path.display()
+                    );
+                    return Some((index, embeddings_path.clone()));
+                }
+                Err(reason) => {
+                    log::error!(
+                        "Embeddings candidate failed sanity check, trying next: {reason} (embeddings={})",
+                        embeddings_path.display()
+                    );
+                }
+            },
+            Err(e) => {
+                log::warn!(
+                    "Failed to load verse embeddings from {}: {e}",
+                    embeddings_path.display()
+                );
+            }
+        }
+    }
+    None
+}
+
+/// Composition fingerprint written by `export:verses` / setup (shared for f32 + q8).
+/// Fail closed when missing or mismatched so a silent stale/wrong corpus cannot load.
+fn embeddings_manifest_matches(
+    embeddings_path: &Path,
+    index: &rhema_detection::HnswVectorIndex,
+) -> bool {
+    let Some(manifest_dir) = embeddings_path.parent() else {
+        log::error!(
+            "SEMANTIC VECTOR SEARCH DISABLED — embeddings path has no parent directory: {}",
+            embeddings_path.display()
+        );
+        return false;
+    };
+    let manifest_path = manifest_dir.join("public-minilm-l6-v2.manifest.json");
+    if !manifest_path.exists() {
+        log::error!(
+            "SEMANTIC VECTOR SEARCH DISABLED — missing composition manifest {}. \
+             Re-run `bun run export:verses` (writes the manifest) then \
+             `bun run precompute:embeddings` && `bun run quantize:embeddings` if binaries are stale.",
+            manifest_path.display()
+        );
+        return false;
+    }
+    let manifest_text = match std::fs::read_to_string(&manifest_path) {
+        Ok(text) => text,
+        Err(e) => {
+            log::error!(
+                "SEMANTIC VECTOR SEARCH DISABLED — could not read manifest {}: {e}",
+                manifest_path.display()
+            );
+            return false;
+        }
+    };
+    let manifest: serde_json::Value = match serde_json::from_str(&manifest_text) {
+        Ok(value) => value,
+        Err(e) => {
+            log::error!(
+                "SEMANTIC VECTOR SEARCH DISABLED — could not parse manifest {}: {e}",
+                manifest_path.display()
+            );
+            return false;
+        }
+    };
+    let Some(expected) = manifest
+        .get("record_count")
+        .and_then(serde_json::Value::as_u64)
+    else {
+        log::error!(
+            "SEMANTIC VECTOR SEARCH DISABLED — manifest missing record_count: {}",
+            manifest_path.display()
+        );
+        return false;
+    };
+    let actual = index.len() as u64;
+    if actual != expected {
+        log::error!(
+            "SEMANTIC VECTOR SEARCH DISABLED — embeddings count {actual} != \
+             manifest record_count {expected} ({}). Regenerate embeddings.",
+            manifest_path.display()
+        );
+        return false;
+    }
+    log::info!(
+        "Embedding corpus manifest OK (record_count={expected}, {})",
+        manifest_path.display()
+    );
+    true
+}
+
 /// Load the ONNX embedder and the pre-computed verse index into the shared
 /// pipeline.
 ///
@@ -111,51 +231,12 @@ fn load_semantic_assets(app: &tauri::AppHandle) {
         );
     }
 
-    // Walk the candidates in resolution order; the first pair that loads AND
-    // passes the sanity check wins. A stale app-data file must not disable
-    // vector search while a healthy bundled/dev copy exists.
-    let dim = embedder.dimension();
-    let mut healthy_index = None;
-    for (embeddings_path, ids_path) in &embedding_candidates {
-        if !asset_paths::semantic_assets_are_compatible(
-            &model_path,
-            &tokenizer_path,
-            embeddings_path,
-            ids_path,
-        ) {
-            log::warn!(
-                "Skipping embeddings candidate from a different model family: {}",
-                embeddings_path.display()
-            );
-            continue;
-        }
-        match rhema_detection::HnswVectorIndex::load(embeddings_path, ids_path, dim) {
-            Ok(index) => match semantic_index_sanity_check(&embedder, &index) {
-                Ok(similarity) => {
-                    log::info!(
-                        "Resolved embeddings path: {} (sanity check passed, self-similarity {similarity:.3})",
-                        embeddings_path.display()
-                    );
-                    healthy_index = Some((index, embeddings_path.clone()));
-                    break;
-                }
-                Err(reason) => {
-                    log::error!(
-                        "Embeddings candidate failed sanity check, trying next: {reason} (embeddings={})",
-                        embeddings_path.display()
-                    );
-                }
-            },
-            Err(e) => {
-                log::warn!(
-                    "Failed to load verse embeddings from {}: {e}",
-                    embeddings_path.display()
-                );
-            }
-        }
-    }
-
-    let Some((index, embeddings_path)) = healthy_index else {
+    let Some((index, embeddings_path)) = load_first_healthy_index(
+        &embedder,
+        &model_path,
+        &tokenizer_path,
+        &embedding_candidates,
+    ) else {
         log::error!(
             "SEMANTIC VECTOR SEARCH DISABLED — no public-minilm-l6-v2 embeddings candidate loaded. \
              English-only legacy indexes (kjv-minilm-*) are no longer used. Regenerate with: \
@@ -164,65 +245,9 @@ fn load_semantic_assets(app: &tauri::AppHandle) {
         return;
     };
 
-    // Composition fingerprint written by `export:verses` / setup (shared for f32 + q8).
-    // Fail closed when missing or mismatched so a silent stale/wrong corpus cannot load.
-    let Some(manifest_dir) = embeddings_path.parent() else {
-        log::error!(
-            "SEMANTIC VECTOR SEARCH DISABLED — embeddings path has no parent directory: {}",
-            embeddings_path.display()
-        );
-        return;
-    };
-    let manifest_path = manifest_dir.join("public-minilm-l6-v2.manifest.json");
-    if !manifest_path.exists() {
-        log::error!(
-            "SEMANTIC VECTOR SEARCH DISABLED — missing composition manifest {}. \
-             Re-run `bun run export:verses` (writes the manifest) then \
-             `bun run precompute:embeddings` && `bun run quantize:embeddings` if binaries are stale.",
-            manifest_path.display()
-        );
+    if !embeddings_manifest_matches(&embeddings_path, &index) {
         return;
     }
-    let manifest_text = match std::fs::read_to_string(&manifest_path) {
-        Ok(text) => text,
-        Err(e) => {
-            log::error!(
-                "SEMANTIC VECTOR SEARCH DISABLED — could not read manifest {}: {e}",
-                manifest_path.display()
-            );
-            return;
-        }
-    };
-    let manifest: serde_json::Value = match serde_json::from_str(&manifest_text) {
-        Ok(value) => value,
-        Err(e) => {
-            log::error!(
-                "SEMANTIC VECTOR SEARCH DISABLED — could not parse manifest {}: {e}",
-                manifest_path.display()
-            );
-            return;
-        }
-    };
-    let Some(expected) = manifest.get("record_count").and_then(|v| v.as_u64()) else {
-        log::error!(
-            "SEMANTIC VECTOR SEARCH DISABLED — manifest missing record_count: {}",
-            manifest_path.display()
-        );
-        return;
-    };
-    let actual = index.len() as u64;
-    if actual != expected {
-        log::error!(
-            "SEMANTIC VECTOR SEARCH DISABLED — embeddings count {actual} != \
-             manifest record_count {expected} ({}). Regenerate embeddings.",
-            manifest_path.display()
-        );
-        return;
-    }
-    log::info!(
-        "Embedding corpus manifest OK (record_count={expected}, {})",
-        manifest_path.display()
-    );
 
     let semantic_corpus = "public-domain multi-vector corpus";
     log::info!(
