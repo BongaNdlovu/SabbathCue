@@ -52,6 +52,17 @@ BATCH_SIZE_ONNX = 32
 BATCH_SIZE_GPU = 64
 
 
+def main_guard():
+    print(
+        "ERROR: data/precompute-embeddings.py is deprecated and unsafe for the app index.\n"
+        "It does not match the runtime ONNX int8 OnnxEmbedder (padding/pooling/model).\n"
+        "Use: bun run precompute:embeddings\n"
+        "Pass --force-deprecated only for offline experiments you will not ship."
+    )
+    if "--force-deprecated" not in sys.argv:
+        sys.exit(2)
+
+
 def encode_with_sentence_transformers(texts):
     """Encode using sentence-transformers (GPU-accelerated if available)."""
     import torch
@@ -182,7 +193,8 @@ def encode_with_onnx(texts):
 
 
 def main():
-    print(f"\n=== SabbathCue Verse Embedding Pre-computation ===")
+    main_guard()
+    print(f"\n=== SabbathCue Verse Embedding Pre-computation (DEPRECATED) ===")
 
     # Load verses
     print(f"\nLoading verses from {VERSES_PATH}...")

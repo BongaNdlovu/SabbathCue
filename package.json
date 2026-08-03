@@ -43,6 +43,8 @@
     "export:verses": "bun run data/compute-embeddings.ts",
     "precompute:embeddings-onnx": "python3 data/precompute-embeddings-onnx.py",
     "precompute:embeddings-py": "python3 data/precompute-embeddings.py",
+    "precompute:embeddings:deprecated-onnx": "python3 data/precompute-embeddings-onnx.py --force-deprecated",
+    "precompute:embeddings:deprecated-py": "python3 data/precompute-embeddings.py --force-deprecated",
     "precompute:embeddings": "cargo run --manifest-path src-tauri/Cargo.toml -p rhema-detection --features precompute-bin --release --bin precompute -- --model models/minilm-l6-v2-int8/onnx/model_quantized.onnx --tokenizer models/minilm-l6-v2/tokenizer.json --verses data/verses-for-embedding.json --output-embeddings embeddings/public-minilm-l6-v2.bin --output-ids embeddings/public-minilm-l6-v2-ids.bin",
     "quantize:embeddings": "cargo run --manifest-path src-tauri/Cargo.toml -p rhema-detection --release --bin quantize_embeddings -- embeddings/public-minilm-l6-v2.bin embeddings/public-minilm-l6-v2-ids.bin embeddings/public-minilm-l6-v2-q8.bin embeddings/public-minilm-l6-v2-q8-ids.bin 384",
     "compare:embeddings": "cargo run --manifest-path src-tauri/Cargo.toml -p rhema-detection --features vector-search --release --bin embedding_comparison -- --f32 embeddings/public-minilm-l6-v2.bin --f32-ids embeddings/public-minilm-l6-v2-ids.bin --q8 embeddings/public-minilm-l6-v2-q8.bin --q8-ids embeddings/public-minilm-l6-v2-q8-ids.bin --dim 384 --queries 256 --k 10 --min-top1 0.995 --min-overlap 0.99 --max-similarity-drift 0.01",

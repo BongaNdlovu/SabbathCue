@@ -105,7 +105,10 @@ fn load_semantic_assets(app: &tauri::AppHandle) {
     };
 
     if embedding_candidates.is_empty() {
-        log::info!("No pre-computed verse embeddings found. Run 'bun run export:verses' then the precompute binary.");
+        log::info!(
+            "No pre-computed public verse embeddings found. Regenerate with: \
+             `bun run export:verses` then `bun run precompute:embeddings` then `bun run quantize:embeddings`"
+        );
     }
 
     // Walk the candidates in resolution order; the first pair that loads AND
@@ -153,24 +156,75 @@ fn load_semantic_assets(app: &tauri::AppHandle) {
     }
 
     let Some((index, embeddings_path)) = healthy_index else {
-        if !embedding_candidates.is_empty() {
-            log::error!(
-                "SEMANTIC VECTOR SEARCH DISABLED — no embeddings candidate passed the sanity check; \
-                 regenerate with `bun run precompute:embeddings`"
-            );
-        }
+        log::error!(
+            "SEMANTIC VECTOR SEARCH DISABLED — no public-minilm-l6-v2 embeddings candidate loaded. \
+             English-only legacy indexes (kjv-minilm-*) are no longer used. Regenerate with: \
+             `bun run export:verses` && `bun run precompute:embeddings` && `bun run quantize:embeddings`"
+        );
         return;
     };
 
-    let semantic_corpus = if embeddings_path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .is_some_and(|name| name.starts_with("public-minilm-l6-v2"))
-    {
-        "public-domain multi-vector corpus"
-    } else {
-        "KJV canonical legacy"
+    // Composition fingerprint written by `export:verses` / setup (shared for f32 + q8).
+    // Fail closed when missing or mismatched so a silent stale/wrong corpus cannot load.
+    let Some(manifest_dir) = embeddings_path.parent() else {
+        log::error!(
+            "SEMANTIC VECTOR SEARCH DISABLED — embeddings path has no parent directory: {}",
+            embeddings_path.display()
+        );
+        return;
     };
+    let manifest_path = manifest_dir.join("public-minilm-l6-v2.manifest.json");
+    if !manifest_path.exists() {
+        log::error!(
+            "SEMANTIC VECTOR SEARCH DISABLED — missing composition manifest {}. \
+             Re-run `bun run export:verses` (writes the manifest) then \
+             `bun run precompute:embeddings` && `bun run quantize:embeddings` if binaries are stale.",
+            manifest_path.display()
+        );
+        return;
+    }
+    let manifest_text = match std::fs::read_to_string(&manifest_path) {
+        Ok(text) => text,
+        Err(e) => {
+            log::error!(
+                "SEMANTIC VECTOR SEARCH DISABLED — could not read manifest {}: {e}",
+                manifest_path.display()
+            );
+            return;
+        }
+    };
+    let manifest: serde_json::Value = match serde_json::from_str(&manifest_text) {
+        Ok(value) => value,
+        Err(e) => {
+            log::error!(
+                "SEMANTIC VECTOR SEARCH DISABLED — could not parse manifest {}: {e}",
+                manifest_path.display()
+            );
+            return;
+        }
+    };
+    let Some(expected) = manifest.get("record_count").and_then(|v| v.as_u64()) else {
+        log::error!(
+            "SEMANTIC VECTOR SEARCH DISABLED — manifest missing record_count: {}",
+            manifest_path.display()
+        );
+        return;
+    };
+    let actual = index.len() as u64;
+    if actual != expected {
+        log::error!(
+            "SEMANTIC VECTOR SEARCH DISABLED — embeddings count {actual} != \
+             manifest record_count {expected} ({}). Regenerate embeddings.",
+            manifest_path.display()
+        );
+        return;
+    }
+    log::info!(
+        "Embedding corpus manifest OK (record_count={expected}, {})",
+        manifest_path.display()
+    );
+
+    let semantic_corpus = "public-domain multi-vector corpus";
     log::info!(
         "Verse embeddings loaded ({} vectors, corpus={semantic_corpus}; semantic hits resolve to active translation)",
         index.len(),

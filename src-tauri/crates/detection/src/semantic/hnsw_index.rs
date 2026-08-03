@@ -315,6 +315,7 @@ impl HnswVectorIndex {
 #[cfg(feature = "vector-search")]
 impl VectorIndex for HnswVectorIndex {
     fn search(&self, query: &[f32], k: usize) -> Result<Vec<SearchResult>, DetectionError> {
+        let search_started = std::time::Instant::now();
         if query.len() != self.dimension {
             return Err(DetectionError::Internal(format!(
                 "query dim {} != index dim {}",
@@ -361,6 +362,11 @@ impl VectorIndex for HnswVectorIndex {
                 similarity: f64::from(similarity),
             })
             .collect();
+
+        log::debug!(
+            "[VECTOR] search n={n} k={k} took {:?}",
+            search_started.elapsed()
+        );
 
         Ok(results)
     }

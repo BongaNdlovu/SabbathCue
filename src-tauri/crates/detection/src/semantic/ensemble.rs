@@ -7,6 +7,14 @@ use super::synonyms::SynonymExpander;
 use crate::error::DetectionError;
 
 /// Ensemble search weights.
+///
+/// Product policy (**corroboration, not independent discovery**):
+/// synonym + concept contributions cannot alone pass [`ENSEMBLE_THRESHOLD`].
+/// Max mass without an original hit: `SYNONYM_WEIGHT + CONCEPT_WEIGHT = 0.3`
+/// which is below `ENSEMBLE_THRESHOLD` (0.42). Synonym/concept only raise the
+/// weighted score (and `best_similarity`) for verses already found by original,
+/// or cannot surface a verse the original strategy never returned above cutoff.
+/// Displayed confidence is gated on raw `best_similarity` in `detector.rs`.
 const ORIGINAL_WEIGHT: f64 = 0.7;
 const SYNONYM_WEIGHT: f64 = 0.2;
 const CONCEPT_WEIGHT: f64 = 0.1;
@@ -267,5 +275,18 @@ mod tests {
             assert!(ENSEMBLE_THRESHOLD > 0.0);
             assert!(ORIGINAL_WEIGHT + SYNONYM_WEIGHT + CONCEPT_WEIGHT <= 1.01);
         }
+    }
+
+    #[test]
+    fn synonym_and_concept_alone_cannot_pass_ensemble_threshold() {
+        // At perfect similarity, synonym (0.2) + concept (0.1) = 0.3 < 0.42.
+        let max_without_original = SYNONYM_WEIGHT + CONCEPT_WEIGHT;
+        assert!(
+            max_without_original < ENSEMBLE_THRESHOLD,
+            "synonym+concept max {max_without_original} must stay below ENSEMBLE_THRESHOLD {ENSEMBLE_THRESHOLD}"
+        );
+        // Original-only bar for the weighted score filter: 0.42 / 0.7 = 0.6.
+        let original_only_min_sim = ENSEMBLE_THRESHOLD / ORIGINAL_WEIGHT;
+        assert!((original_only_min_sim - 0.6).abs() < 1e-12);
     }
 }

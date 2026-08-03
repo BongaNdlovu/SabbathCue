@@ -381,8 +381,21 @@ CI converts the canonical f32 corpus before comparison and bundling
   -> .github/workflows/release-desktop.yml
 The SCQ8 header binds dimension, vector count, version, and IDs digest
   -> src-tauri/crates/detection/src/semantic/quantize.rs
-Runtime resolution prefers q8, then retains f32 and legacy filename fallbacks
+Runtime resolution prefers public q8 then public f32 only; English-only
+legacy filenames are rejected (no silent corpus downgrade)
   -> src-tauri/src/asset_paths.rs
+Export writes data/embedding-corpus-manifest.json and
+embeddings/public-minilm-l6-v2.manifest.json; load **fails closed** if missing/mismatched
+  -> data/compute-embeddings.ts
+  -> src-tauri/src/lib.rs
+live_probe defaults to public-minilm-l6-v2-q8 (same as preferred runtime)
+  -> src-tauri/crates/detection/src/bin/live_probe.rs
+Tracked composition/retrieval harnesses live under data/benchmarks/
+  -> data/benchmarks/README.md
+Vector search logs debug timing [VECTOR] search n=… took …
+  -> src-tauri/crates/detection/src/semantic/hnsw_index.rs
+Detection pipeline logs stage times [DETECT] direct_ms/semantic_ms/fts_ms/merge_ms/total_ms
+  -> src-tauri/crates/detection/src/pipeline.rs
 The loader fails closed for invalid SCQ8 and searches q8 without expanding the
 complete corpus back to f32
   -> src-tauri/crates/detection/src/semantic/hnsw_index.rs
@@ -949,6 +962,8 @@ Top risks (ranked): 1. STT provider removal can leave stale docs or tests if his
 | 2026-08-02 | Bounded each direct-reference parse at the next spoken book and removed same-chapter placeholders after an in-fragment full citation, preventing earlier books and temporary verse-1 results from shadowing the intended reference. | 6, 10, 11, 15 |
 | 2026-08-02 | Localized quote-overlap evidence within long STT blocks, added bounded strict retrieval for compact embedded clauses, and required compact modernized quotations to identify one candidate before reaching live confidence. | 6, 10, 11, 15 |
 | 2026-08-02 | Recorded EGW attribution cues from the full authoritative transcript before the live semantic window is shortened, and recognized the scoped `statement by Illinois` STT substitution, preserving the session cue for later high-confidence quotations. | 6, 10, 11, 15 |
+| 2026-08-03 | Removed silent legacy English-only embedding fallbacks, rejected pre-split corpus basenames, added composition manifest + load count check, pointed live_probe at public-q8, promoted data/benchmarks harnesses, documented ensemble corroboration policy, and added vector-search debug timing. | 6, 9-11, 15 |
+| 2026-08-03 | Fail-closed when embedding manifest is missing; pipeline stage timing logs [DETECT]; score_distribution + detection_accuracy re-run on public-q8 (99.4%/97.5%, p50 82.1 ms). | 6, 9-11, 15 |
 | 2026-08-02 | Unified Bible and EGW Auto Live arbitration by confidence across adjacent detection events, using a bounded 400 ms collection window, and made the Live screen's Auto Live toggle control EGW preview-versus-live output. | 6, 10, 11, 15 |
 | 2026-08-03 | Preserved intentional confidence thresholds during hydration, retired stale Auto Preview batches before presentation, made bounded DeepSeek arbitration usable for ambiguous semantic winners, and added topic/event anchors so baptism and born-again requests retain their local verses before the live cap. | 5-7, 10, 11, 15 |
 | 2026-08-03 | Removed unconditional Nicodemus-to-`born`/`again` OR expansion; the exact `born again` topic query remains the sole source of those terms. | 6, 10, 11, 15 |

@@ -52,7 +52,9 @@ impl OnnxEmbedder {
     /// Maximum number of tokens the model will accept.
     /// Bible verses are short (~20 tokens avg). Truncation stays at 128 so
     /// two-sentence detection windows retain the existing context limit.
-    /// MUST match the Python precompute script (data/precompute-embeddings-onnx.py `MAX_LENGTH`).
+    /// Source of truth: this `OnnxEmbedder` is shared by runtime and
+    /// `bun run precompute:embeddings` (Rust precompute bin). Do not rebuild
+    /// production indexes with the deprecated Python scripts under `data/`.
     const MAX_TOKENS: usize = 128;
 
     /// Load an ONNX model and its tokenizer from disk.
@@ -308,10 +310,10 @@ impl OnnxEmbedder {
             let dim = out_dims[1] as usize;
             data[..dim].to_vec()
         } else if out_dims.len() == 3 {
-            // token_embeddings: shape [1, seq_len, dim] — mean pooling over attention mask
-            // MUST match the Python precompute script (data/precompute-embeddings-onnx.py)
-            // which uses mean pooling. Using last-token pooling here would put queries
-            // in a different vector space than the pre-computed verse embeddings.
+            // token_embeddings: shape [1, seq_len, dim] — mean pooling over attention mask.
+            // Must match the Rust precompute path (same OnnxEmbedder). Using last-token
+            // pooling here would put queries in a different vector space than the
+            // pre-computed verse embeddings.
             let seq_len = out_dims[1] as usize;
             let dim = out_dims[2] as usize;
             let mut pooled = vec![0.0f32; dim];

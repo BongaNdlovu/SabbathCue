@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test"
 
-import { buildEmbeddingEntries } from "./compute-embeddings"
+import {
+  buildEmbeddingCorpusManifest,
+  buildEmbeddingEntries,
+} from "./compute-embeddings"
 
 describe("buildEmbeddingEntries", () => {
   const verse = {
@@ -46,6 +49,28 @@ describe("buildEmbeddingEntries", () => {
       id: 316,
       text: "Modern wording.",
       ref: "John 3:16",
+    })
+  })
+})
+
+describe("buildEmbeddingCorpusManifest", () => {
+  test("records split composition and counts", () => {
+    const manifest = buildEmbeddingCorpusManifest({
+      recordCount: 155345,
+      uniqueVerseIds: 31102,
+      generatedAt: "2026-08-03T00:00:00.000Z",
+    })
+
+    expect(manifest).toEqual({
+      schema_version: 1,
+      blended_translations: ["KJV"],
+      separate_translations: ["WEB", "SpaRV", "FreJND", "PorBLivre"],
+      record_count: 155345,
+      unique_verse_ids: 31102,
+      model_family: "minilm-l6-v2",
+      padding: "batch_longest",
+      max_tokens: 128,
+      generated_at: "2026-08-03T00:00:00.000Z",
     })
   })
 })

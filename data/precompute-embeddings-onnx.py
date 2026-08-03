@@ -46,7 +46,17 @@ BATCH_SIZE = 32
 
 
 def main():
-    print(f"\n=== SabbathCue Verse Embedding Pre-computation (ONNX) ===")
+    print(
+        "ERROR: data/precompute-embeddings-onnx.py is deprecated for production indexes.\n"
+        "It still uses Fixed(128) padding and must not rebuild public-minilm-l6-v2.\n"
+        "Use: bun run precompute:embeddings\n"
+        "(Rust OnnxEmbedder: BatchLongest padding + max_tokens=128 + mean pool + L2.)\n"
+        "Pass --force-deprecated only for offline diagnostics you will not ship."
+    )
+    if "--force-deprecated" not in sys.argv:
+        sys.exit(2)
+
+    print(f"\n=== SabbathCue Verse Embedding Pre-computation (ONNX, DEPRECATED) ===")
 
     # Select model
     if MODEL_INT8.exists():
@@ -59,7 +69,7 @@ def main():
         print(f"ERROR: No ONNX model found at {MODEL_INT8} or {MODEL_FP32}")
         sys.exit(1)
 
-    # Load tokenizer
+    # Load tokenizer — Fixed(128) is intentional only for this deprecated path.
     print(f"Tokenizer: {TOKENIZER_PATH}")
     tokenizer = Tokenizer.from_file(str(TOKENIZER_PATH))
     tokenizer.enable_truncation(max_length=MAX_LENGTH)

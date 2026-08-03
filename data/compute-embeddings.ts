@@ -25,6 +25,13 @@ import { join } from "node:path"
 const DATA_DIR = import.meta.dir
 const DB_PATH = join(DATA_DIR, "rhema.db")
 const OUTPUT_PATH = join(DATA_DIR, "verses-for-embedding.json")
+const MANIFEST_PATH = join(DATA_DIR, "embedding-corpus-manifest.json")
+const EMBEDDINGS_MANIFEST_PATH = join(
+  DATA_DIR,
+  "..",
+  "embeddings",
+  "public-minilm-l6-v2.manifest.json",
+)
 const BLENDED_TRANSLATIONS = ["KJV"] as const
 const SEPARATE_VECTOR_TRANSLATIONS = [
   "WEB",
@@ -81,6 +88,36 @@ export function buildEmbeddingEntries(
   }
 
   return entries
+}
+
+export type EmbeddingCorpusManifest = {
+  schema_version: 1
+  blended_translations: readonly string[]
+  separate_translations: readonly string[]
+  record_count: number
+  unique_verse_ids: number
+  model_family: "minilm-l6-v2"
+  padding: "batch_longest"
+  max_tokens: 128
+  generated_at: string
+}
+
+export function buildEmbeddingCorpusManifest(options: {
+  recordCount: number
+  uniqueVerseIds: number
+  generatedAt?: string
+}): EmbeddingCorpusManifest {
+  return {
+    schema_version: 1,
+    blended_translations: [...BLENDED_TRANSLATIONS],
+    separate_translations: [...SEPARATE_VECTOR_TRANSLATIONS],
+    record_count: options.recordCount,
+    unique_verse_ids: options.uniqueVerseIds,
+    model_family: "minilm-l6-v2",
+    padding: "batch_longest",
+    max_tokens: 128,
+    generated_at: options.generatedAt ?? new Date().toISOString(),
+  }
 }
 
 async function main() {
@@ -175,13 +212,26 @@ async function main() {
   })
 
   await Bun.write(OUTPUT_PATH, JSON.stringify(output))
+  const uniqueVerseIds = new Set(output.map((entry) => entry.id)).size
+  const manifest = buildEmbeddingCorpusManifest({
+    recordCount: output.length,
+    uniqueVerseIds,
+  })
+  const manifestJson = JSON.stringify(manifest, null, 2)
+  await Bun.write(MANIFEST_PATH, manifestJson)
+  await mkdir(join(DATA_DIR, "..", "embeddings"), { recursive: true })
+  await Bun.write(EMBEDDINGS_MANIFEST_PATH, manifestJson)
+
   console.log(`  Exported ${output.length} embedding records`)
   console.log(
     `  Records by translation: ${Array.from(exportedCountByTranslation)
       .map(([translation, count]) => `${translation}=${count}`)
       .join(", ")}`,
   )
+  console.log(`  Unique verse ids: ${uniqueVerseIds}`)
   console.log(`  Exported to ${OUTPUT_PATH}`)
+  console.log(`  Manifest: ${MANIFEST_PATH}`)
+  console.log(`  Manifest (embeddings): ${EMBEDDINGS_MANIFEST_PATH}`)
   console.log(
     "\n  Next: run the embedding precompute step to generate the binary index.\n",
   )

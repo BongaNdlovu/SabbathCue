@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use rhema_bible::Bm25Result;
 
@@ -126,22 +126,48 @@ impl DetectionPipeline {
 
     /// Run the full pipeline (direct + semantic + merge). Used by `detect_verses` command.
     pub fn process(&mut self, text: &str) -> Vec<MergedDetection> {
+        let total_started = Instant::now();
+        let direct_started = Instant::now();
         let direct_results = self.direct.detect(text);
+        let direct_ms = direct_started.elapsed().as_secs_f64() * 1_000.0;
 
+        let semantic_started = Instant::now();
         let semantic_results = if text.split_whitespace().count() >= MIN_WORDS_FOR_VECTOR {
             self.semantic.detect(text)
         } else {
             vec![]
         };
+        let semantic_ms = semantic_started.elapsed().as_secs_f64() * 1_000.0;
 
-        self.merger.merge(direct_results, semantic_results)
+        let merge_started = Instant::now();
+        let merged = self.merger.merge(direct_results, semantic_results);
+        let merge_ms = merge_started.elapsed().as_secs_f64() * 1_000.0;
+        log::info!(
+            "[DETECT] path=process direct_ms={direct_ms:.2} semantic_ms={semantic_ms:.2} \
+             fts_ms=0.00 merge_ms={merge_ms:.2} total_ms={:.2} results={}",
+            total_started.elapsed().as_secs_f64() * 1_000.0,
+            merged.len()
+        );
+        merged
     }
 
     /// Run only direct (regex/pattern) detection. Instant, no ONNX inference.
     /// Used during live transcription on every `is_final` fragment.
     pub fn process_direct(&mut self, text: &str) -> Vec<MergedDetection> {
+        let total_started = Instant::now();
+        let direct_started = Instant::now();
         let direct_results = self.direct.detect(text);
-        self.merger.merge(direct_results, vec![])
+        let direct_ms = direct_started.elapsed().as_secs_f64() * 1_000.0;
+        let merge_started = Instant::now();
+        let merged = self.merger.merge(direct_results, vec![]);
+        let merge_ms = merge_started.elapsed().as_secs_f64() * 1_000.0;
+        log::debug!(
+            "[DETECT] path=direct direct_ms={direct_ms:.2} semantic_ms=0.00 fts_ms=0.00 \
+             merge_ms={merge_ms:.2} total_ms={:.2} results={}",
+            total_started.elapsed().as_secs_f64() * 1_000.0,
+            merged.len()
+        );
+        merged
     }
 
     /// Run only semantic (ONNX embedding) detection. Slow, 50-400ms.
@@ -150,8 +176,20 @@ impl DetectionPipeline {
         if text.split_whitespace().count() < MIN_WORDS_FOR_VECTOR {
             return vec![];
         }
+        let total_started = Instant::now();
+        let semantic_started = Instant::now();
         let semantic_results = self.semantic.detect(text);
-        self.merger.merge(vec![], semantic_results)
+        let semantic_ms = semantic_started.elapsed().as_secs_f64() * 1_000.0;
+        let merge_started = Instant::now();
+        let merged = self.merger.merge(vec![], semantic_results);
+        let merge_ms = merge_started.elapsed().as_secs_f64() * 1_000.0;
+        log::info!(
+            "[DETECT] path=semantic direct_ms=0.00 semantic_ms={semantic_ms:.2} fts_ms=0.00 \
+             merge_ms={merge_ms:.2} total_ms={:.2} results={}",
+            total_started.elapsed().as_secs_f64() * 1_000.0,
+            merged.len()
+        );
+        merged
     }
 
     /// Check if semantic search is available (model loaded + index populated).
@@ -221,13 +259,17 @@ impl DetectionPipeline {
         text: &str,
         fts_results: &[Bm25Result],
     ) -> Vec<MergedDetection> {
+        let total_started = Instant::now();
         // Vector search needs enough words for meaningful embeddings;
-        // FTS5 keyword matching works with fewer words.
+        // FTS5 keyword matching works with fewer words. FTS query time is paid
+        // by the caller (BibleDb); here `fts_ms` is hybrid merge of prefetched rows.
+        let semantic_started = Instant::now();
         let mut semantic_detections = if text.split_whitespace().count() >= MIN_WORDS_FOR_VECTOR {
             self.semantic.detect(text)
         } else {
             vec![]
         };
+        let semantic_ms = semantic_started.elapsed().as_secs_f64() * 1_000.0;
 
         if fts_results.is_empty() {
             for detection in &mut semantic_detections {
@@ -236,11 +278,21 @@ impl DetectionPipeline {
                     *similarity = (*similarity).min(VECTOR_ONLY_CONFIDENCE_CAP);
                 }
             }
+            let merge_started = Instant::now();
             let mut merged = self.merger.merge(vec![], semantic_detections);
             self.prioritize_spoken_book(text, &mut merged);
             merged.truncate(LIVE_SEMANTIC_CAP);
+            let merge_ms = merge_started.elapsed().as_secs_f64() * 1_000.0;
+            log::info!(
+                "[DETECT] path=hybrid_no_fts direct_ms=0.00 semantic_ms={semantic_ms:.2} \
+                 fts_ms=0.00 merge_ms={merge_ms:.2} total_ms={:.2} results={}",
+                total_started.elapsed().as_secs_f64() * 1_000.0,
+                merged.len()
+            );
             return merged;
         }
+
+        let fts_started = Instant::now();
 
         #[expect(
             clippy::cast_possible_truncation,
@@ -353,12 +405,23 @@ impl DetectionPipeline {
             }
         }
 
+        let fts_ms = fts_started.elapsed().as_secs_f64() * 1_000.0;
+
         // Gate every live candidate — FTS-derived and vector alike — by the
         // operator's semantic visibility threshold so raising the slider
         // actually suppresses keyword noise instead of letting FTS hits bypass.
+        let merge_started = Instant::now();
         let mut merged = self.merger.merge(vec![], semantic_detections);
         self.prioritize_spoken_book(text, &mut merged);
         merged.truncate(LIVE_SEMANTIC_CAP);
+        let merge_ms = merge_started.elapsed().as_secs_f64() * 1_000.0;
+        log::info!(
+            "[DETECT] path=hybrid direct_ms=0.00 semantic_ms={semantic_ms:.2} \
+             fts_ms={fts_ms:.2} merge_ms={merge_ms:.2} total_ms={:.2} results={} fts_rows={}",
+            total_started.elapsed().as_secs_f64() * 1_000.0,
+            merged.len(),
+            fts_results.len()
+        );
         merged
     }
 

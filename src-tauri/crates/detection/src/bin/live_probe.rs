@@ -3,12 +3,12 @@
 //! phrases that the live app reports `candidates=0` on, using the same
 //! model/index files the app loads.
 //!
-//! Usage (from src-tauri):
+//! Usage (from repo root so defaults resolve):
 //!   cargo run -p rhema-detection --features precompute-bin --bin `live_probe` -- \
-//!     --model ../models/minilm-l6-v2-int8/onnx/model_quantized.onnx \
-//!     --tokenizer ../models/minilm-l6-v2/tokenizer.json \
-//!     --embeddings ../embeddings/kjv-nkjv-nlt-minilm-l6-v2.bin \
-//!     --ids ../embeddings/kjv-nkjv-nlt-minilm-l6-v2-ids.bin \
+//!     --model models/minilm-l6-v2-int8/onnx/model_quantized.onnx \
+//!     --tokenizer models/minilm-l6-v2/tokenizer.json \
+//!     --embeddings embeddings/public-minilm-l6-v2-q8.bin \
+//!     --ids embeddings/public-minilm-l6-v2-q8-ids.bin \
 //!     --input probes.txt
 
 use std::path::PathBuf;
@@ -30,10 +30,11 @@ fn main() {
         .unwrap_or_else(|| "models/minilm-l6-v2-int8/onnx/model_quantized.onnx".into());
     let tokenizer =
         arg(&args, "--tokenizer").unwrap_or_else(|| "models/minilm-l6-v2/tokenizer.json".into());
+    // Keep in sync with sabbathcue asset_paths PREFERRED_EMBEDDINGS_FILENAME.
     let embeddings = arg(&args, "--embeddings")
-        .unwrap_or_else(|| "embeddings/kjv-nkjv-nlt-minilm-l6-v2.bin".into());
+        .unwrap_or_else(|| "embeddings/public-minilm-l6-v2-q8.bin".into());
     let ids = arg(&args, "--ids")
-        .unwrap_or_else(|| "embeddings/kjv-nkjv-nlt-minilm-l6-v2-ids.bin".into());
+        .unwrap_or_else(|| "embeddings/public-minilm-l6-v2-q8-ids.bin".into());
     let input = arg(&args, "--input").expect("--input probes.txt required");
 
     let embedder = OnnxEmbedder::load(&PathBuf::from(&model), &PathBuf::from(&tokenizer))

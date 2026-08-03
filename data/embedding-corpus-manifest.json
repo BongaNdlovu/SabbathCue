@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "blended_translations": ["KJV"],
+  "separate_translations": ["WEB", "SpaRV", "FreJND", "PorBLivre"],
+  "record_count": 155345,
+  "unique_verse_ids": 31102,
+  "model_family": "minilm-l6-v2",
+  "padding": "batch_longest",
+  "max_tokens": 128,
+  "generated_at": "2026-08-03T00:00:00.000Z"
+}
