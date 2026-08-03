@@ -1,0 +1,27 @@
+[
+  {
+    "language": "en",
+    "category": "egw-session-direct",
+    "mode": "fire",
+    "text": "Testing, testing, one two testing. Genesis chapter 8, verse 9.",
+    "expected": "Genesis 8:9"
+  },
+  {
+    "language": "en",
+    "category": "egw-session-noise",
+    "mode": "silent",
+    "text": "In the days of Noah, a double curse was resting upon the earth, and consequence of Adam's transgression, and of the murder committed by Cain."
+  },
+  {
+    "language": "en",
+    "category": "egw-session-noise",
+    "mode": "silent",
+    "text": "The human race yet retained much of its early vigor, but a few generations had passed since Adam had access to the tree."
+  },
+  {
+    "language": "en",
+    "category": "egw-session-noise",
+    "mode": "silent",
+    "text": "In the green fields and under the shadow of the goodly trees they set up the altars of their idols. Extensive groves that retained their foliage throughout the year."
+  }
+]

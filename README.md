@@ -42,7 +42,7 @@ Local builds create an unsigned NSIS installer; official release CI uses
 - **Voice-controlled translation switching** — say "read in NIV" or "switch to ESV" to change translations instantly during a sermon
 - **Multi-strategy verse detection**
   - Direct reference parsing (Aho-Corasick automaton + fuzzy matching)
-  - Semantic search — MiniLM-L6-v2 ONNX embeddings, brute-force cosine similarity over ~31k verse vectors (the `hnsw_index.rs` file is named after a future plan; today it scans linearly)
+  - Semantic search — MiniLM-L6-v2 ONNX embeddings, brute-force cosine similarity over the public multi-vector corpus (one KJV vector plus independent WEB/SpaRV/FreJND/PorBLivre vectors per verse; the `hnsw_index.rs` file is named after a future plan; today it scans linearly)
   - Quotation matching against known verse text
   - Reading mode — locks to book/chapter as soon as it's mentioned, with voice navigation ("next chapter", "chapter 5")
   - Sermon context tracking and sentence buffering
@@ -142,7 +142,7 @@ This runs 8 idempotent phases in sequence, skipping any whose output artifacts a
 4. Import EGW books into the SQLite database
 5. Download and export the ONNX embedding model plus INT8 quantization
 6. Export public-domain multi-vector verses to JSON for embedding precomputation
-7. Precompute verse embeddings (GPU sentence-transformers when available, ONNX CPU fallback otherwise)
+7. Precompute verse embeddings with the Rust ONNX path (shared with runtime; dynamic batch-longest padding and max 128-token truncation)
 8. Download local Vosk speech assets into `models/vosk/`
 
 ### Environment

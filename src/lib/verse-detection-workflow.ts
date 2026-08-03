@@ -162,8 +162,10 @@ function bestDetection(detections: DetectionResult[]): DetectionResult | null {
   for (let i = 1; i < detections.length; i += 1) {
     const candidate = detections[i]
     if (
-      (candidate.rank_score ?? candidate.confidence) >
-      (best.rank_score ?? best.confidence)
+      candidate.confidence > best.confidence ||
+      (candidate.confidence === best.confidence &&
+        (candidate.rank_score ?? candidate.confidence) >
+          (best.rank_score ?? best.confidence))
     ) {
       best = candidate
     }
@@ -191,7 +193,8 @@ function selectPreviewHit(
   detections: DetectionResult[],
   minConfidence: number,
   semanticDetectionEnabled: boolean,
-  semanticMinConfidence: number
+  semanticMinConfidence: number,
+  aiWinner: DetectionResult | null
 ): DetectionResult | null {
   const directHits = detections.filter(
     (d) =>
@@ -200,10 +203,7 @@ function selectPreviewHit(
       !d.is_chapter_only &&
       (isEgwDetection(d) || d.book_number > 0)
   )
-  const directHit = bestDetection(directHits)
-  if (directHit) return directHit
-
-  if (!semanticDetectionEnabled) return null
+  if (!semanticDetectionEnabled) return bestDetection(directHits)
 
   const semanticAutoLiveThreshold = Math.max(
     minConfidence,
@@ -214,25 +214,57 @@ function selectPreviewHit(
       d.source === "semantic" &&
       d.confidence >= semanticMinConfidence &&
       !d.is_chapter_only &&
-      d.book_number > 0
+      (isEgwDetection(d) || d.book_number > 0)
   )
   semanticCandidates.sort(
-    (a, b) => (b.rank_score ?? b.confidence) - (a.rank_score ?? a.confidence)
+    (a, b) =>
+      b.confidence - a.confidence ||
+      (b.rank_score ?? b.confidence) - (a.rank_score ?? a.confidence)
   )
   const strongest = semanticCandidates.find(
     (candidate) => candidate.confidence >= semanticAutoLiveThreshold
   )
-  if (!strongest) return null
-  const runnerUp = semanticCandidates.find((candidate) => candidate !== strongest)
+  const aiConfirmed =
+    aiWinner?.source === "semantic" &&
+    aiWinner.confidence >= semanticMinConfidence
+      ? aiWinner
+      : null
+  if (!strongest) {
+    return bestDetection(
+      aiConfirmed ? [...directHits, aiConfirmed] : directHits
+    )
+  }
+  const runnerUp = semanticCandidates.find(
+    (candidate) => candidate !== strongest
+  )
   if (
     runnerUp &&
-    (strongest.rank_score ?? strongest.confidence) -
-      (runnerUp.rank_score ?? runnerUp.confidence) <
-      SEMANTIC_AUTO_LIVE_MIN_MARGIN
+    detectionOrderingGap(strongest, runnerUp) < SEMANTIC_AUTO_LIVE_MIN_MARGIN
   ) {
-    return null
+    return bestDetection(
+      aiConfirmed ? [...directHits, aiConfirmed] : directHits
+    )
   }
-  return strongest ?? null
+  const finalists = [...directHits, strongest]
+  if (aiConfirmed && aiConfirmed !== strongest) finalists.push(aiConfirmed)
+  return bestDetection(finalists)
+}
+
+/**
+ * Keep confidence as the primary decision signal. The internal rank score is
+ * a reranking tie-breaker for equal-confidence semantic candidates (for
+ * example, two event matches), not a reason to suppress a stronger quote.
+ */
+function detectionOrderingGap(
+  strongest: DetectionResult,
+  runnerUp: DetectionResult
+): number {
+  const confidenceGap = strongest.confidence - runnerUp.confidence
+  if (Math.abs(confidenceGap) > Number.EPSILON) return confidenceGap
+  return (
+    (strongest.rank_score ?? strongest.confidence) -
+    (runnerUp.rank_score ?? runnerUp.confidence)
+  )
 }
 
 async function queueDetectedVerse(
@@ -315,10 +347,64 @@ async function queueDetectedVerse(
 }
 
 let detectionHandlingChain: Promise<void> = Promise.resolve()
+let detectionHandlingGeneration = 0
+/** Resolvers woken when `detectionHandlingGeneration` advances past a batch. */
+const staleBatchWaiters: Array<{
+  batchGeneration: number
+  resolve: () => void
+}> = []
+const DETECTION_ARBITRATION_WINDOW_MS = 400
+let pendingDetectionBatch: DetectionResult[] = []
+let detectionArbitrationTimer: ReturnType<typeof setTimeout> | null = null
+let detectionArbitrationWaiters: Array<() => void> = []
 const SEMANTIC_SINGLE_PASS_MATCH_STRENGTH = 0.95
 const SEMANTIC_AUTO_LIVE_MIN_MARGIN = 0.02
 const SEMANTIC_CONFIRMATION_WINDOW_MS = 8_000
 const pendingSemanticConfirmations = new Map<string, number>()
+
+function notifyStaleBatchWaiters(): void {
+  const current = detectionHandlingGeneration
+  for (let i = staleBatchWaiters.length - 1; i >= 0; i -= 1) {
+    if (staleBatchWaiters[i].batchGeneration !== current) {
+      const [waiter] = staleBatchWaiters.splice(i, 1)
+      waiter.resolve()
+    }
+  }
+}
+
+/** Resolves as soon as `batchGeneration` is no longer the latest handling generation. */
+function whenBatchBecomesStale(batchGeneration: number): Promise<void> {
+  return new Promise((resolve) => {
+    if (batchGeneration !== detectionHandlingGeneration) {
+      resolve()
+      return
+    }
+    staleBatchWaiters.push({ batchGeneration, resolve })
+    // If generation advanced between the check and the push, notify now so
+    // this waiter cannot sit forever (single-threaded, but keeps the invariant
+    // obvious and safe under future re-entry).
+    if (batchGeneration !== detectionHandlingGeneration) {
+      notifyStaleBatchWaiters()
+    }
+  })
+}
+
+function discardStaleDetectionBatch(
+  generation: number,
+  acceptedCount: number
+): boolean {
+  if (generation === detectionHandlingGeneration) return false
+  recordWorkflowTrace(
+    "detection.preview.skipped",
+    "Stale detection batch discarded after newer speech",
+    {
+      generation,
+      latestGeneration: detectionHandlingGeneration,
+      count: acceptedCount,
+    }
+  )
+  return true
+}
 
 export function resetSemanticConfirmationForTests() {
   pendingSemanticConfirmations.clear()
@@ -361,21 +447,22 @@ function confirmedSemanticHit(
   return null
 }
 
-let pendingAiSuggestion: Promise<void> = Promise.resolve()
+let pendingAiSuggestion: Promise<DetectionResult | null> = Promise.resolve(null)
 let aiSuggestionEpoch = 0
 
 /** Resolves once the in-flight AI suggestion for the last batch has settled.
  *  Tests await this instead of racing the fire-and-forget call. */
-export function aiSuggestionSettledForTests(): Promise<void> {
+export function aiSuggestionSettledForTests(): Promise<DetectionResult | null> {
   return pendingAiSuggestion
 }
 
 /** Ask the AI ranker which semantic candidate best matches the speech and
- *  record it as a display-only badge. Deliberately kept off the preview path:
- *  a suggestion never decides what goes to preview or live. */
+ *  record it as a suggestion. In Auto Preview it is an advisory arbiter only
+ *  when local retrieval is ambiguous; direct and stronger local candidates
+ *  remain authoritative. */
 async function maybeMarkAiSuggestion(
   detections: DetectionResult[]
-): Promise<void> {
+): Promise<DetectionResult | null> {
   aiSuggestionEpoch += 1
   const epoch = aiSuggestionEpoch
   try {
@@ -387,7 +474,7 @@ async function maybeMarkAiSuggestion(
     })
     // A newer batch owns the badge now; a stale flight must not overwrite it
     // (e.g. after a strong direct hit made the newer batch clear the badge).
-    if (epoch !== aiSuggestionEpoch) return
+    if (epoch !== aiSuggestionEpoch) return null
     useDetectionStore
       .getState()
       .markAiSuggested(winner ? detectionCandidateId(winner) : null)
@@ -398,12 +485,14 @@ async function maybeMarkAiSuggestion(
         { detection: traceDetectionDetails(winner) }
       )
     }
+    return winner
   } catch (error) {
     // Drop any earlier badge rather than leaving a stale suggestion on screen.
     if (epoch === aiSuggestionEpoch) {
       useDetectionStore.getState().markAiSuggested(null)
     }
     console.warn("[ai-ranking] Suggestion pass failed", error)
+    return null
   }
 }
 
@@ -416,17 +505,21 @@ function reportDetectionBatchError(error: unknown): void {
   })
 }
 
-async function handleVerseDetectionsInternal(detections: DetectionResult[]) {
+async function handleVerseDetectionsInternal(
+  detections: DetectionResult[],
+  generation: number
+) {
   const settings = useSettingsStore.getState()
   const acceptedDetections = detections.filter((detection) =>
     detectionAllowedBySettings(detection, settings)
   )
   useDetectionStore.getState().addDetections(acceptedDetections)
 
-  // Fire-and-forget: AI ranking is a display-only suggestion and must never
-  // block or influence the preview/auto-live path below. maybeMarkAiSuggestion
-  // handles its own failures, so this promise never rejects.
-  pendingAiSuggestion = maybeMarkAiSuggestion(acceptedDetections)
+  // Start ranking immediately so Auto Preview can use the bounded arbiter for
+  // ambiguous semantic batches. Strong direct hits bypass the await below;
+  // newer Auto Preview batches run concurrently and carry their own generation.
+  const aiSuggestion = maybeMarkAiSuggestion(acceptedDetections)
+  pendingAiSuggestion = aiSuggestion
 
   const autoPreview = settings.autoMode
   recordWorkflowTrace("detection.batch", "Detection batch entered workflow", {
@@ -438,16 +531,51 @@ async function handleVerseDetectionsInternal(detections: DetectionResult[]) {
     semanticDetectionEnabled: settings.semanticDetectionEnabled,
     semanticConfidenceThreshold: settings.semanticConfidenceThreshold,
   })
-  const previewHit = autoPreview
-    ? confirmedSemanticHit(
-        selectPreviewHit(
-          acceptedDetections,
-          settings.confidenceThreshold,
-          settings.semanticDetectionEnabled,
-          settings.semanticConfidenceThreshold
-        )
+  const hasStrongDirectHit = acceptedDetections.some(
+    (detection) =>
+      detection.source === "direct" &&
+      detection.confidence >= settings.confidenceThreshold &&
+      !detection.is_chapter_only &&
+      (isEgwDetection(detection) || detection.book_number > 0)
+  )
+  // Strong direct hits skip the ranking await entirely. Ambiguous Auto Preview
+  // batches wait for ranking only while they remain the latest generation —
+  // a newer batch must not leave this handler blocked on a stale flight.
+  // Manual mode serializes batches and still processes older generations, so
+  // staleness discard applies only when autoPreview is on.
+  //
+  // Note: `scheduleRanking` also supersedes prior flights with null when a
+  // newer batch schedules. The generation race is defense-in-depth so this
+  // handler cannot hang if ranking never settles (tests, circuit changes).
+  let aiWinner: DetectionResult | null = null
+  if (autoPreview && !hasStrongDirectHit) {
+    if (discardStaleDetectionBatch(generation, acceptedDetections.length)) {
+      return
+    }
+    aiWinner = await Promise.race([
+      aiSuggestion,
+      whenBatchBecomesStale(generation).then(() => null),
+    ])
+  }
+  if (
+    autoPreview &&
+    discardStaleDetectionBatch(generation, acceptedDetections.length)
+  ) {
+    return
+  }
+  const selectedHit = autoPreview
+    ? selectPreviewHit(
+        acceptedDetections,
+        settings.confidenceThreshold,
+        settings.semanticDetectionEnabled,
+        settings.semanticConfidenceThreshold,
+        aiWinner
       )
     : null
+  const previewHit =
+    selectedHit && selectedHit === aiWinner
+      ? selectedHit
+      : confirmedSemanticHit(selectedHit)
   const resolvedDetections = new WeakMap<
     DetectionResult,
     ResolvedDetectionVerse
@@ -456,21 +584,27 @@ async function handleVerseDetectionsInternal(detections: DetectionResult[]) {
     recordAutoSelectionPerformance(previewHit)
     recordDetectionFeedback(previewHit, "auto-selected")
     if (isEgwDetection(previewHit)) {
-      recordWorkflowTrace(
-        "detection.preview.selected",
-        "EGW direct hit selected",
-        {
-          detection: traceDetectionDetails(previewHit),
-          autoQueued: previewHit.auto_queued,
-        }
-      )
-      if (previewHit.auto_queued) {
+      const autoLive = useBroadcastLiveStore.getState().readingModeAutoLive
+      recordWorkflowTrace("detection.preview.selected", "EGW hit selected", {
+        detection: traceDetectionDetails(previewHit),
+        autoQueued: previewHit.auto_queued,
+        autoLive,
+      })
+      if (autoLive) {
         presentEgwParagraph(previewHit.egw_paragraph)
       } else {
         previewEgwParagraph(previewHit.egw_paragraph)
       }
     } else {
       const resolved = await resolveDetectionVerse(previewHit)
+      // Verse lookup can outlive a newer batch the same way ranking can;
+      // never stage preview/live from a superseded generation.
+      if (
+        autoPreview &&
+        discardStaleDetectionBatch(generation, acceptedDetections.length)
+      ) {
+        return
+      }
       resolvedDetections.set(previewHit, resolved)
       recordWorkflowTrace(
         "detection.preview.selected",
@@ -516,16 +650,62 @@ async function handleVerseDetectionsInternal(detections: DetectionResult[]) {
   }
 }
 
-export async function handleVerseDetections(detections: DetectionResult[]) {
-  detectionHandlingChain = detectionHandlingChain
-    .catch((error) => {
-      reportDetectionBatchError(error)
+export function handleVerseDetections(detections: DetectionResult[]): Promise<void> {
+  const generation = ++detectionHandlingGeneration
+  notifyStaleBatchWaiters()
+  const autoMode = useSettingsStore.getState().autoMode
+  const task = autoMode
+    ? handleVerseDetectionsInternal(detections, generation)
+    : detectionHandlingChain
+        .catch((error) => {
+          reportDetectionBatchError(error)
+        })
+        .then(() => handleVerseDetectionsInternal(detections, generation))
+
+  const handled = task.catch((error) => {
+    reportDetectionBatchError(error)
+  })
+  if (!autoMode) detectionHandlingChain = handled
+  return handled
+}
+
+export function scheduleVerseDetections(
+  detections: DetectionResult[]
+): Promise<void> {
+  pendingDetectionBatch.push(...detections)
+
+  const settled = new Promise<void>((resolve) => {
+    detectionArbitrationWaiters.push(resolve)
+  })
+  if (detectionArbitrationTimer) return settled
+
+  detectionArbitrationTimer = setTimeout(() => {
+    const batch = pendingDetectionBatch
+    const waiters = detectionArbitrationWaiters
+    pendingDetectionBatch = []
+    detectionArbitrationWaiters = []
+    detectionArbitrationTimer = null
+
+    void handleVerseDetections(batch).finally(() => {
+      for (const resolve of waiters) resolve()
     })
-    .then(() => handleVerseDetectionsInternal(detections))
-    .catch((error) => {
-      reportDetectionBatchError(error)
-    })
-  return detectionHandlingChain
+  }, DETECTION_ARBITRATION_WINDOW_MS)
+
+  return settled
+}
+
+export function resetDetectionArbitrationForTests(): void {
+  if (detectionArbitrationTimer) clearTimeout(detectionArbitrationTimer)
+  detectionArbitrationTimer = null
+  pendingDetectionBatch = []
+  const waiters = detectionArbitrationWaiters
+  detectionArbitrationWaiters = []
+  for (const resolve of waiters) resolve()
+  // Invalidate any Auto Preview task that was still awaiting a lookup or
+  // ranking promise when the test/session arbitration state was reset.
+  detectionHandlingGeneration += 1
+  notifyStaleBatchWaiters()
+  detectionHandlingChain = Promise.resolve()
 }
 
 export function handleReadingAdvance(advance: ReadingAdvance) {

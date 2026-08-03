@@ -1,0 +1,153 @@
+[
+  {
+    "language": "en",
+    "category": "talents-quote",
+    "mode": "hint",
+    "timestamp": "line-36",
+    "text": "His lord said unto him, Well done, thou good and faithful servant: thou hast been faithful over a few things, I will make thee ruler over many things: enter thou into the joy of thy lord.",
+    "expectedAny": ["Matthew 25:21", "Matthew 25:23"]
+  },
+  {
+    "language": "en",
+    "category": "talents-quote",
+    "mode": "hint",
+    "timestamp": "line-139",
+    "text": "He received the same words: Well done, good and faithful servant.",
+    "expectedAny": ["Matthew 25:21", "Matthew 25:23"]
+  },
+  {
+    "language": "en",
+    "category": "talents-quote",
+    "mode": "hint",
+    "timestamp": "line-44",
+    "text": "For unto every one that hath shall be given, and he shall have abundance: but from him that hath not shall be taken away even that which he hath.",
+    "expectedAny": ["Matthew 25:29", "Luke 19:26"]
+  },
+  {
+    "language": "en",
+    "category": "stewardship-quote",
+    "mode": "hint",
+    "timestamp": "line-74",
+    "text": "The earth is the Lord's, and the fulness thereof; the world, and they that dwell therein.",
+    "expectedAny": ["Psalms 24:1", "1 Corinthians 10:26"]
+  },
+  {
+    "language": "en",
+    "category": "stewardship-quote",
+    "mode": "fire",
+    "timestamp": "line-78",
+    "text": "Every good gift and every perfect gift is from above.",
+    "expected": "James 1:17"
+  },
+  {
+    "language": "en",
+    "category": "stewardship-quote",
+    "mode": "fire",
+    "timestamp": "line-116",
+    "text": "Whatsoever ye do, do it heartily, as to the Lord, and not unto men.",
+    "expected": "Colossians 3:23"
+  },
+  {
+    "language": "en",
+    "category": "grace-quote",
+    "mode": "fire",
+    "timestamp": "line-339",
+    "text": "He who spared not His own Son, but delivered Him up for us all, how shall He not with Him also freely give us all things?",
+    "expected": "Romans 8:32"
+  },
+  {
+    "language": "en",
+    "category": "small-things-quote",
+    "mode": "fire",
+    "timestamp": "line-412",
+    "text": "He that is faithful in that which is least is faithful also in much.",
+    "expected": "Luke 16:10"
+  },
+  {
+    "language": "en",
+    "category": "gifts-quote",
+    "mode": "fire",
+    "timestamp": "line-460",
+    "text": "The eye cannot say unto the hand, I have no need of thee: nor again the head to the feet, I have no need of you.",
+    "expected": "1 Corinthians 12:21"
+  },
+  {
+    "language": "en",
+    "category": "mind-quote",
+    "mode": "fire",
+    "timestamp": "line-576",
+    "text": "Let this mind be in you, which was also in Christ Jesus.",
+    "expected": "Philippians 2:5"
+  },
+  {
+    "language": "en",
+    "category": "mind-quote",
+    "mode": "fire",
+    "timestamp": "line-588",
+    "text": "Whatsoever things are true, whatsoever things are honest, whatsoever things are just, whatsoever things are pure, whatsoever things are lovely, whatsoever things are of good report; if there be any virtue, and if there be any praise, think on these things.",
+    "expected": "Philippians 4:8"
+  },
+  {
+    "language": "en",
+    "category": "speech-quote",
+    "mode": "fire",
+    "timestamp": "line-621",
+    "text": "Death and life are in the power of the tongue.",
+    "expected": "Proverbs 18:21"
+  },
+  {
+    "language": "en",
+    "category": "speech-quote",
+    "mode": "fire",
+    "timestamp": "line-637",
+    "text": "Let your speech be alway with grace.",
+    "expected": "Colossians 4:6"
+  },
+  {
+    "language": "en",
+    "category": "speech-quote",
+    "mode": "fire",
+    "timestamp": "line-679",
+    "text": "Woe is me! for I am undone; because I am a man of unclean lips.",
+    "expected": "Isaiah 6:5"
+  },
+  {
+    "language": "en",
+    "category": "speech-quote",
+    "mode": "hint",
+    "timestamp": "line-680",
+    "text": "The coal from the altar touched his lips. Then God asked, Whom shall I send? And the purified voice answered, Here am I; send me.",
+    "expected": "Isaiah 6:8"
+  },
+  {
+    "language": "en",
+    "category": "prayer-noise",
+    "mode": "silent",
+    "timestamp": "lines-21-25",
+    "text": "Forgive us for comparing ourselves with others. Forgive us for hiding behind excuses. Show us what we have buried. Show us what we have neglected. Give us the grace to be faithful, dependable day after day. In the name of Jesus, amen."
+  },
+  {
+    "language": "en",
+    "category": "sermon-noise",
+    "mode": "silent",
+    "timestamp": "lines-158-173",
+    "text": "Some of us have wasted years wishing for somebody else's talent. We wanted their confidence, their appearance, their opportunities, their family support, their voice, their education, their income, and their audience. Comparison is a thief. It steals gratitude, focus, and courage.",
+    "forbidden": ["Matthew 25:21", "Matthew 25:23"]
+  },
+  {
+    "language": "en",
+    "category": "sermon-noise",
+    "mode": "silent",
+    "timestamp": "lines-273-286",
+    "text": "Use your ability to encourage somebody. Use your ability to organise, repair, explain, pray, listen, give, write, welcome, work with children, remember names, solve practical problems, and notice the person everybody else ignores. Use it for the glory of God.",
+    "forbidden": ["Matthew 25:21", "Matthew 25:23"]
+  },
+  {
+    "language": "en",
+    "category": "sermon-noise",
+    "mode": "silent",
+    "timestamp": "lines-696-708",
+    "text": "Your voice may never be famous. Perhaps a child will remember that you believed in him. Perhaps a discouraged member will remember that you called. Use the talent of speech to make Jesus attractive. Speak of His mercy, patience, answered prayer, the cross, and the hope of His coming.",
+    "forbidden": ["Proverbs 18:21", "Colossians 4:6"]
+  }
+]

@@ -71,7 +71,6 @@ describe("settings store", () => {
     mockGet.mockImplementation(async (key: string) => {
       if (key === "gain") return 2.5
       if (key === "sttProvider") return "deepgram"
-      if (key === "autoPreviewDetections") return false
       if (key === "bibleDetectionEnabled") return false
       if (key === "semanticDetectionEnabled") return true
       return null
@@ -84,7 +83,6 @@ describe("settings store", () => {
     const state = useSettingsStore.getState()
     expect(state.gain).toBe(2.5)
     expect(state.sttProvider).toBe("deepgram")
-    expect(state.autoPreviewDetections).toBe(false)
     expect(state.bibleDetectionEnabled).toBe(false)
     expect(state.semanticDetectionEnabled).toBe(true)
     // Defaults remain for keys with null
@@ -104,12 +102,11 @@ describe("settings store", () => {
     expect(after.gain).toBe(1.0)
     expect(after.sttProvider).toBe("vosk")
     expect(after.autoMode).toBe(false)
-    expect(after.autoPreviewDetections).toBe(true)
     expect(after.bibleDetectionEnabled).toBe(true)
     expect(after.semanticDetectionEnabled).toBe(true)
   })
 
-  it("migrates the legacy default confidence threshold to the auto-live default", async () => {
+  it("preserves an intentional 80% confidence threshold during hydration", async () => {
     mockGet.mockImplementation(async (key: string) => {
       if (key === "confidenceThreshold") return 0.8
       return null
@@ -119,7 +116,20 @@ describe("settings store", () => {
       await import("./settings-store")
     await hydrateSettings()
 
-    expect(useSettingsStore.getState().confidenceThreshold).toBe(0.9)
+    expect(useSettingsStore.getState().confidenceThreshold).toBe(0.8)
+  })
+
+  it("preserves an intentional 85% confidence threshold during hydration", async () => {
+    mockGet.mockImplementation(async (key: string) => {
+      if (key === "confidenceThreshold") return 0.85
+      return null
+    })
+
+    const { hydrateSettings, useSettingsStore } =
+      await import("./settings-store")
+    await hydrateSettings()
+
+    expect(useSettingsStore.getState().confidenceThreshold).toBe(0.85)
   })
 
   it("clamps confidence threshold updates to a finite 0-1 range", async () => {

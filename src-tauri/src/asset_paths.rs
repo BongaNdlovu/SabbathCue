@@ -13,8 +13,13 @@ pub const PREFERRED_EMBEDDINGS_FILENAME: &str = "public-minilm-l6-v2-q8.bin";
 pub const PREFERRED_EMBEDDING_IDS_FILENAME: &str = "public-minilm-l6-v2-q8-ids.bin";
 const F32_EMBEDDINGS_FILENAME: &str = "public-minilm-l6-v2.bin";
 const F32_EMBEDDING_IDS_FILENAME: &str = "public-minilm-l6-v2-ids.bin";
-const LEGACY_EMBEDDINGS_FILENAME: &str = "kjv-minilm-l6-v2.bin";
-const LEGACY_EMBEDDING_IDS_FILENAME: &str = "kjv-minilm-l6-v2-ids.bin";
+/// Basenames (lowercase) that must never load as the live semantic index.
+/// English-only / pre-split corpora pass Gen 1:1 sanity but silently degrade quality.
+const REJECTED_EMBEDDINGS_BASENAME_MARKERS: &[&str] = &[
+    "kjv-minilm-l6-v2",
+    "kjv-nkjv-nlt-minilm",
+    "kjv-nkjv-nlt-gte",
+];
 #[cfg(test)]
 const VOSK_SMALL_MODEL_DIRNAME: &str = "vosk-model-small-en-us";
 const VOSK_MODEL_DIRNAMES: &[&str] = &[
@@ -58,12 +63,28 @@ fn is_minilm_asset(path: &Path) -> bool {
         .contains("minilm-l6-v2")
 }
 
+fn is_rejected_embeddings_basename(path: &Path) -> bool {
+    let name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    REJECTED_EMBEDDINGS_BASENAME_MARKERS
+        .iter()
+        .any(|marker| name.contains(marker))
+}
+
 pub fn semantic_assets_are_compatible(
     model_path: &Path,
     tokenizer_path: &Path,
     embeddings_path: &Path,
     ids_path: &Path,
 ) -> bool {
+    if is_rejected_embeddings_basename(embeddings_path)
+        || is_rejected_embeddings_basename(ids_path)
+    {
+        return false;
+    }
     [model_path, tokenizer_path, embeddings_path, ids_path]
         .iter()
         .all(|path| is_minilm_asset(path))
@@ -370,13 +391,15 @@ pub fn semantic_embedding_candidates(app: &AppHandle) -> Vec<(PathBuf, PathBuf)>
 }
 
 fn semantic_embedding_candidates_for_roots(roots: &[PathBuf]) -> Vec<(PathBuf, PathBuf)> {
+    // Public multi-vector corpus only (q8 preferred, f32 fallback).
+    // Do not fall back to pre-split English-only indexes — they pass Gen 1:1
+    // sanity but silently drop WEB/ES/FR/PT vectors and de-truncated KJV.
     let pairs = [
         (
             PREFERRED_EMBEDDINGS_FILENAME,
             PREFERRED_EMBEDDING_IDS_FILENAME,
         ),
         (F32_EMBEDDINGS_FILENAME, F32_EMBEDDING_IDS_FILENAME),
-        (LEGACY_EMBEDDINGS_FILENAME, LEGACY_EMBEDDING_IDS_FILENAME),
     ];
 
     pairs
@@ -566,7 +589,7 @@ mod tests {
     }
 
     #[test]
-    fn semantic_candidates_prefer_paired_q8_then_f32_then_legacy_assets() {
+    fn semantic_candidates_prefer_paired_q8_then_f32_public_assets_only() {
         let root_a = PathBuf::from("a");
         let root_b = PathBuf::from("b");
 
@@ -599,19 +622,14 @@ mod tests {
                     root_b.join("embeddings").join(F32_EMBEDDINGS_FILENAME),
                     root_b.join("embeddings").join(F32_EMBEDDING_IDS_FILENAME),
                 ),
-                (
-                    root_a.join("embeddings").join(LEGACY_EMBEDDINGS_FILENAME),
-                    root_a
-                        .join("embeddings")
-                        .join(LEGACY_EMBEDDING_IDS_FILENAME),
-                ),
-                (
-                    root_b.join("embeddings").join(LEGACY_EMBEDDINGS_FILENAME),
-                    root_b
-                        .join("embeddings")
-                        .join(LEGACY_EMBEDDING_IDS_FILENAME),
-                ),
             ]
+        );
+        assert!(
+            candidates.iter().all(|(emb, _)| {
+                let name = emb.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                name.starts_with("public-minilm-l6-v2")
+            }),
+            "legacy kjv-* corpora must not appear in the candidate list"
         );
     }
 
@@ -622,6 +640,22 @@ mod tests {
             Path::new("models/minilm-l6-v2-int8/tokenizer.json"),
             Path::new("embeddings/public-minilm-l6-v2.bin"),
             Path::new("embeddings/public-minilm-l6-v2-ids.bin"),
+        ));
+    }
+
+    #[test]
+    fn semantic_assets_are_compatible_rejects_legacy_english_only_corpus() {
+        assert!(!semantic_assets_are_compatible(
+            Path::new("models/minilm-l6-v2-int8/onnx/model_quantized.onnx"),
+            Path::new("models/minilm-l6-v2/tokenizer.json"),
+            Path::new("embeddings/kjv-minilm-l6-v2.bin"),
+            Path::new("embeddings/kjv-minilm-l6-v2-ids.bin"),
+        ));
+        assert!(!semantic_assets_are_compatible(
+            Path::new("models/minilm-l6-v2-int8/onnx/model_quantized.onnx"),
+            Path::new("models/minilm-l6-v2/tokenizer.json"),
+            Path::new("embeddings/kjv-nkjv-nlt-minilm-l6-v2.bin"),
+            Path::new("embeddings/kjv-nkjv-nlt-minilm-l6-v2-ids.bin"),
         ));
     }
 

@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
 """
-Pre-compute verse embeddings using the SAME ONNX model the Rust app uses.
+DEPRECATED for release corpus generation.
+
+Use ``bun run precompute:embeddings`` instead. The Rust precompute binary is
+the source of truth because it shares the app's tokenizer configuration,
+dynamic padding, pooling, and normalization path. This script remains as a
+diagnostic/export fallback and is not safe for producing the shipped index.
+
+Historical description: pre-compute verse embeddings using the SAME ONNX model
+the Rust app uses.
 
 This ensures the precomputed verse embeddings are in the exact same vector space
 as runtime query embeddings. Uses the `sentence_embedding` output from the ONNX
@@ -38,7 +46,17 @@ BATCH_SIZE = 32
 
 
 def main():
-    print(f"\n=== SabbathCue Verse Embedding Pre-computation (ONNX) ===")
+    print(
+        "ERROR: data/precompute-embeddings-onnx.py is deprecated for production indexes.\n"
+        "It still uses Fixed(128) padding and must not rebuild public-minilm-l6-v2.\n"
+        "Use: bun run precompute:embeddings\n"
+        "(Rust OnnxEmbedder: BatchLongest padding + max_tokens=128 + mean pool + L2.)\n"
+        "Pass --force-deprecated only for offline diagnostics you will not ship."
+    )
+    if "--force-deprecated" not in sys.argv:
+        sys.exit(2)
+
+    print(f"\n=== SabbathCue Verse Embedding Pre-computation (ONNX, DEPRECATED) ===")
 
     # Select model
     if MODEL_INT8.exists():
@@ -51,7 +69,7 @@ def main():
         print(f"ERROR: No ONNX model found at {MODEL_INT8} or {MODEL_FP32}")
         sys.exit(1)
 
-    # Load tokenizer
+    # Load tokenizer — Fixed(128) is intentional only for this deprecated path.
     print(f"Tokenizer: {TOKENIZER_PATH}")
     tokenizer = Tokenizer.from_file(str(TOKENIZER_PATH))
     tokenizer.enable_truncation(max_length=MAX_LENGTH)

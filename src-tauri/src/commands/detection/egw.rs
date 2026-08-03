@@ -233,11 +233,12 @@ fn best_egw_alias_match<'a>(
 ///
 /// "white" alone is excluded on purpose: white robes, white as snow and white
 /// horses are common sermon imagery, and a bare colour word is not attribution.
-const EGW_CUE_PHRASES: [&str; 4] = [
+const EGW_CUE_PHRASES: [&str; 5] = [
     "ellen white",
     "ellen g white",
     "sister white",
     "spirit of prophecy",
+    "statement by illinois",
 ];
 
 /// True when the window attributes its content to Ellen G. White, either by
@@ -760,6 +761,40 @@ mod cue_tests {
             &books(),
             "Ellen White wrote about this"
         ));
+    }
+
+    #[test]
+    fn scoped_illinois_stt_substitution_is_an_author_cue() {
+        assert!(transcript_has_egw_cue(
+            &books(),
+            "I am going to read a statement by Illinois"
+        ));
+    }
+
+    #[test]
+    fn full_title_cue_survives_into_a_truncated_quote_window() {
+        use std::sync::atomic::AtomicU64;
+
+        let cue_at = AtomicU64::new(0);
+        let full = "A statement in Patriarchs and Prophets introduces a quotation";
+        let quote_tail = "the human race yet retained much of its early vigor";
+
+        assert!(super::note_and_check_egw_cue(
+            &books(),
+            full,
+            1_000,
+            &cue_at
+        ));
+        assert!(super::note_and_check_egw_cue(
+            &books(),
+            quote_tail,
+            1_001,
+            &cue_at
+        ));
+        assert_eq!(
+            rhema_detection::egw_quote_score(8, true),
+            Some((0.92, true))
+        );
     }
 
     #[test]

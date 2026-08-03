@@ -68,7 +68,7 @@ describe("detection store", () => {
     expect(detections[1].verse_ref).toBe("John 3:16")
   })
 
-  it("direct hit outranks stronger semantic hit", () => {
+  it("higher-confidence semantic hit outranks lower-confidence direct hit", () => {
     const store = useDetectionStore.getState()
 
     store.addDetection(
@@ -89,8 +89,59 @@ describe("detection store", () => {
     )
 
     const detections = useDetectionStore.getState().detections
-    expect(detections[0].verse_ref).toBe("Weak Direct")
-    expect(detections[1].verse_ref).toBe("Strong Semantic")
+    expect(detections[0].verse_ref).toBe("Strong Semantic")
+    expect(detections[1].verse_ref).toBe("Weak Direct")
+  })
+
+  it("puts the highest-confidence detection first across Bible and EGW content", () => {
+    const store = useDetectionStore.getState()
+
+    store.addDetections([
+      makeDetection({
+        verse_ref: "Bible 1:1",
+        confidence: 0.84,
+      }),
+      makeEgwSemantic({
+        verse_ref: "Patriarchs and Prophets p.29 par.2",
+        confidence: 0.97,
+      }),
+      makeDetection({
+        content_type: "hymn",
+        verse_ref: "Hymn 46",
+        book_name: "Hymn",
+        book_number: 0,
+        chapter: 0,
+        verse: 46,
+        confidence: 0.99,
+        source: "direct",
+        auto_queued: true,
+        hymn: { number: 46, id: "hymn-46", title: "Holy, Holy, Holy" },
+      }),
+    ])
+
+    const detections = useDetectionStore.getState().detections
+    expect(detections.map((detection) => detection.content_type)).toEqual([
+      "hymn",
+      "egw",
+      undefined,
+    ])
+    expect(detections.map((detection) => detection.confidence)).toEqual([
+      0.99,
+      0.97,
+      0.84,
+    ])
+  })
+
+  it("applies confidence-first ordering when a detection batch is replaced", () => {
+    useDetectionStore.getState().setDetections([
+      makeDetection({ verse_ref: "Lower 1:1", confidence: 0.81 }),
+      makeDetection({ verse_ref: "Higher 1:1", confidence: 0.98 }),
+    ])
+
+    expect(useDetectionStore.getState().detections.map((d) => d.verse_ref)).toEqual([
+      "Higher 1:1",
+      "Lower 1:1",
+    ])
   })
 
   it("keeps a freshly spoken EGW detection even when the box is full of higher-confidence Bible hits", () => {
@@ -166,7 +217,7 @@ describe("detection store", () => {
     )
   })
 
-  it("near-tied direct hit wins over semantic", () => {
+  it("higher-confidence semantic hit wins over near-tied direct hit", () => {
     const store = useDetectionStore.getState()
 
     store.addDetection(
@@ -187,8 +238,8 @@ describe("detection store", () => {
     )
 
     const detections = useDetectionStore.getState().detections
-    expect(detections[0].verse_ref).toBe("Near Direct")
-    expect(detections[1].verse_ref).toBe("Near Semantic")
+    expect(detections[0].verse_ref).toBe("Near Semantic")
+    expect(detections[1].verse_ref).toBe("Near Direct")
   })
 
   it("duplicate verse refreshes recency and keeps best confidence", () => {
@@ -706,7 +757,7 @@ describe("detection store", () => {
     })
   }
 
-  it("never lets an EGW hit displace a verse from the recent box", () => {
+  it("keeps the strongest EGW hit visible when the recent box is full", () => {
     const store = useDetectionStore.getState()
     for (let index = 0; index < 5; index += 1) {
       now = new Date("2026-05-19T00:00:00Z").getTime() + index * 1000
@@ -724,10 +775,11 @@ describe("detection store", () => {
 
     const detections = useDetectionStore.getState().detections
     expect(detections).toHaveLength(5)
-    expect(detections.some((d) => d.content_type === "egw")).toBe(false)
+    expect(detections[0].confidence).toBe(0.96)
+    expect(detections.filter((d) => d.content_type === "egw")).toHaveLength(1)
   })
 
-  it("keeps at most one EGW card and sorts it after every verse", () => {
+  it("keeps at most one EGW card and orders it by confidence", () => {
     const store = useDetectionStore.getState()
     store.addDetection(makeDetection({ verse_ref: "John 3:16" }))
 
@@ -747,7 +799,8 @@ describe("detection store", () => {
     const egw = detections.filter((d) => d.content_type === "egw")
     expect(egw).toHaveLength(1)
     expect(egw[0].chapter).toBe(481)
-    expect(detections[detections.length - 1].content_type).toBe("egw")
+    expect(detections[0].confidence).toBe(0.96)
+    expect(detections[1].content_type).toBe("egw")
   })
 
   it("holds EGW to its own floor when the Bible slider is lowered", () => {

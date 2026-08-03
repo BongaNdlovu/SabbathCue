@@ -31,7 +31,7 @@ export function DisplayModeSection() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-3">
         <label className="text-xs font-medium tracking-wider text-muted-foreground uppercase">
-          Broadcast Mode
+          Detection mode
         </label>
 
         <RadioGroup
@@ -46,11 +46,10 @@ export function DisplayModeSection() {
           >
             <RadioGroupItem value="auto" className="mt-0.5" />
             <div className="flex flex-col gap-1">
-              <span className="text-xs font-medium text-foreground">Auto</span>
+              <span className="text-xs font-medium text-foreground">Auto preview</span>
               <p className="text-[0.625rem] leading-relaxed text-muted-foreground">
-                Automatically displays the strongest detected verse on
-                broadcast output. A 2.5-second cooldown prevents rapid
-                flickering. Best for hands-off operation.
+                Automatically selects the strongest eligible detection for
+                preview. Live output is controlled by the Auto Live switch.
               </p>
             </div>
           </label>
@@ -66,10 +65,7 @@ export function DisplayModeSection() {
                 Manual
               </span>
               <p className="text-[0.625rem] leading-relaxed text-muted-foreground">
-                Nothing goes to broadcast until you explicitly send it. Detected
-                verses still appear in the AI Detections panel and queue, but
-                you decide which ones to display and when. Best for important
-                services.
+                Detected verses remain available for operator review and queueing.
               </p>
             </div>
           </label>
@@ -99,15 +95,15 @@ export function DisplayModeSection() {
         <div className="flex items-start justify-between gap-3">
           <div className="flex flex-col gap-1">
             <label className="text-xs font-medium tracking-wider text-muted-foreground uppercase">
-              Auto-live reading mode
+              Auto Live output
             </label>
             <p className="text-[0.625rem] text-muted-foreground">
-              Send auto-staged verses straight to the live output. Stays in sync
-              with the Auto-live switch on the live screen.
+              Send qualifying detections straight to live output. This is the
+              same control as the Auto Live switch on the live screen.
             </p>
           </div>
           <Switch
-            aria-label="Auto-live reading mode"
+            aria-label="Auto Live output"
             checked={readingModeAutoLive}
             onCheckedChange={setReadingModeAutoLive}
           />
@@ -182,7 +178,7 @@ export function DisplayModeSection() {
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
             <label className="text-xs font-medium tracking-wider text-muted-foreground uppercase">
-              Auto-live
+              Minimum confidence
             </label>
             <span className="text-xs text-muted-foreground tabular-nums">
               {thresholdPercent}%

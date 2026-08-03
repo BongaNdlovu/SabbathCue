@@ -95,12 +95,22 @@ describe("buildRankingCandidates", () => {
         book_name: "Amos",
       }),
     ]
-    const candidates = buildRankingCandidates(
-      detections,
-      "such a time as this"
-    )
+    const candidates = buildRankingCandidates(detections, "such a time as this")
     expect(candidates).toHaveLength(2)
     expect(candidates[0].confidence).toBe(0.7)
+  })
+
+  it("keeps EGW statements out of Bible candidate ranking", () => {
+    const candidates = buildRankingCandidates([
+      semantic(),
+      semantic({
+        content_type: "egw",
+        verse_ref: "Patriarchs and Prophets p.74 par.1",
+      }),
+    ])
+
+    expect(candidates).toHaveLength(1)
+    expect(candidates[0].id).toBe("44:16:25")
   })
 })
 
@@ -166,10 +176,7 @@ describe("gate: recent strong direct hit", () => {
   })
 
   it("does not suppress after a weak direct hit", async () => {
-    noteBatchForGating(
-      [semantic({ source: "direct", confidence: 0.5 })],
-      gate
-    )
+    noteBatchForGating([semantic({ source: "direct", confidence: 0.5 })], gate)
     invokeTauri.mockResolvedValue(null)
 
     await rankSemanticDetections(two, gate)
@@ -214,10 +221,7 @@ describe("ranking result cache", () => {
     invokeTauri.mockResolvedValue("44:16:26")
 
     const first = await rankSemanticDetections(two, gate)
-    const second = await rankSemanticDetections(
-      [two[1], two[0]],
-      gate
-    )
+    const second = await rankSemanticDetections([two[1], two[0]], gate)
 
     expect(first?.verse).toBe(26)
     expect(second?.verse).toBe(26)
@@ -398,10 +402,9 @@ describe("preferSpokenBook", () => {
   })
 
   it("does not match a book name inside a longer word", () => {
-    expect(preferSpokenBook([deut, exodus], "the exodusing of israel")).toEqual([
-      deut,
-      exodus,
-    ])
+    expect(preferSpokenBook([deut, exodus], "the exodusing of israel")).toEqual(
+      [deut, exodus]
+    )
   })
 
   it("feeds a stable, boosted order to the request", async () => {
@@ -409,8 +412,7 @@ describe("preferSpokenBook", () => {
     await rankSemanticDetections(
       [deut, exodus].map((d) => ({
         ...d,
-        transcript_snippet:
-          "a verse in the book of exodus about the sabbath",
+        transcript_snippet: "a verse in the book of exodus about the sabbath",
       })),
       gate
     )

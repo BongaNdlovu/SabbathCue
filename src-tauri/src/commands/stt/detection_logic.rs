@@ -115,6 +115,15 @@ pub(crate) fn spoken_book_hint(transcript: &str) -> Option<i32> {
         return None;
     }
     let book = books[0];
+    let lower = transcript.to_ascii_lowercase();
+    if matches.iter().any(|book_match| {
+        book_match.book_number == book
+            && lower
+                .get(book_match.end..)
+                .is_some_and(|tail| tail.trim_start().starts_with("the baptist"))
+    }) {
+        return None;
+    }
     for book_match in &matches {
         if let Some(vr) = parse_reference(transcript, book_match) {
             if vr.verse_start > 0 {

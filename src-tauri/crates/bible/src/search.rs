@@ -218,6 +218,11 @@ pub(crate) fn build_or_query(input: &str) -> String {
                 candidates.push((position, (*variant).to_string()));
             }
         }
+        for variant in spoken_kjv_variants(word) {
+            if seen.insert((*variant).to_string()) {
+                candidates.push((position, (*variant).to_string()));
+            }
+        }
     }
     // Longer words carry more retrieval information in fallback OR searches.
     // Select them before applying the fixed query budget, then restore speech
@@ -238,6 +243,18 @@ pub(crate) fn build_or_query(input: &str) -> String {
         .map(|(_, token)| format!("\"{token}\""))
         .collect::<Vec<_>>()
         .join(" OR ")
+}
+
+fn spoken_kjv_variants(word: &str) -> &'static [&'static str] {
+    match word.to_ascii_lowercase().as_str() {
+        "boat" | "boats" => &["ship"],
+        "prison" => &["prisoner", "prisoners"],
+        "storm" | "storms" => &["wind", "sea", "calm", "tempest"],
+        "baptist" | "baptizing" | "baptizes" | "baptize" | "baptism" => {
+            &["baptized", "baptize", "baptizing", "baptism"]
+        }
+        _ => &[],
+    }
 }
 
 // ── SQL runner ──────────────────────────────────────────────────────
@@ -349,6 +366,25 @@ fn build_short_clause_and_queries(input: &str) -> Vec<String> {
     clauses.into_iter().map(|(_, query)| query).collect()
 }
 
+/// Short concept anchors for modern event descriptions whose wording differs
+/// from the KJV text. These are issued before the rolling phrase spans so the
+/// anchor verse enters the candidate pool even when surrounding names or
+/// commentary dilute BM25 ranking.
+fn build_topic_phrase_queries(input: &str) -> Vec<String> {
+    let lower = input.to_ascii_lowercase();
+    let mut queries = Vec::new();
+    if lower.contains("born again") {
+        queries.push("\"born again\"".to_string());
+    }
+    if lower.contains("baptiz") {
+        if lower.contains("jesus") {
+            queries.push("baptized Jesus".to_string());
+        }
+        queries.push("\"baptized\"".to_string());
+    }
+    queries
+}
+
 // ── BibleDb methods ─────────────────────────────────────────────────
 
 impl BibleDb {
@@ -446,10 +482,22 @@ impl BibleDb {
         log::debug!("[FTS5-BM25] phrase tier: {term_count} terms");
         let (spans, end_n) = build_phrase_spans_with_end_count(query);
         let mut all_results = Vec::new();
-        for span in spans.iter().take(end_n) {
-            all_results = run_fts_query(&conn, span, fetch_limit, false, true, book_hint)?;
-            if !all_results.is_empty() {
-                break;
+        for topic_query in build_topic_phrase_queries(query) {
+            all_results.extend(run_fts_query(
+                &conn,
+                &topic_query,
+                fetch_limit,
+                false,
+                true,
+                book_hint,
+            )?);
+        }
+        if all_results.is_empty() {
+            for span in spans.iter().take(end_n) {
+                all_results = run_fts_query(&conn, span, fetch_limit, false, true, book_hint)?;
+                if !all_results.is_empty() {
+                    break;
+                }
             }
         }
         if all_results.is_empty() {
@@ -998,6 +1046,54 @@ mod tests {
     fn or_query_does_not_expand_unlisted_words() {
         let query = build_or_query("the shepherd");
         assert!(!query.contains("\"noe\""));
+    }
+
+    #[test]
+    fn or_query_expands_baptism_event_language() {
+        let query = build_or_query("the verse where John the Baptist baptizes Jesus");
+        assert!(
+            query.contains("\"baptized\""),
+            "baptism variants missing: {query}"
+        );
+        assert!(
+            query.contains("\"baptism\""),
+            "baptism concept missing: {query}"
+        );
+    }
+
+    #[test]
+    fn or_query_expands_nicodemus_born_again_language() {
+        let query = build_or_query("where Jesus and Nicodemus talk about being born again");
+        assert!(query.contains("\"born\""), "born concept missing: {query}");
+        assert!(
+            query.contains("\"again\""),
+            "again concept missing: {query}"
+        );
+    }
+
+    #[test]
+    fn or_query_does_not_expand_nicodemus_without_born_again_phrase() {
+        let query = build_or_query("Nicodemus asked Jesus a question");
+        assert!(
+            !query.contains("\"born\""),
+            "unexpected born expansion: {query}"
+        );
+        assert!(
+            !query.contains("\"again\""),
+            "unexpected again expansion: {query}"
+        );
+    }
+
+    #[test]
+    fn topic_phrase_queries_keep_modern_event_anchors() {
+        assert_eq!(
+            build_topic_phrase_queries("where Jesus and Nicodemus talk about being born again"),
+            vec!["\"born again\""]
+        );
+        assert_eq!(
+            build_topic_phrase_queries("John the Baptist baptizing Jesus"),
+            vec!["baptized Jesus", "\"baptized\""]
+        );
     }
 
     #[test]

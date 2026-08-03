@@ -40,4 +40,15 @@ describe("DisplayModeSection Bible mode", () => {
       )
     ).not.toBeNull()
   })
+
+  it("uses the settings Auto Live switch as the live-output permission", () => {
+    render(<DisplayModeSection />)
+
+    const autoLive = screen.getByRole("switch", { name: "Auto Live output" })
+    expect(autoLive.getAttribute("data-state")).toBe("unchecked")
+
+    fireEvent.click(autoLive)
+
+    expect(useBroadcastStore.getState().readingModeAutoLive).toBe(true)
+  })
 })
