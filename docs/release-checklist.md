@@ -22,7 +22,9 @@ Run these from the repo root unless noted:
 - [ ] (Optional) Confirm LibreOffice is available for PowerPoint import testing.
 - [ ] `bun run download:model`
 - [ ] `bun run export:verses`
+- [ ] Confirm the export contains one KJV record plus independent WEB/SpaRV/FreJND/PorBLivre records per available verse (about 155k records; no cross-language concatenation).
 - [ ] `bun run precompute:embeddings`
+- [ ] Confirm Rust precompute uses the runtime tokenizer's dynamic batch-longest padding with max 128-token truncation.
 - [ ] `bun run quantize:embeddings`
 - [ ] `bun run compare:embeddings`
 - [ ] `bun run typecheck`

@@ -960,12 +960,7 @@ impl AutoLiveSelector {
                         && result.detection.confidence >= threshold
                         && !result.detection.is_chapter_only
                 })
-                .max_by(|a, b| {
-                    a.detection
-                        .rank_score()
-                        .partial_cmp(&b.detection.rank_score())
-                        .unwrap_or(std::cmp::Ordering::Equal)
-                })
+                .max_by(|a, b| detection_ordering_cmp(&a.detection, &b.detection))
         };
 
         if let Some(direct) = best(true) {
@@ -974,7 +969,7 @@ impl AutoLiveSelector {
         }
 
         let semantic = best(false)?;
-        let runner_up_score = detections
+        let runner_up = detections
             .iter()
             .filter(|candidate| {
                 matches!(
@@ -983,10 +978,10 @@ impl AutoLiveSelector {
                 ) && !candidate.detection.is_chapter_only
                     && !std::ptr::eq(*candidate, semantic)
             })
-            .map(|candidate| candidate.detection.rank_score())
-            .max_by(f64::total_cmp);
-        if runner_up_score.is_some_and(|runner_up| {
-            semantic.detection.rank_score() - runner_up < SEMANTIC_AUTO_LIVE_MIN_MARGIN
+            .max_by(|a, b| detection_ordering_cmp(&a.detection, &b.detection));
+        if runner_up.is_some_and(|runner| {
+            detection_ordering_gap(&semantic.detection, &runner.detection)
+                < SEMANTIC_AUTO_LIVE_MIN_MARGIN
         }) {
             return None;
         }
@@ -1003,6 +998,32 @@ impl AutoLiveSelector {
             self.pending_semantic = Some(key);
             None
         }
+    }
+}
+
+fn detection_ordering_cmp(
+    a: &rhema_detection::types::Detection,
+    b: &rhema_detection::types::Detection,
+) -> std::cmp::Ordering {
+    a.confidence
+        .partial_cmp(&b.confidence)
+        .unwrap_or(std::cmp::Ordering::Equal)
+        .then_with(|| {
+            a.rank_score()
+                .partial_cmp(&b.rank_score())
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+}
+
+fn detection_ordering_gap(
+    strongest: &rhema_detection::types::Detection,
+    runner_up: &rhema_detection::types::Detection,
+) -> f64 {
+    let confidence_gap = strongest.confidence - runner_up.confidence;
+    if confidence_gap.abs() > f64::EPSILON {
+        confidence_gap
+    } else {
+        strongest.rank_score() - runner_up.rank_score()
     }
 }
 

@@ -23,7 +23,9 @@ use crate::error::DetectionError;
 ///
 /// Loads a transformer model exported to ONNX format and a corresponding
 /// `HuggingFace` tokenizer.  Inference produces a fixed-dimension dense
-/// vector via mean pooling over the last hidden state.
+/// vector via mean pooling over the last hidden state. Single-text inference
+/// uses batch-longest padding, so the sequence contains only the encoded text
+/// (plus special tokens) while truncation remains capped at `MAX_TOKENS`.
 ///
 /// The inner `Session` requires `&mut self` for `run`, and `Tokenizer` is
 /// `Send` but not `Sync`, so we wrap both in separate `Mutex`es to satisfy
@@ -48,8 +50,8 @@ unsafe impl Sync for OnnxEmbedder {}
 #[cfg(feature = "onnx")]
 impl OnnxEmbedder {
     /// Maximum number of tokens the model will accept.
-    /// Bible verses are short (~20 tokens avg). 128 is plenty and 4x faster
-    /// than 512 because the model doesn't process unnecessary padding tokens.
+    /// Bible verses are short (~20 tokens avg). Truncation stays at 128 so
+    /// two-sentence detection windows retain the existing context limit.
     /// MUST match the Python precompute script (data/precompute-embeddings-onnx.py `MAX_LENGTH`).
     const MAX_TOKENS: usize = 128;
 
@@ -80,25 +82,15 @@ impl OnnxEmbedder {
         let mut tokenizer = Tokenizer::from_file(tokenizer_path)
             .map_err(|e| DetectionError::Internal(format!("tokenizer load: {e}")))?;
 
-        // Ensure the tokenizer pads and truncates to our max length.
-        let pad_id = tokenizer.get_vocab(true).get("[PAD]").copied().unwrap_or(0);
-        let pad_token = tokenizer
-            .id_to_token(pad_id)
-            .unwrap_or_else(|| "[PAD]".to_string());
+        // Configure dynamic (batch-longest) padding and the shared truncation
+        // limit. Precompute uses this same loader, so corpus and query vectors
+        // stay in the same model/pooling/normalisation path after a rebuild.
+        Self::configure_tokenizer(&mut tokenizer)?;
 
-        tokenizer.with_padding(Some(tokenizers::PaddingParams {
-            strategy: tokenizers::PaddingStrategy::Fixed(Self::MAX_TOKENS),
-            pad_id,
-            pad_token,
-            ..Default::default()
-        }));
-
-        tokenizer
-            .with_truncation(Some(tokenizers::TruncationParams {
-                max_length: Self::MAX_TOKENS,
-                ..Default::default()
-            }))
-            .map_err(|e| DetectionError::Internal(format!("tokenizer truncation: {e}")))?;
+        log::info!(
+            "OnnxEmbedder tokenizer configured: padding=dynamic max_tokens={}",
+            Self::MAX_TOKENS
+        );
 
         let has_position_ids = session.inputs().iter().any(|i| i.name() == "position_ids");
         let has_token_type_ids = session
@@ -166,6 +158,29 @@ impl OnnxEmbedder {
         })
     }
 
+    fn configure_tokenizer(tokenizer: &mut Tokenizer) -> Result<(), DetectionError> {
+        let pad_id = tokenizer.get_vocab(true).get("[PAD]").copied().unwrap_or(0);
+        let pad_token = tokenizer
+            .id_to_token(pad_id)
+            .unwrap_or_else(|| "[PAD]".to_string());
+
+        tokenizer.with_padding(Some(tokenizers::PaddingParams {
+            strategy: tokenizers::PaddingStrategy::BatchLongest,
+            pad_id,
+            pad_token,
+            ..Default::default()
+        }));
+
+        tokenizer
+            .with_truncation(Some(tokenizers::TruncationParams {
+                max_length: Self::MAX_TOKENS,
+                ..Default::default()
+            }))
+            .map_err(|e| DetectionError::Internal(format!("tokenizer truncation: {e}")))?;
+
+        Ok(())
+    }
+
     /// Override the prompt prefix prepended to every input text.
     ///
     /// Some models (e.g. E5) expect `"query: "` for queries and
@@ -178,7 +193,7 @@ impl OnnxEmbedder {
     ///
     /// Steps:
     /// 1. Prepend the prompt prefix.
-    /// 2. Tokenize (pad / truncate to `MAX_TOKENS`).
+    /// 2. Tokenize (batch-longest pad, truncate to `MAX_TOKENS`).
     /// 3. Build `input_ids` and `attention_mask` tensors.
     /// 4. Run ONNX inference.
     /// 5. Mean-pool the last hidden state over the attention mask.
@@ -335,6 +350,100 @@ impl OnnxEmbedder {
         log::info!("[ONNX] embed() took {:?} for {} chars", elapsed, text.len());
 
         Ok(result)
+    }
+}
+
+#[cfg(all(test, feature = "onnx"))]
+mod tests {
+    use tokenizers::models::wordpiece::WordPiece;
+    use tokenizers::pre_tokenizers::whitespace::Whitespace;
+    use tokenizers::processors::bert::BertProcessing;
+
+    use super::*;
+
+    fn test_tokenizer() -> Tokenizer {
+        let vocabulary = [
+            ("[UNK]".to_string(), 0),
+            ("[CLS]".to_string(), 1),
+            ("[SEP]".to_string(), 2),
+            ("[PAD]".to_string(), 3),
+            ("for".to_string(), 4),
+            ("god".to_string(), 5),
+            ("so".to_string(), 6),
+            ("loved".to_string(), 7),
+            ("the".to_string(), 8),
+            ("world".to_string(), 9),
+        ];
+        let model = WordPiece::builder()
+            .vocab(vocabulary)
+            .unk_token("[UNK]".to_string())
+            .build()
+            .expect("test WordPiece model");
+        let mut tokenizer = Tokenizer::new(model);
+        tokenizer.with_pre_tokenizer(Some(Whitespace {}));
+        tokenizer.with_post_processor(Some(BertProcessing::new(
+            ("[SEP]".to_string(), 2),
+            ("[CLS]".to_string(), 1),
+        )));
+        tokenizer
+    }
+
+    #[test]
+    fn short_query_seq_len_is_unpadded() {
+        let text = "for God so loved the world";
+        let mut raw = test_tokenizer();
+        raw.with_padding(None);
+        raw.with_truncation(None).expect("disable truncation");
+        let expected = raw
+            .encode(text, true)
+            .expect("raw encoding")
+            .get_ids()
+            .len();
+
+        let mut tokenizer = test_tokenizer();
+        OnnxEmbedder::configure_tokenizer(&mut tokenizer).expect("configure tokenizer");
+        let actual = tokenizer.encode(text, true).expect("dynamic encoding");
+
+        assert_eq!(actual.get_ids().len(), expected);
+        assert!(actual.get_ids().len() < OnnxEmbedder::MAX_TOKENS);
+    }
+
+    #[test]
+    fn long_query_still_truncates_to_max_tokens() {
+        let text = (0..200).map(|_| "god").collect::<Vec<_>>().join(" ");
+        let mut tokenizer = test_tokenizer();
+        OnnxEmbedder::configure_tokenizer(&mut tokenizer).expect("configure tokenizer");
+        let encoding = tokenizer.encode(text, true).expect("long encoding");
+
+        assert_eq!(encoding.get_ids().len(), OnnxEmbedder::MAX_TOKENS);
+        assert_eq!(
+            encoding.get_attention_mask().len(),
+            OnnxEmbedder::MAX_TOKENS
+        );
+    }
+
+    #[test]
+    fn tokenizer_uses_batch_longest_padding() {
+        let mut tokenizer = test_tokenizer();
+        OnnxEmbedder::configure_tokenizer(&mut tokenizer).expect("configure tokenizer");
+
+        assert!(matches!(
+            tokenizer.get_padding().map(|params| &params.strategy),
+            Some(tokenizers::PaddingStrategy::BatchLongest)
+        ));
+    }
+
+    #[test]
+    #[ignore = "loads the bundled ONNX model; run explicitly on release machines"]
+    fn bundled_model_dimension_is_384() {
+        let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
+        let embedder = OnnxEmbedder::load(
+            &root.join("models/minilm-l6-v2-int8/onnx/model_quantized.onnx"),
+            &root.join("models/minilm-l6-v2/tokenizer.json"),
+        )
+        .expect("bundled MiniLM model");
+
+        assert_eq!(embedder.dimension(), 384);
     }
 }
 

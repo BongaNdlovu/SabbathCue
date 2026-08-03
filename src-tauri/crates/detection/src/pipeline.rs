@@ -265,9 +265,34 @@ impl DetectionPipeline {
             else {
                 continue;
             };
-            let confidence =
-                confidence.max(event_anchor_confidence(text, &fts.text).unwrap_or_default());
             let key = (fts.book_number, fts.chapter, fts.verse);
+            // Quote evidence already has its own calibrated ordering. Keep
+            // concept reranking for paraphrase/event candidates only.
+            let has_quote_evidence = overlap_confidence
+                .is_some_and(|score| score >= QUOTE_OVERLAP_FIRE_CONFIDENCE)
+                || exact_quote_confidence(&exact_phrase_keys, fts).is_some()
+                || (exact_phrase_keys.len() <= 1
+                    && short_quote_confidence(text, &fts.text).is_some());
+            let concept_anchor = if has_quote_evidence {
+                None
+            } else {
+                concept_anchor_confidence(text, &fts.text)
+            };
+            // The concept score is an internal rerank signal for paraphrase
+            // and event candidates; quote candidates retain their evidence
+            // confidence so they cannot be displaced by a generic anchor.
+            let anchor_rank_score = if concept_anchor.is_some() {
+                concept_anchor.unwrap_or(confidence)
+            } else {
+                confidence
+            };
+            let confidence = confidence
+                .max(event_anchor_confidence(text, &fts.text).unwrap_or_default())
+                .max(
+                    concept_anchor
+                        .map(|score| score.min(CONCEPT_ANCHOR_CONFIDENCE_CAP))
+                        .unwrap_or_default(),
+                );
             fts_keys.insert(key);
             if vector_keys.contains(&key) {
                 if let Some(existing) = semantic_detections
@@ -282,7 +307,7 @@ impl DetectionPipeline {
                         *similarity = (*similarity + OVERLAP_CONFIDENCE_BOOST)
                             .min(1.0)
                             .max(overlap_confidence.unwrap_or(0.0))
-                            .max(confidence);
+                            .max(anchor_rank_score);
                     }
                 }
                 continue;
@@ -306,7 +331,7 @@ impl DetectionPipeline {
                 verse_id: None,
                 confidence,
                 source: DetectionSource::Semantic {
-                    similarity: confidence,
+                    similarity: anchor_rank_score.max(confidence),
                 },
                 transcript_snippet: snippet.clone(),
                 detected_at: now,
@@ -371,6 +396,19 @@ fn live_fts_candidate_confidence(
     let short_quote_confidence = (exact_phrase_keys.len() <= 1)
         .then(|| short_quote_confidence(text, &fts.text))
         .flatten();
+    // Candidates with verified quote evidence already have calibrated
+    // overlap/phrase scores. Keep the generic concept anchor for
+    // paraphrase/event candidates only so it cannot alter exact-quote
+    // ordering or create a competing runner-up beside a direct quotation.
+    let concept_anchor = if overlap_confidence
+        .is_some_and(|score| score >= QUOTE_OVERLAP_FIRE_CONFIDENCE)
+        || exact_phrase_confidence.is_some()
+        || short_quote_confidence.is_some()
+    {
+        None
+    } else {
+        concept_anchor_confidence(text, &fts.text)
+    };
     let mut rank_confidence = fts_confidence(rank, fts.rank, fts.is_broad_match);
     // Contiguous phrase-tier hits (and verified exact spoken spans) get a
     // floor above typical vector-only scores. AND/OR keyword hits do not.
@@ -386,17 +424,19 @@ fn live_fts_candidate_confidence(
             .into_iter()
             .chain(exact_phrase_confidence)
             .chain(short_quote_confidence)
+            .chain(concept_anchor.map(|score| score.min(CONCEPT_ANCHOR_CONFIDENCE_CAP)))
             .fold(rank_confidence, f64::max)
             .max(if ai_review_candidate { 0.70 } else { 0.0 }),
     );
     log::debug!(
-        "[DET-SEMANTIC] FTS5 candidate idx={rank} bm25={:.3} {} {}:{} conf={:.0}% overlap={:?} broad={}",
+        "[DET-SEMANTIC] FTS5 candidate idx={rank} bm25={:.3} {} {}:{} conf={:.0}% overlap={:?} anchor={:?} broad={}",
         fts.rank,
         fts.book_name,
         fts.chapter,
         fts.verse,
         confidence * 100.0,
         overlap_confidence,
+        concept_anchor,
         fts.is_broad_match
     );
     if confidence < FTS5_MIN_CONFIDENCE {
@@ -410,6 +450,7 @@ fn live_fts_candidate_confidence(
         && fts.rank > FTS5_LIVE_RANK_FLOOR
         && overlap_confidence.is_none()
         && exact_phrase_confidence.is_none()
+        && concept_anchor.is_none()
         && !ai_review_candidate
     {
         return None;
@@ -440,6 +481,143 @@ fn event_anchor_confidence(query: &str, verse_text: &str) -> Option<f64> {
         // this retrieval priority.
         && (verse.contains("jordan") || verse.contains("unto john"));
     baptism_event.then_some(EVENT_ANCHOR_CONFIDENCE)
+}
+
+/// Score a candidate when several distinctive concepts from the spoken event
+/// occur in the verse. This is deliberately reference-agnostic: it rewards a
+/// subject/event/duration combination without naming a particular verse.
+const CONCEPT_ANCHOR_MIN_SHARED_TERMS: usize = 3;
+const CONCEPT_ANCHOR_BASE_CONFIDENCE: f64 = 0.72;
+const CONCEPT_ANCHOR_CONFIDENCE_CAP: f64 = 0.88;
+const CONCEPT_ANCHOR_MAX_RANK_SCORE: f64 = 0.96;
+
+fn concept_anchor_confidence(query: &str, verse_text: &str) -> Option<f64> {
+    let query_tokens = anchor_tokens(query);
+    let verse_tokens = anchor_tokens(verse_text);
+    if query_tokens.len() < CONCEPT_ANCHOR_MIN_SHARED_TERMS
+        || verse_tokens.len() < CONCEPT_ANCHOR_MIN_SHARED_TERMS
+    {
+        return None;
+    }
+
+    let query_stems: Vec<String> = query_tokens
+        .iter()
+        .map(|token| stem_anchor_word(token))
+        .collect();
+    let verse_stems: HashSet<String> = verse_tokens
+        .iter()
+        .map(|token| stem_anchor_word(token))
+        .collect();
+    let shared: HashSet<String> = query_stems
+        .iter()
+        .filter(|stem| verse_stems.contains(*stem))
+        .cloned()
+        .collect();
+    let verse_numbers = number_signatures(verse_text);
+    let numeric_match = number_signatures(query)
+        .iter()
+        .any(|number| verse_numbers.contains(number));
+    let shared_count = shared.len() + usize::from(numeric_match);
+    if shared_count < CONCEPT_ANCHOR_MIN_SHARED_TERMS {
+        return None;
+    }
+
+    // At least one non-generic term keeps ordinary theological wording from
+    // becoming an anchor solely because it shares words such as "God" or
+    // "love". A matched number also counts as distinctive evidence.
+    let distinctive_terms = shared
+        .iter()
+        .filter(|stem| stem.chars().count() >= 5)
+        .count()
+        + usize::from(numeric_match);
+    if distinctive_terms < 2 {
+        return None;
+    }
+
+    let query_term_count = query_stems.iter().collect::<HashSet<_>>().len().max(1);
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "transcript term counts are small"
+    )]
+    let coverage = shared_count as f64 / query_term_count as f64;
+    // A long sermon sentence that happens to share a few topical words is not
+    // a distinctive event. Numeric anchors can carry sparse framing because
+    // the duration/quantity itself is a strong discriminator.
+    if !numeric_match && coverage < 0.45 {
+        return None;
+    }
+    let shared_score = f64::from(u32::try_from(shared_count.min(5)).unwrap_or(5));
+    let distinctive_score = f64::from(u32::try_from(distinctive_terms.min(2)).unwrap_or(2));
+    let mut confidence = CONCEPT_ANCHOR_BASE_CONFIDENCE
+        + (shared_score * 0.025)
+        + (distinctive_score * 0.025)
+        + (coverage.min(0.8) * 0.04);
+    if numeric_match {
+        confidence += 0.04;
+    }
+    Some(confidence.min(CONCEPT_ANCHOR_MAX_RANK_SCORE))
+}
+
+fn anchor_tokens(text: &str) -> Vec<String> {
+    const STOP_WORDS: &[&str] = &[
+        "a", "about", "after", "all", "an", "and", "are", "as", "at", "be", "been", "before", "by",
+        "can", "chapter", "come", "coming", "does", "for", "from", "has", "have", "he", "her",
+        "him", "his", "i", "in", "into", "is", "it", "its", "more", "of", "on", "or", "passage",
+        "please", "read", "says", "show", "some", "than", "that", "the", "their", "them", "there",
+        "they", "this", "to", "talks", "verse", "was", "were", "where", "which", "with",
+    ];
+
+    text.split(|character: char| !character.is_alphanumeric())
+        .filter_map(|word| {
+            let lower = word.to_ascii_lowercase();
+            (lower.chars().count() >= 3 && !STOP_WORDS.contains(&lower.as_str())).then_some(lower)
+        })
+        .collect()
+}
+
+fn stem_anchor_word(word: &str) -> String {
+    let mut stem = word.to_ascii_lowercase();
+    if stem.len() > 5 && stem.ends_with("ing") {
+        stem.truncate(stem.len() - 3);
+    } else if stem.len() > 4 && stem.ends_with("ed") {
+        stem.truncate(stem.len() - 2);
+    } else if stem.len() > 4 && stem.ends_with("ies") {
+        stem.truncate(stem.len() - 3);
+        stem.push('y');
+    } else if stem.len() > 4 && stem.ends_with("es") {
+        stem.truncate(stem.len() - 2);
+    } else if stem.len() > 4 && stem.ends_with('s') {
+        stem.truncate(stem.len() - 1);
+    }
+    stem
+}
+
+fn number_signatures(text: &str) -> HashSet<i32> {
+    let tokens: Vec<String> = text
+        .split(|character: char| !character.is_alphanumeric())
+        .map(str::to_ascii_lowercase)
+        .filter(|word| !word.is_empty())
+        .collect();
+    let mut signatures = HashSet::new();
+    for (index, token) in tokens.iter().enumerate() {
+        if let Ok(number) = token.parse::<i32>() {
+            signatures.insert(number);
+            continue;
+        }
+        let Some(number) = crate::direct::parser::parse_spoken_number(token) else {
+            continue;
+        };
+        if matches!(
+            tokens.get(index + 1).map(String::as_str),
+            Some("hundred" | "honderd")
+        ) && (1..=9).contains(&number)
+        {
+            signatures.insert(number * 100);
+        } else {
+            signatures.insert(number);
+        }
+    }
+    signatures
 }
 
 fn shared_content_word_count(left: &str, right: &str) -> usize {
@@ -596,7 +774,11 @@ fn exact_quote_keys(fragment: &str, fts_results: &[Bm25Result]) -> HashSet<(i32,
         .iter()
         .filter(|fts| {
             is_exact_quote_fragment(fragment, &fts.text)
-                || short_quote_confidence(fragment, &fts.text).is_some()
+                // A short ordered overlap is useful only when the FTS tier
+                // identified the candidate narrowly. Broad OR hits can share
+                // generic words such as "write this ... children" and must
+                // remain review evidence instead of receiving quote strength.
+                || (!fts.is_broad_match && short_quote_confidence(fragment, &fts.text).is_some())
         })
         .map(|fts| (fts.book_number, fts.chapter, fts.verse))
         .collect()
@@ -808,6 +990,86 @@ mod tests {
         assert!(
             scored.is_some_and(|(confidence, _)| confidence >= 0.70),
             "explicit indirect requests need review candidates for AI ranking: {scored:?}"
+        );
+    }
+
+    #[test]
+    fn distinctive_concept_anchor_raises_enoch_event_match() {
+        let candidate = Bm25Result {
+            rank: -10.0,
+            book_number: 1,
+            book_name: "Genesis".to_string(),
+            chapter: 5,
+            verse: 22,
+            is_broad_match: false,
+            is_phrase_match: false,
+            text: "And Enoch walked with God after he begat Methuselah three hundred years, and begat sons and daughters".to_string(),
+        };
+
+        let scored = live_fts_candidate_confidence(
+            "There is a verse about Enoch walking with God for more than 300 years",
+            &candidate,
+            0,
+            &HashSet::new(),
+        );
+
+        assert!(
+            scored.is_some_and(|(confidence, _)| confidence >= 0.80),
+            "distinctive subject, event, and duration anchors should rerank the match: {scored:?}"
+        );
+    }
+
+    #[test]
+    fn concept_anchor_reranks_duration_and_event_over_duration_alone() {
+        let mut pipeline = DetectionPipeline::new();
+        let results = pipeline.process_hybrid_with_fts(
+            "There is a verse about Enoch walking with God for more than 300 years",
+            &[
+                Bm25Result {
+                    rank: -10.0,
+                    book_number: 1,
+                    book_name: "Genesis".to_string(),
+                    chapter: 5,
+                    verse: 23,
+                    is_broad_match: false,
+                    is_phrase_match: false,
+                    text: "And all the days of Enoch were three hundred sixty and five years".to_string(),
+                },
+                Bm25Result {
+                    rank: -10.0,
+                    book_number: 1,
+                    book_name: "Genesis".to_string(),
+                    chapter: 5,
+                    verse: 22,
+                    is_broad_match: false,
+                    is_phrase_match: false,
+                    text: "And Enoch walked with God after he begat Methuselah three hundred years, and begat sons and daughters".to_string(),
+                },
+            ],
+        );
+
+        assert_eq!(
+            results[0].detection.verse_ref.verse_start, 22,
+            "the candidate matching subject, event, and duration must rank first"
+        );
+        assert!(
+            results[0].detection.rank_score() > results[1].detection.rank_score(),
+            "the distinctive event candidate needs a higher internal rerank score"
+        );
+        assert!(
+            results[0].detection.confidence <= CONCEPT_ANCHOR_CONFIDENCE_CAP,
+            "concept reranking must stay in the review band"
+        );
+    }
+
+    #[test]
+    fn generic_theological_overlap_does_not_create_a_concept_anchor() {
+        assert_eq!(
+            concept_anchor_confidence(
+                "There is a verse about God's love for the world",
+                "For God so loved the world, that he gave his only begotten Son"
+            ),
+            None
         );
     }
 
@@ -1736,6 +1998,29 @@ mod tests {
         );
 
         assert_eq!(confidence, Some(0.92));
+    }
+
+    #[test]
+    fn broad_or_hit_does_not_become_exact_quote_evidence_from_short_overlap() {
+        let fragment =
+            "I write this to you, my children, that you do not sin. But if anyone sin, but that is only possible to those who have aligned their will.";
+        let broad_or_hit = Bm25Result {
+            book_number: 5,
+            book_name: "Deuteronomy".to_string(),
+            chapter: 31,
+            verse: 19,
+            rank: -10.603,
+            is_broad_match: true,
+            is_phrase_match: false,
+            text: "Now therefore write this song for yourselves, and teach it to the children of Israel. Put it in their mouths, that this song may be a witness for me against the children of Israel.".to_string(),
+        };
+
+        let keys = exact_quote_keys(fragment, &[broad_or_hit]);
+
+        assert!(
+            !keys.contains(&(5, 31, 19)),
+            "a broad OR hit must not receive exact-quote confidence from a short generic overlap"
+        );
     }
 
     #[test]

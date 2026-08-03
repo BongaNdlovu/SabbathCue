@@ -253,7 +253,6 @@ fn spoken_kjv_variants(word: &str) -> &'static [&'static str] {
         "baptist" | "baptizing" | "baptizes" | "baptize" | "baptism" => {
             &["baptized", "baptize", "baptizing", "baptism"]
         }
-        "nicodemus" => &["born", "again"],
         _ => &[],
     }
 }
@@ -1069,6 +1068,19 @@ mod tests {
         assert!(
             query.contains("\"again\""),
             "again concept missing: {query}"
+        );
+    }
+
+    #[test]
+    fn or_query_does_not_expand_nicodemus_without_born_again_phrase() {
+        let query = build_or_query("Nicodemus asked Jesus a question");
+        assert!(
+            !query.contains("\"born\""),
+            "unexpected born expansion: {query}"
+        );
+        assert!(
+            !query.contains("\"again\""),
+            "unexpected again expansion: {query}"
         );
     }
 

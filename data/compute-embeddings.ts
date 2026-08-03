@@ -2,9 +2,10 @@
 /**
  * Prepares canonical verse text for semantic embeddings.
  *
- * The semantic index stores vectors keyed by the KJV verse row id. The legacy
- * public-domain blend stays as one vector, and modern-English WEB is exported
- * as a separate vector for the same reference so either wording can match.
+ * The semantic index stores vectors keyed by the KJV verse row id. KJV remains
+ * the primary English vector; each public-domain translation is exported as a
+ * separate vector for the same reference so language-specific wording can
+ * match without cross-language truncation.
  *
  * Usage:
  * 1. Run: bun run data/download-model.ts
@@ -24,8 +25,13 @@ import { join } from "node:path"
 const DATA_DIR = import.meta.dir
 const DB_PATH = join(DATA_DIR, "rhema.db")
 const OUTPUT_PATH = join(DATA_DIR, "verses-for-embedding.json")
-const BLENDED_TRANSLATIONS = ["KJV", "SpaRV", "FreJND", "PorBLivre"] as const
-const SEPARATE_VECTOR_TRANSLATIONS = ["WEB"] as const
+const BLENDED_TRANSLATIONS = ["KJV"] as const
+const SEPARATE_VECTOR_TRANSLATIONS = [
+  "WEB",
+  "SpaRV",
+  "FreJND",
+  "PorBLivre",
+] as const
 const EMBEDDING_TRANSLATIONS = [
   ...BLENDED_TRANSLATIONS,
   ...SEPARATE_VECTOR_TRANSLATIONS,
@@ -46,8 +52,35 @@ type VerseRow = {
   text: string
 }
 
+export type EmbeddingEntry = {
+  id: number
+  text: string
+  ref: string
+}
+
 function verseKey(bookNumber: number, chapter: number, verse: number): string {
   return `${bookNumber}:${chapter}:${verse}`
+}
+
+export function buildEmbeddingEntries(
+  verse: Pick<VerseRow, "id" | "book_name" | "chapter" | "verse" | "text">,
+  texts: ReadonlyMap<string, string> | undefined,
+): EmbeddingEntry[] {
+  const ref = `${verse.book_name} ${verse.chapter}:${verse.verse}`
+  const primaryText =
+    texts?.get(BLENDED_TRANSLATIONS[0])?.trim() || verse.text
+  const entries: EmbeddingEntry[] = [{
+    id: verse.id,
+    text: primaryText,
+    ref,
+  }]
+
+  for (const translation of SEPARATE_VECTOR_TRANSLATIONS) {
+    const text = texts?.get(translation)?.trim()
+    if (text) entries.push({ id: verse.id, text, ref })
+  }
+
+  return entries
 }
 
 async function main() {
@@ -118,32 +151,36 @@ async function main() {
 
   console.log(`  Found ${kjvVerses.length} canonical KJV verse references`)
 
+  const exportedCountByTranslation = new Map<string, number>([
+    ["KJV", 0],
+    ...SEPARATE_VECTOR_TRANSLATIONS.map((translation) => [translation, 0] as const),
+  ])
   const output = kjvVerses.flatMap((verse) => {
     const texts = textByReference.get(
       verseKey(verse.book_number, verse.chapter, verse.verse),
     )
-    const ref = `${verse.book_name} ${verse.chapter}:${verse.verse}`
-    const blendedText = BLENDED_TRANSLATIONS
-      .map((abbreviation) => texts?.get(abbreviation))
-      .filter((text): text is string => Boolean(text && text.trim()))
-      .join(" ")
-
-    const entries = [{
-      id: verse.id,
-      text: blendedText || verse.text,
-      ref,
-    }]
-
+    exportedCountByTranslation.set(
+      "KJV",
+      (exportedCountByTranslation.get("KJV") ?? 0) + 1,
+    )
     for (const translation of SEPARATE_VECTOR_TRANSLATIONS) {
-      const text = texts?.get(translation)?.trim()
-      if (text) entries.push({ id: verse.id, text, ref })
+      if (texts?.get(translation)?.trim()) {
+        exportedCountByTranslation.set(
+          translation,
+          (exportedCountByTranslation.get(translation) ?? 0) + 1,
+        )
+      }
     }
-
-    return entries
+    return buildEmbeddingEntries(verse, texts)
   })
 
   await Bun.write(OUTPUT_PATH, JSON.stringify(output))
   console.log(`  Exported ${output.length} embedding records`)
+  console.log(
+    `  Records by translation: ${Array.from(exportedCountByTranslation)
+      .map(([translation, count]) => `${translation}=${count}`)
+      .join(", ")}`,
+  )
   console.log(`  Exported to ${OUTPUT_PATH}`)
   console.log(
     "\n  Next: run the embedding precompute step to generate the binary index.\n",
@@ -152,7 +189,9 @@ async function main() {
   db.close()
 }
 
-main().catch((err) => {
-  console.error("Export failed:", err)
-  process.exit(1)
-})
+if (import.meta.main) {
+  main().catch((err) => {
+    console.error("Export failed:", err)
+    process.exit(1)
+  })
+}

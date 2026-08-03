@@ -392,6 +392,43 @@ describe("verse detection workflow", () => {
     expect(useBroadcastStore.getState().liveItem).toBeNull()
   })
 
+  it("uses confidence before rerank score for semantic auto-live", async () => {
+    useSettingsStore.setState({ confidenceThreshold: 0.9 })
+    const strongest = makeDetection({
+      source: "semantic",
+      verse_ref: "Matthew 5:16",
+      verse_text: "Let your light so shine before men",
+      book_name: "Matthew",
+      book_number: 40,
+      chapter: 5,
+      verse: 16,
+      confidence: 0.93,
+      rank_score: 0.80,
+      auto_queued: false,
+    })
+    const runnerUp = makeDetection({
+      source: "semantic",
+      verse_ref: "Psalms 4:6",
+      verse_text: "Lift thou up the light of thy countenance",
+      book_name: "Psalms",
+      book_number: 19,
+      chapter: 4,
+      verse: 6,
+      confidence: 0.90,
+      rank_score: 0.99,
+      auto_queued: false,
+    })
+
+    await handleVerseDetections([strongest, runnerUp])
+    await handleVerseDetections([strongest, runnerUp])
+
+    expect(useBibleStore.getState().selectedVerse).toMatchObject({
+      book_number: 40,
+      chapter: 5,
+      verse: 16,
+    })
+  })
+
   it("confirms a semantic verse after an intervening semantic candidate", async () => {
     const first = makeDetection({
       source: "semantic",

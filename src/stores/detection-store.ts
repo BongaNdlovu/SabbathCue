@@ -25,8 +25,6 @@ export interface HeldReferenceCandidate {
 }
 
 const MAX_RECENT_DETECTIONS = 5
-const MAX_RECENCY_BONUS = 0.01
-const RECENCY_BONUS_WINDOW_MS = 30_000
 // Keep matches actionable through a short live-speaking window, then clear old context.
 const DETECTION_TTL_MS = 11_000
 const NUMBER_TOKEN_PATTERN = /\d+/g
@@ -45,20 +43,6 @@ interface DetectionState {
   clearDetections: () => void
   markAiSuggested: (key: string | null) => void
   evictStale: (now?: number) => void
-}
-
-function detectionRank(
-  detection: DetectionResultWithMeta,
-  now: number
-): number {
-  const receivedAt = detection.received_at ?? 0
-  const ageMs = Math.max(0, now - receivedAt)
-  const recencyBonus =
-    receivedAt > 0
-      ? Math.max(0, MAX_RECENCY_BONUS * (1 - ageMs / RECENCY_BONUS_WINDOW_MS))
-      : 0
-
-  return (detection.rank_score ?? detection.confidence) + recencyBonus
 }
 
 function sourcePriority(detection: DetectionResultWithMeta): number {
@@ -163,47 +147,41 @@ export function buildHeldReferenceCandidates(
   })
 }
 
-// "Recent detections" retains the most-recent items so a freshly spoken
-// detection (e.g. a 94% Ellen White paragraph) is never crowded out of the box
-// by stale higher-confidence Bible hits. Survivors are then ordered for display.
-function isEgwSemantic(detection: DetectionResult): boolean {
-  return detection.content_type === "egw" && detection.source === "semantic"
+// "Recent detections" retains one freshly spoken EGW paragraph so a quote is
+// never crowded out of the box by stale Bible hits. Survivors are then ordered
+// for display by confidence.
+function isEgwDetection(detection: DetectionResult): boolean {
+  return detection.content_type === "egw"
 }
 
 function capForDisplay(
-  list: DetectionResultWithMeta[],
-  now: number
+  list: DetectionResultWithMeta[]
 ): DetectionResultWithMeta[] {
-  const byRecency = [...list].sort(
-    (a, b) => (b.received_at ?? 0) - (a.received_at ?? 0)
-  )
-  // Verses claim slots first; a quote suggestion only ever uses a leftover.
-  const verses = byRecency
-    .filter((detection) => !isEgwSemantic(detection))
+  const ranked = [...list].sort(compareDetections)
+  // Keep one semantic EGW quote available for review, while still allowing
+  // it to take the first row when its confidence is the strongest match.
+  const egw = ranked.filter(isEgwDetection).slice(0, 1)
+  const others = ranked
+    .filter((detection) => !isEgwDetection(detection))
+    .slice(0, MAX_RECENT_DETECTIONS - egw.length)
+  return [...others, ...egw]
+    .sort(compareDetections)
     .slice(0, MAX_RECENT_DETECTIONS)
-  const egw =
-    verses.length < MAX_RECENT_DETECTIONS
-      ? byRecency.filter(isEgwSemantic).slice(0, 1)
-      : []
-
-  const kept = [...verses, ...egw]
-  kept.sort((a, b) => compareDetections(a, b, now))
-  return kept
 }
 
 function compareDetections(
   a: DetectionResultWithMeta,
-  b: DetectionResultWithMeta,
-  now: number
+  b: DetectionResultWithMeta
 ): number {
-  const egwDiff = Number(isEgwSemantic(a)) - Number(isEgwSemantic(b))
-  if (egwDiff !== 0) return egwDiff
+  const confidenceDiff = b.confidence - a.confidence
+  if (Math.abs(confidenceDiff) > Number.EPSILON) return confidenceDiff
+
+  const rankDiff =
+    (b.rank_score ?? b.confidence) - (a.rank_score ?? a.confidence)
+  if (Math.abs(rankDiff) > Number.EPSILON) return rankDiff
 
   const sourceDiff = sourcePriority(b) - sourcePriority(a)
   if (sourceDiff !== 0) return sourceDiff
-
-  const rankDiff = detectionRank(b, now) - detectionRank(a, now)
-  if (Math.abs(rankDiff) > Number.EPSILON) return rankDiff
 
   const aTime = a.received_at ?? 0
   const bTime = b.received_at ?? 0
@@ -395,8 +373,7 @@ export const useDetectionStore = create<DetectionState>((set) => ({
         newDetections[existingIndex] = updated
         return {
           detections: capForDisplay(
-            removeSupersededChapterOnlyPlaceholders(newDetections),
-            now
+            removeSupersededChapterOnlyPlaceholders(newDetections)
           ),
         }
       }
@@ -409,8 +386,7 @@ export const useDetectionStore = create<DetectionState>((set) => ({
       const newDetections = [withMeta, ...state.detections]
       return {
         detections: capForDisplay(
-          removeSupersededChapterOnlyPlaceholders(newDetections),
-          now
+          removeSupersededChapterOnlyPlaceholders(newDetections)
         ),
       }
     }),
@@ -458,14 +434,21 @@ export const useDetectionStore = create<DetectionState>((set) => ({
 
       return {
         detections: capForDisplay(
-          removeSupersededChapterOnlyPlaceholders(withMeta),
-          now
+          removeSupersededChapterOnlyPlaceholders(withMeta)
         ),
       }
     }),
   setDetections: (detections) =>
-    set({
-      detections: detections.map((detection) => withReceivedAt(detection)),
+    set(() => {
+      const now = Date.now()
+      const withMeta = detections.map((detection) =>
+        withReceivedAt(detection, now)
+      )
+      return {
+        detections: capForDisplay(
+          removeSupersededChapterOnlyPlaceholders(withMeta)
+        ),
+      }
     }),
   removeDetection: (key) =>
     set((state) => {

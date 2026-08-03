@@ -92,7 +92,8 @@ Core modules:
 | STT session lifetime guard    | src-tauri/src/commands/stt/session.rs:8                                                                                                                                | Claims a monotonic audio-capture generation before provider setup, retires stale fanout threads, and makes reconnect waits cancellable                                                                                  | STT start/stop lifecycle                                              |
 | Live Bible-mode policy        | src-tauri/src/commands/stt/live_session.rs:243, src-tauri/src/commands/detection.rs:241                                                                               | Separately gates live Bible direct/semantic/reading-mode output while preserving transcription, operator commands, queued scripture, and EGW detection                                                                | Detection settings sync and live STT workers                          |
 | Direct scripture scope        | src-tauri/crates/detection/src/direct/context.rs:3, src-tauri/crates/detection/src/direct/detector.rs:674                                                             | Keeps the active book/chapter until another resolved citation replaces it and promotes explicit in-scope verse phrases as direct citations                                                                            | Live STT scripture detection                                          |
-| Verse ranking and calibration | src-tauri/crates/detection/src/semantic/detector.rs:128, src-tauri/crates/detection/src/pipeline.rs:173, src-tauri/crates/detection/src/bin/detection_accuracy.rs:607, src-tauri/crates/bible/src/search.rs, src-tauri/crates/bible/tests/retrieval_recall.rs | Keeps retrieval rank separate from quote confidence; FTS phrase retrieval uses bounded end spans and six-word interior spans, while auto-live quote strength requires vocabulary overlap with a real adjacent word pair or a sufficiently complete contiguous quote; the auto-live margin considers every visible semantic runner-up, including close alternatives below the winner threshold; optional spoken-book BM25 scope; broad OR hits keep honest rank confidence. Plan: docs/superpowers/plans/2026-07-31-retrieval-recall.md | Live STT detection, frontend detection workflow, desktop CI           |
+| Verse ranking and calibration | src-tauri/crates/detection/src/semantic/detector.rs:128, src-tauri/crates/detection/src/pipeline.rs:173, src-tauri/crates/detection/src/bin/detection_accuracy.rs:607, src-tauri/crates/bible/src/search.rs, src-tauri/crates/bible/tests/retrieval_recall.rs | Keeps retrieval rank separate from quote confidence; FTS phrase retrieval uses bounded end spans and six-word interior spans, while auto-live quote strength requires vocabulary overlap with a real adjacent word pair or a sufficiently complete contiguous quote; generic concept anchors now rerank multi-term subject/event/quantity matches (including numeric word↔digit equivalence) without verse-specific rules; the auto-live margin considers every visible semantic runner-up, including close alternatives below the winner threshold; optional spoken-book BM25 scope; broad OR hits keep honest rank confidence. Plan: docs/superpowers/plans/2026-07-31-retrieval-recall.md | Live STT detection, frontend detection workflow, desktop CI           |
+| Detection-box ordering       | src/stores/detection-store.ts:158, src/components/panels/detections-panel.tsx:500, src/components/panels/latest-detection-bar.tsx:77 | Keeps one EGW quote available while sorting every visible content type (Bible, EGW, hymn) by operator confidence first; rank/source/recency only break confidence ties. | Detections panel and Live Desk latest-detection bar |
 | EGW quote evidence            | src-tauri/crates/detection/src/egw_quote.rs:79, src-tauri/src/commands/detection/egw.rs:324, src-tauri/crates/detection/src/bin/egw_accuracy.rs:1                                                | Owns reusable negation-aware consecutive-content matching and confidence policy; the Tauri adapter handles session cues/queueing, and the standalone labeled harness verifies misses and false fires.                                                                                | Live EGW detection and deterministic calibration                      |
 | Command-classifier experiment | src-tauri/crates/detection/src/command_eval.rs:1, src-tauri/crates/detection/src/bin/command_benchmark.rs:1                                                           | Compares deterministic rules with a trained MiniLM linear head against isolated quality/safety partitions without executing commands                                                                                  | Developer benchmark and shadow replay only                            |
 | Theme catalog page            | src/components/broadcast/KineticThemesPage.tsx:132                                                                                                                    | User-facing Themes workspace with static and kinetic columns                                                                                                                                                          | Workspace nav                                                         |
@@ -366,6 +367,14 @@ non-gating 85% calibration probe to expose the lower threshold's tradeoffs
 ### Flow: quantized semantic embedding assets
 
 ```text
+data/compute-embeddings.ts exports one KJV record plus independent
+WEB/SpaRV/FreJND/PorBLivre records per verse; no cross-language blend is
+allowed to consume the shared 128-token window
+  -> data/compute-embeddings.ts
+The Rust ONNX precompute path and runtime embedder share BatchLongest padding,
+max truncation 128, mean pooling, and L2 normalization
+  -> src-tauri/crates/detection/src/semantic/onnx_embedder.rs
+  -> src-tauri/crates/detection/src/bin/precompute.rs
 CI converts the canonical f32 corpus before comparison and bundling
   -> package.json
   -> .github/workflows/desktop-ci.yml
@@ -647,6 +656,7 @@ src/components/settings/sections/AiRankingSection.tsx:186.
 | Broadcast themes           | Broadcast Zustand slice                             | activeThemeId, themes, kinetic metadata, optional hymn section styles                               | Theme catalog and deterministic canvas renderer          | src/components/broadcast/KineticThemesPage.tsx:146, src/lib/kinetic-themes.ts, src/lib/hymn-theme-scenes.ts |
 | Hymn presentation pages    | In-memory presentation/queue data                   | authored section id/label/kind, section screen index/count, deck index/count                        | Hymnal source, queue, preview/live/NDI renderer          | src/types/hymnal.ts, src/types/presentation.ts, src/services/hymnal/hymn-presentation.ts                    |
 | Bible/EGW content          | SQLite                                              | translations, verses, EGW paragraphs                                                                | Search/detection/presentation                            | README.md:49, src-tauri/Cargo.toml:75                                                                       |
+| Semantic embedding corpus  | Generated JSON plus f32/q8 binaries (gitignored)    | one KJV vector plus independent WEB/SpaRV/FreJND/PorBLivre vectors per available verse; 155,345 records in the 2026-08-03 rebuild | ONNX precompute, quantization, runtime semantic index | data/compute-embeddings.ts, src-tauri/crates/detection/src/bin/precompute.rs |
 | EGW source JSON            | data/sources/egw/*.json                             | book_number, chapter, paragraph, page, page_paragraph, text                                         | Built into SQLite by `build:egw`                         | data/build-egw.ts:2, data/validate-egw-sources.ts:7                                                         |
 | Account flags              | Supabase Postgres                                   | user_id, access_expires_at, suspended, is_church_organization, church_name                          | Auth user, registered devices, admin account list        | supabase/migrations/008_church_organization_profiles.sql:4                                                  |
 | Device activations         | Supabase Postgres                                   | user_id, device_id, public_key, status, first/last seen, approved/revoked timestamps                | Account, installation identity, admin/user management    | supabase/migrations/009_device_activation_management.sql:4                                                  |
@@ -745,8 +755,12 @@ cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 # Current changed-tree CI form (`--all-targets`, without all features): passed.
 
 cargo run --manifest-path src-tauri/Cargo.toml -p rhema-detection --features precompute-bin --release --bin detection_accuracy -- --threshold 0.90 --embeddings embeddings/public-minilm-l6-v2-q8.bin --ids embeddings/public-minilm-l6-v2-q8-ids.bin --min-precision 0.988 --min-recall 0.80
-# Current result: passed 250 cases with 158 true positives, 0 false positives,
-# 4 false negatives, 100.0% precision, and 97.5% recall.
+# Historical result before the 2026-08-03 corpus rebuild: 158 true positives,
+# 0 false positives, 4 false negatives, 100.0% precision, and 97.5% recall.
+# 2026-08-03 rebuilt-corpus result: 157 true positives, 2 false positives,
+# 5 false negatives, 98.7% precision, and 96.9% recall; the configured 98.8%
+# precision floor failed by 0.1 percentage points and is retained as a release
+# follow-up rather than hidden.
 
 cargo deny check
 # Current result: advisories, bans, licenses, and sources passed; only allowed
@@ -762,8 +776,10 @@ npm.cmd run test:command-classifier
 # passed.
 
 bun run compare:embeddings
-# Result: 100% top-1 agreement, 99.375% top-10 overlap, maximum similarity
-# drift 0.001503; q8 load/search were faster than f32 in the paired run.
+# Historical result before the split rebuild: 100% top-1 agreement, 99.375%
+# top-10 overlap, maximum similarity drift 0.001503.
+# 2026-08-03 split-rebuild result: 100% top-1 agreement, 99.0234% top-10
+# overlap, maximum similarity drift 0.001866; all configured gates passed.
 
 npx.cmd vitest run src/lib/quick-search.test.ts -t getGhostSuggestionSuffix
 # Result before helper implementation: failed with TypeError: getGhostSuggestionSuffix is not a function.
@@ -935,3 +951,7 @@ Top risks (ranked): 1. STT provider removal can leave stale docs or tests if his
 | 2026-08-02 | Recorded EGW attribution cues from the full authoritative transcript before the live semantic window is shortened, and recognized the scoped `statement by Illinois` STT substitution, preserving the session cue for later high-confidence quotations. | 6, 10, 11, 15 |
 | 2026-08-02 | Unified Bible and EGW Auto Live arbitration by confidence across adjacent detection events, using a bounded 400 ms collection window, and made the Live screen's Auto Live toggle control EGW preview-versus-live output. | 6, 10, 11, 15 |
 | 2026-08-03 | Preserved intentional confidence thresholds during hydration, retired stale Auto Preview batches before presentation, made bounded DeepSeek arbitration usable for ambiguous semantic winners, and added topic/event anchors so baptism and born-again requests retain their local verses before the live cap. | 5-7, 10, 11, 15 |
+| 2026-08-03 | Removed unconditional Nicodemus-to-`born`/`again` OR expansion; the exact `born again` topic query remains the sole source of those terms. | 6, 10, 11, 15 |
+| 2026-08-03 | Added generic multi-concept reranking with stemmed subject/event/quantity anchors and numeric equivalence, and changed the detection store to order Bible, EGW, and hymn cards by confidence first while retaining the five-card cap and one EGW review slot. | 5-7, 10, 11, 15 |
+| 2026-08-03 | Split the public semantic corpus into one KJV vector plus independent WEB/SpaRV/FreJND/PorBLivre vectors, switched the shared ONNX tokenizer to dynamic batch-longest padding, rebuilt 155,345 f32/q8 vectors, and recorded retrieval, latency, quantization, and accuracy-gate evidence in `docs/reports/2026-08-03-split-corpus-dynamic-padding-report.md`. | 6, 7, 9-11, 15 |
+| 2026-08-03 | Prevented broad OR-tier FTS hits from receiving short-overlap exact-quote confidence; the curated 90% accuracy gate moved from 98.7% to 99.4% precision without raising the threshold, and the regression is locked in `pipeline::tests::broad_or_hit_does_not_become_exact_quote_evidence_from_short_overlap`. | 6, 10, 11, 15 |

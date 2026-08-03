@@ -26,5 +26,12 @@
     "mode": "hint",
     "text": "Let's go to the verse where Jesus and Nicodemus talk about being born again.",
     "expected": "John 3:3"
+  },
+  {
+    "language": "en",
+    "category": "indirect-request",
+    "mode": "hint",
+    "text": "There is a verse about Enoch walking with God for more than 300 years.",
+    "expected": "Genesis 5:22"
   }
 ]

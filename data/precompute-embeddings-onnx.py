@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
 """
-Pre-compute verse embeddings using the SAME ONNX model the Rust app uses.
+DEPRECATED for release corpus generation.
+
+Use ``bun run precompute:embeddings`` instead. The Rust precompute binary is
+the source of truth because it shares the app's tokenizer configuration,
+dynamic padding, pooling, and normalization path. This script remains as a
+diagnostic/export fallback and is not safe for producing the shipped index.
+
+Historical description: pre-compute verse embeddings using the SAME ONNX model
+the Rust app uses.
 
 This ensures the precomputed verse embeddings are in the exact same vector space
 as runtime query embeddings. Uses the `sentence_embedding` output from the ONNX

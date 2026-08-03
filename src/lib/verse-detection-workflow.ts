@@ -239,9 +239,7 @@ function selectPreviewHit(
   )
   if (
     runnerUp &&
-    (strongest.rank_score ?? strongest.confidence) -
-      (runnerUp.rank_score ?? runnerUp.confidence) <
-      SEMANTIC_AUTO_LIVE_MIN_MARGIN
+    detectionOrderingGap(strongest, runnerUp) < SEMANTIC_AUTO_LIVE_MIN_MARGIN
   ) {
     return bestDetection(
       aiConfirmed ? [...directHits, aiConfirmed] : directHits
@@ -250,6 +248,23 @@ function selectPreviewHit(
   const finalists = [...directHits, strongest]
   if (aiConfirmed && aiConfirmed !== strongest) finalists.push(aiConfirmed)
   return bestDetection(finalists)
+}
+
+/**
+ * Keep confidence as the primary decision signal. The internal rank score is
+ * a reranking tie-breaker for equal-confidence semantic candidates (for
+ * example, two event matches), not a reason to suppress a stronger quote.
+ */
+function detectionOrderingGap(
+  strongest: DetectionResult,
+  runnerUp: DetectionResult
+): number {
+  const confidenceGap = strongest.confidence - runnerUp.confidence
+  if (Math.abs(confidenceGap) > Number.EPSILON) return confidenceGap
+  return (
+    (strongest.rank_score ?? strongest.confidence) -
+    (runnerUp.rank_score ?? runnerUp.confidence)
+  )
 }
 
 async function queueDetectedVerse(
