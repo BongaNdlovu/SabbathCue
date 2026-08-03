@@ -1,10 +1,33 @@
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use rhema_bible::EgwBook;
 use tauri::{AppHandle, Manager, State};
 
 use crate::state::AppState;
+
+pub(crate) fn load_egw_cue_books(state: &State<'_, Mutex<AppState>>) -> Vec<EgwBook> {
+    state
+        .lock()
+        .ok()
+        .and_then(|app_state| {
+            app_state
+                .bible_db
+                .as_ref()
+                .and_then(|db| db.list_egw_books().ok())
+        })
+        .unwrap_or_default()
+}
+
+pub(crate) fn record_egw_cue(books: &[EgwBook], text: &str, cue_at_ms: &AtomicU64) {
+    let now_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |elapsed| {
+            u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX)
+        });
+    crate::commands::detection::note_and_check_egw_cue(books, text, now_ms, cue_at_ms);
+}
 
 /// Check whether the operator has paused detection suggestions.
 /// Uses a blocking lock so the pause flag is authoritative.
@@ -117,6 +140,14 @@ mod tests {
             None
         );
         assert_eq!(spoken_book_hint("peace be still on the sea"), None);
+    }
+
+    #[test]
+    fn spoken_book_hint_does_not_scope_a_bible_book_used_as_a_role_name() {
+        assert_eq!(
+            spoken_book_hint("the verse where John the Baptist baptizes Jesus"),
+            None
+        );
     }
 
     #[test]
@@ -453,6 +484,17 @@ mod tests {
         assert_eq!(
             clamp_to_recent_words("one two three four five", 3),
             "three four five"
+        );
+    }
+
+    #[test]
+    fn full_egw_attribution_is_not_present_in_trailing_quote_window() {
+        let full = "A statement by Illinois in Patriarchs and Prophets says the human race yet retained much of its early vigor but a few generations had passed since Adam had access to the tree";
+        let trailing = clamp_to_recent_words(full, 12);
+
+        assert!(
+            !trailing.contains("Patriarchs and Prophets"),
+            "the live cue must be recorded before window truncation: {trailing}"
         );
     }
 

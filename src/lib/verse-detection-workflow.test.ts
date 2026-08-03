@@ -4,7 +4,9 @@ import {
   handleReadingAdvance,
   handleVerseDetections,
   pendingSemanticConfirmationCountForTests,
+  resetDetectionArbitrationForTests,
   resetSemanticConfirmationForTests,
+  scheduleVerseDetections,
 } from "./verse-detection-workflow"
 import { useBibleStore } from "@/stores/bible-store"
 import { useBroadcastStore } from "@/stores/broadcast-store"
@@ -109,6 +111,7 @@ describe("verse detection workflow", () => {
     invokeMock.mockResolvedValue(null)
     scheduleRankingMock.mockReset()
     scheduleRankingMock.mockResolvedValue(null)
+    resetDetectionArbitrationForTests()
     resetSemanticConfirmationForTests()
 
     useBibleStore.setState({
@@ -151,6 +154,7 @@ describe("verse detection workflow", () => {
   })
 
   afterEach(() => {
+    resetDetectionArbitrationForTests()
     vi.unstubAllGlobals()
     vi.useRealTimers()
   })
@@ -534,7 +538,7 @@ describe("verse detection workflow", () => {
     ])
   })
 
-  it("previews a direct hit over a stronger semantic suggestion", async () => {
+  it("previews a stronger semantic hit over a lower-confidence direct hit", async () => {
     await handleVerseDetections([
       makeDetection({
         source: "semantic",
@@ -554,12 +558,10 @@ describe("verse detection workflow", () => {
     ])
 
     expect(useBibleStore.getState().selectedVerse).toMatchObject({
-      book_number: 43,
-      chapter: 3,
-      verse: 16,
+      book_number: 45,
+      chapter: 8,
+      verse: 28,
     })
-    // Direct hit wins the preview; with auto-preview on, the semantic
-    // suggestion is not auto-queued.
     expect(useQueueStore.getState().items).toHaveLength(0)
   })
 
@@ -893,7 +895,7 @@ describe("verse detection workflow", () => {
     })
   })
 
-  it("previews EGW direct detections without selecting a Bible verse", async () => {
+  it("auto-lives EGW detections when Live Auto Live is on", async () => {
     await handleVerseDetections([
       makeDetection({
         content_type: "egw",
@@ -923,7 +925,119 @@ describe("verse detection workflow", () => {
       kind: "egw",
       reference: "Patriarchs and Prophets p.29 par.2",
     })
+    expect(useBroadcastStore.getState().liveItem).toMatchObject({
+      kind: "egw",
+      reference: "Patriarchs and Prophets p.29 par.2",
+    })
+  })
+
+  it("keeps EGW in preview when Live Auto Live is off", async () => {
+    useBroadcastStore.setState({ readingModeAutoLive: false })
+
+    await handleVerseDetections([
+      makeDetection({
+        content_type: "egw",
+        verse_ref: "Patriarchs and Prophets p.29 par.2",
+        verse_text: "The history of the great conflict.",
+        book_name: "Patriarchs and Prophets",
+        book_number: 1,
+        chapter: 29,
+        verse: 2,
+        auto_queued: true,
+        egw_paragraph: {
+          id: 12,
+          book_number: 1,
+          book_title: "Patriarchs and Prophets",
+          chapter: 1,
+          chapter_title: "Why Was Sin Permitted?",
+          paragraph: 2,
+          page: 29,
+          page_paragraph: 2,
+          text: "The history of the great conflict.",
+        },
+      }),
+    ])
+
+    expect(useBroadcastStore.getState().isLive).toBe(false)
     expect(useBroadcastStore.getState().previewItem).toMatchObject({
+      kind: "egw",
+      reference: "Patriarchs and Prophets p.29 par.2",
+    })
+  })
+
+  it("selects a higher-confidence EGW statement before a direct Bible hit", async () => {
+    await handleVerseDetections([
+      makeDetection({ confidence: 0.9, auto_queued: false }),
+      makeDetection({
+        content_type: "egw",
+        source: "semantic",
+        confidence: 0.97,
+        rank_score: 0.97,
+        verse_ref: "Patriarchs and Prophets p.29 par.2",
+        verse_text: "The history of the great conflict.",
+        book_name: "Patriarchs and Prophets",
+        book_number: 1,
+        chapter: 29,
+        verse: 2,
+        auto_queued: true,
+        egw_paragraph: {
+          id: 12,
+          book_number: 1,
+          book_title: "Patriarchs and Prophets",
+          chapter: 1,
+          chapter_title: "Why Was Sin Permitted?",
+          paragraph: 2,
+          page: 29,
+          page_paragraph: 2,
+          text: "The history of the great conflict.",
+        },
+      }),
+    ])
+
+    expect(useBibleStore.getState().selectedVerse).toBeNull()
+    expect(useBroadcastStore.getState().liveItem).toMatchObject({
+      kind: "egw",
+      reference: "Patriarchs and Prophets p.29 par.2",
+    })
+  })
+
+  it("arbitrates adjacent direct and EGW events before presenting", async () => {
+    const directFlight = scheduleVerseDetections([
+      makeDetection({ confidence: 0.9, auto_queued: false }),
+    ])
+    const egwFlight = scheduleVerseDetections([
+      makeDetection({
+        content_type: "egw",
+        source: "semantic",
+        confidence: 0.97,
+        rank_score: 0.97,
+        verse_ref: "Patriarchs and Prophets p.29 par.2",
+        verse_text: "The history of the great conflict.",
+        book_name: "Patriarchs and Prophets",
+        book_number: 1,
+        chapter: 29,
+        verse: 2,
+        auto_queued: true,
+        egw_paragraph: {
+          id: 12,
+          book_number: 1,
+          book_title: "Patriarchs and Prophets",
+          chapter: 1,
+          chapter_title: "Why Was Sin Permitted?",
+          paragraph: 2,
+          page: 29,
+          page_paragraph: 2,
+          text: "The history of the great conflict.",
+        },
+      }),
+    ])
+
+    expect(useBroadcastStore.getState().liveItem).toBeNull()
+    await vi.advanceTimersByTimeAsync(400)
+    await Promise.all([directFlight, egwFlight])
+
+    expect(useBibleStore.getState().selectedVerse).toBeNull()
+    expect(useBroadcastStore.getState().liveItem).toMatchObject({
       kind: "egw",
       reference: "Patriarchs and Prophets p.29 par.2",
     })
@@ -1201,7 +1315,7 @@ describe("verse detection workflow", () => {
       expect(useDetectionStore.getState().aiSuggestedKey).toBeNull()
     })
 
-    it("a stale in-flight ranking cannot overwrite a newer batch's badge", async () => {
+    it("waits for an in-flight ranking before completing the batch", async () => {
       const winner = makeSemantic()
       let resolveFirstFlight: (value: DetectionResult | null) => void = () => {}
       scheduleRankingMock.mockReturnValueOnce(
@@ -1210,29 +1324,54 @@ describe("verse detection workflow", () => {
         })
       )
 
-      // Batch A: ranking flight hangs (network in progress).
-      await handleVerseDetections([
+      const handling = handleVerseDetections([
         winner,
         makeSemantic({ verse_ref: "Acts 12:5", chapter: 12, verse: 5 }),
       ])
-      // Batch B: ranker abstains immediately, clearing the badge.
-      await handleVerseDetections([
-        makeSemantic({ verse_ref: "Acts 16:31", verse: 31 }),
-      ])
-      await aiSuggestionSettledForTests()
-      expect(useDetectionStore.getState().aiSuggestedKey).toBeNull()
-
-      // Batch A's flight finally resolves with a winner computed from older
-      // speech — it must not resurrect the badge batch B cleared.
       resolveFirstFlight(winner)
-      await Promise.resolve()
-      await Promise.resolve()
-      await Promise.resolve()
+      await handling
 
-      expect(useDetectionStore.getState().aiSuggestedKey).toBeNull()
+      expect(useDetectionStore.getState().aiSuggestedKey).toBe("44:16:25")
+      expect(useBibleStore.getState().selectedVerse).toMatchObject({
+        book_number: 44,
+        chapter: 16,
+        verse: 25,
+      })
     })
 
-    it("does not influence which detection is previewed", async () => {
+    it("does not let a stale ranking hold a newer detection batch", async () => {
+      let resolveFirstFlight: (value: DetectionResult | null) => void = () => {}
+      scheduleRankingMock.mockReturnValueOnce(
+        new Promise<DetectionResult | null>((resolve) => {
+          resolveFirstFlight = resolve
+        })
+      )
+
+      const first = handleVerseDetections([
+        makeSemantic(),
+        makeSemantic({ verse_ref: "Acts 12:5", chapter: 12, verse: 5 }),
+      ])
+      await Promise.resolve()
+
+      const second = handleVerseDetections([
+        makeDetection({ auto_queued: false }),
+      ])
+      await Promise.resolve()
+      await Promise.resolve()
+      await vi.runAllTicks()
+      await vi.advanceTimersByTimeAsync(0)
+
+      expect(useBibleStore.getState().selectedVerse).toMatchObject({
+        book_number: 43,
+        chapter: 3,
+        verse: 16,
+      })
+
+      resolveFirstFlight(null)
+      await Promise.all([first, second])
+    })
+
+    it("does not let a lower-confidence AI winner displace a stronger direct hit", async () => {
       // Ranker picks the semantic Acts hit, but a strong direct John hit is
       // present: preview must still follow the deterministic direct path.
       scheduleRankingMock.mockResolvedValue(makeSemantic())
@@ -1249,6 +1388,61 @@ describe("verse detection workflow", () => {
         verse: 16,
       })
       expect(useDetectionStore.getState().aiSuggestedKey).toBe("44:16:25")
+    })
+
+    it("uses an AI-confirmed review candidate when no stronger eligible hit exists", async () => {
+      const winner = makeSemantic({ confidence: 0.72 })
+      scheduleRankingMock.mockResolvedValue(winner)
+
+      await handleVerseDetections([
+        winner,
+        makeSemantic({
+          confidence: 0.71,
+          verse_ref: "Acts 15:40",
+          chapter: 15,
+          verse: 40,
+        }),
+      ])
+
+      expect(useBibleStore.getState().selectedVerse).toMatchObject({
+        book_number: 44,
+        chapter: 16,
+        verse: 25,
+      })
+    })
+
+    it("uses the AI-confirmed storm verse after modern wording retrieval", async () => {
+      const winner = makeSemantic({
+        confidence: 0.7,
+        verse_ref: "Mark 4:39",
+        verse_text:
+          "Peace, be still. And the wind ceased, and there was a great calm.",
+        book_name: "Mark",
+        book_number: 41,
+        chapter: 4,
+        verse: 39,
+        transcript_snippet:
+          "Please show the verse that talks about Jesus coming the storm in the boat",
+      })
+      scheduleRankingMock.mockResolvedValue(winner)
+
+      await handleVerseDetections([
+        winner,
+        makeSemantic({
+          confidence: 0.71,
+          verse_ref: "Jeremiah 44:22",
+          book_name: "Jeremiah",
+          book_number: 24,
+          chapter: 44,
+          verse: 22,
+        }),
+      ])
+
+      expect(useBibleStore.getState().selectedVerse).toMatchObject({
+        book_number: 41,
+        chapter: 4,
+        verse: 39,
+      })
     })
   })
 })

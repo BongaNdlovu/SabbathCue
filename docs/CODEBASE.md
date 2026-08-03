@@ -1,6 +1,6 @@
 # Codebase Map - SabbathCue
 
-Created: 2026-07-12 - Last verified: 2026-07-31 - Confidence: Medium
+Created: 2026-07-12 - Last verified: 2026-08-03 - Confidence: High
 
 ## 0 - Snapshot
 
@@ -41,13 +41,14 @@ flowchart LR
     Tauri --> DB[SQLite Bible/EGW DB]
     STT --> Detection[Detection pipeline]
     Detection --> Panels[Detection/Search panels]
-    Detection -. opt-in, advisory .-> Rank[DeepSeek candidate ranking]
-    Rank -. suggestion badge .-> Panels
+    Detection -. opt-in, bounded arbiter .-> Rank[DeepSeek candidate ranking]
+    Rank -. ambiguous semantic winner .-> Panels
     Panels --> Broadcast[Broadcast store and renderer]
 ```
 
-The dotted path is optional and off by default. It can annotate a detection
-card with a suggestion but never feeds the broadcast path.
+The dotted path is optional and off by default. When enabled, it can arbitrate
+among ambiguous semantic Bible candidates already retrieved locally; it cannot
+invent content or displace a stronger direct/high-confidence local match.
 
 Style and key patterns: React components read small Zustand selectors, Tauri commands expose native operations, and Rust crates hold provider/data logic. Receipts: src/stores/settings-store.ts:6, src-tauri/src/commands/stt/provider.rs:7, src-tauri/crates/stt/src/lib.rs:32.
 
@@ -562,16 +563,20 @@ registration or command-execution dependency
 ### Flow: optional AI ranking of ambiguous semantic candidates
 
 Indirect references ("the passage where Paul and Silas sang in prison") can
-leave several plausible semantic hits with no clear winner. When the
-operator has opted in, an external model picks among them — but only as a
-suggestion, and only from passages already found locally.
+leave several plausible semantic hits with no clear winner. When the operator
+has opted in, an external model picks among them using only passages already
+found locally, and its bounded result participates in Auto Preview arbitration.
+<!--
+operator has opted in, an external model picks among them — only from
 
+-->
 1. A detection batch reaches `handleVerseDetectionsInternal`, which stores
-   the detections and schedules the display-only ranking pass without
-   awaiting it, so the preview/auto-live path below is never blocked. A
-   400 ms quiet-period debounce keeps growing STT snippets from producing
-   flickering badges; a newer batch is retained if an older cloud request is
-   still in flight. Receipts: src/lib/verse-detection-workflow.ts:416 and
+   the detections. Auto Preview batches run concurrently; each gets a
+   generation token, and a stale result is discarded after newer speech
+   arrives. The bounded ranking pass is awaited only when no strong direct hit
+   exists, allowing the model a short decision window without blocking later
+   batches. A 400 ms quiet-period debounce keeps growing STT snippets from
+   producing flickering choices. Receipts: src/lib/verse-detection-workflow.ts:416 and
    src/lib/deepseek-ranker.ts:257.
 2. `shouldRankDetections` gates the call: the toggle must be on, a key must
    be configured, the batch must hold two or more ambiguous semantic
@@ -581,15 +586,15 @@ suggestion, and only from passages already found locally.
    confidence or margin. Direct and semantic workers emit separate events,
    so the recent-direct timestamp bridges those batches. Receipt:
    src/lib/deepseek-ranker.ts:201.
-3. The frontend builds up to five candidates keyed `book:chapter:verse` with
-   80-character summaries, picks the longest semantic transcript snippet
+3. The frontend builds up to eight candidates keyed `book:chapter:verse` with
+   240-character summaries, picks the longest semantic transcript snippet
    (capped at 500 characters), and invokes the Rust command. Successful
    selections and abstentions are cached by transcript plus the canonical
    candidate-id set; failures are not cached. It remains single-flight and
    opens a circuit breaker after three consecutive failures. Receipts:
    src/lib/deepseek-ranker.ts:8, src/lib/deepseek-ranker.ts:199,
    src/lib/deepseek-ranker.ts:250.
-4. Rust labels the candidates `A`-`E`, sends a fixed system prompt plus the
+4. Rust labels the candidates `A`-`H`, sends a fixed system prompt plus the
    transcript as quoted data, logs the bounded candidate-id shortlist, and
    streams the reply, cancelling as soon as one letter arrives. The whole
    call sits under a hard 1800 ms timeout with no retries. Receipts:
@@ -602,22 +607,29 @@ suggestion, and only from passages already found locally.
    src-tauri/src/commands/deepseek.rs:72, src-tauri/src/commands/deepseek.rs:93.
 6. Before the five-candidate cap, the Rust hybrid detector boosts candidates
    from one unambiguous spoken book while retaining other books for
-   cross-reference speech. Its FTS OR query also expands modern names to
-   curated KJV spellings (`Noah` -> `Noe`, `Elijah` -> `Elias`, and related
+   cross-reference speech. Topic anchors for modern event wording (including
+   John-the-Baptist baptizing Jesus and Nicodemus being born again) are added
+   before ordinary phrase spans, and a bounded event-anchor score keeps the
+   precise local verse in the live pool. Its FTS OR query also expands modern
+   names to curated KJV spellings (`Noah` -> `Noe`, `Elijah` -> `Elias`, and related
    aliases), so lexical retrieval can recover KJV-only wording. Receipts:
    src-tauri/crates/detection/src/pipeline.rs:175,
    src-tauri/crates/bible/src/search.rs:117,
    src-tauri/crates/bible/src/kjv_names.rs:1.
 7. The winning id is written to `aiSuggestedKey` in the detection store,
    guarded by an epoch counter so a slow flight cannot overwrite a newer
-   batch's state. It renders as a badge and is read nowhere else. Receipts:
-   src/lib/verse-detection-workflow.ts:363, src/components/panels/detections-panel.tsx:233.
+   batch's state. In Auto mode, that locally retrieved candidate also joins
+   confidence-first preview/live arbitration at the semantic review threshold;
+   an eligible higher-confidence local candidate remains ahead of a
+   lower-confidence model selection.
+   Receipts: src/lib/verse-detection-workflow.ts:363,
+   src/components/panels/detections-panel.tsx:233.
 
-Invariant worth preserving: the ranker's output is display-only. It is not
-consulted by `selectPreviewHit` or the auto-live path, and the verse text
-shown always comes from the local Bible database, so a model error cannot
-place fabricated scripture on the live screen. Guard test: "does not
-influence which detection is previewed" in
+Invariant worth preserving: DeepSeek may select but cannot invent content.
+It receives only local Bible candidates, and the verse text shown always
+comes from the local Bible database. A lower-confidence AI selection cannot
+displace a higher-confidence eligible local result. Guard tests cover AI
+promotion and confidence-first arbitration in
 src/lib/verse-detection-workflow.test.ts.
 
 Operator surface: Settings -> AI Ranking holds the key entry and the
@@ -664,7 +676,7 @@ External services:
 | Soniox                 | Cloud STT                                                                               | watch       | src-tauri/crates/stt/src/lib.rs:12                                                        |
 | Speechmatics           | Cloud STT                                                                               | watch       | src-tauri/crates/stt/src/speechmatics.rs:17                                               |
 | Vosk                   | Local STT worker/model                                                                  | healthy     | src-tauri/crates/stt/src/lib.rs:39                                                        |
-| DeepSeek               | Optional AI candidate ranking for indirect references; off by default and advisory only | optional    | src-tauri/src/commands/deepseek.rs:154                                                    |
+| DeepSeek               | Optional bounded AI arbitration for ambiguous semantic Bible candidates; off by default | optional    | src-tauri/src/commands/deepseek.rs:154                                                    |
 | Supabase               | Account auth, trial/device access, optional church profile, admin account listing       | critical    | src/lib/supabase/client.ts:6, supabase/migrations/008_church_organization_profiles.sql:23 |
 | Supabase Edge Function | Installation proof verification and signed activation lease issuance                    | critical    | supabase/functions/device-activation/index.ts:178                                         |
 | Paddle Billing         | Checkout, customer portal, signed webhook subscription mirror, and access renewal       | critical    | src/lib/paddle/checkout.ts:28, supabase/functions/paddle-webhook/index.ts:139             |
@@ -920,3 +932,6 @@ Top risks (ranked): 1. STT provider removal can leave stale docs or tests if his
 | 2026-08-02 | Made admin access renewal additive from GREATEST(current expiry, now()) in migration 013 without touching suspension, Paddle-owned expiry, or any device row, added a post-grant pending-computer warning that survives a failed device lookup, and offered Retry to a pending computer through the existing saved-session refresh. | 6, 7, 10, 15 |
 | 2026-08-02 | Bounded each direct-reference parse at the next spoken book and removed same-chapter placeholders after an in-fragment full citation, preventing earlier books and temporary verse-1 results from shadowing the intended reference. | 6, 10, 11, 15 |
 | 2026-08-02 | Localized quote-overlap evidence within long STT blocks, added bounded strict retrieval for compact embedded clauses, and required compact modernized quotations to identify one candidate before reaching live confidence. | 6, 10, 11, 15 |
+| 2026-08-02 | Recorded EGW attribution cues from the full authoritative transcript before the live semantic window is shortened, and recognized the scoped `statement by Illinois` STT substitution, preserving the session cue for later high-confidence quotations. | 6, 10, 11, 15 |
+| 2026-08-02 | Unified Bible and EGW Auto Live arbitration by confidence across adjacent detection events, using a bounded 400 ms collection window, and made the Live screen's Auto Live toggle control EGW preview-versus-live output. | 6, 10, 11, 15 |
+| 2026-08-03 | Preserved intentional confidence thresholds during hydration, retired stale Auto Preview batches before presentation, made bounded DeepSeek arbitration usable for ambiguous semantic winners, and added topic/event anchors so baptism and born-again requests retain their local verses before the live cap. | 5-7, 10, 11, 15 |

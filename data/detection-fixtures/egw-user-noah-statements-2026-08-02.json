@@ -1,0 +1,51 @@
+[
+  {
+    "category": "noah-quote-no-cue",
+    "mode": "fire",
+    "cue": false,
+    "text": "In the days of Noah, a double curse was resting upon the earth, and consequence of Adam's transgression, and of the murder committed by Cain.",
+    "expectedBook": "Patriarchs and Prophets"
+  },
+  {
+    "category": "noah-quote-book-cue",
+    "mode": "fire",
+    "cue": true,
+    "text": "The human race, yet retained much of its early vigor, but a few generations had passed since Adam had access to the tree.",
+    "expectedBook": "Patriarchs and Prophets"
+  },
+  {
+    "category": "idolatry-quote",
+    "mode": "fire",
+    "cue": true,
+    "text": "In the green fields and under the shadow of the goodly trees, they set up the altars of their idols.",
+    "expectedBook": "Patriarchs and Prophets"
+  },
+  {
+    "category": "idolatry-continuation",
+    "mode": "fire",
+    "cue": true,
+    "text": "Extensive groves that retained their foliage throughout the year.",
+    "expectedBook": "Patriarchs and Prophets"
+  },
+  {
+    "category": "actual-window-illinois",
+    "mode": "fire",
+    "cue": false,
+    "text": "Okay, so I'm going to read a statement by Illinois that says, In the days of Noah, a double curse was resting upon the earth, and consequence of Adam's transgression, and of the murder committed by Cain.",
+    "expectedBook": "Patriarchs and Prophets"
+  },
+  {
+    "category": "actual-window-book-title",
+    "mode": "fire",
+    "cue": true,
+    "text": "A statement by Illinois: it's in Patriarchs and Prophets. It says, The human race, yet retained much of its early vigor, but a few generations had passed since Adam had access to the tree.",
+    "expectedBook": "Patriarchs and Prophets"
+  },
+  {
+    "category": "actual-window-idolatry",
+    "mode": "fire",
+    "cue": true,
+    "text": "And then I'm going to read another statement that says, In the green fields and under the shadow of the goodly trees, they set up the altars of their idols. Extensive groves that retained their foliage throughout the year.",
+    "expectedBook": "Patriarchs and Prophets"
+  }
+]

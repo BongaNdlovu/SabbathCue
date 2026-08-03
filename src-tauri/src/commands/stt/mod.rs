@@ -21,8 +21,8 @@ use tokio::sync::Notify;
 
 use self::detection::{
     is_bible_detection_enabled, is_detection_paused, is_semantic_detection_enabled,
-    LIVE_DETECTION_WINDOW_WORDS, PARTIAL_SEMANTIC_DEBOUNCE, PARTIAL_SEMANTIC_MIN_WORDS,
-    SEMANTIC_WINDOW_SEGMENTS, WINDOW_RESET_GAP,
+    load_egw_cue_books, record_egw_cue, LIVE_DETECTION_WINDOW_WORDS, PARTIAL_SEMANTIC_DEBOUNCE,
+    PARTIAL_SEMANTIC_MIN_WORDS, SEMANTIC_WINDOW_SEGMENTS, WINDOW_RESET_GAP,
 };
 use self::detection_jobs::{
     enqueue_direct_detection_job, enqueue_final_semantic_job, enqueue_partial_semantic_job,
@@ -68,7 +68,6 @@ pub async fn start_transcription(
     stt_language: Option<String>,
     low_power: Option<bool>,
 ) -> Result<(), String> {
-    // Guard: already running?
     let (stt_active, audio_active, session_generation) = {
         let app_state = state.lock().map_err(|e| e.to_string())?;
         (
@@ -313,12 +312,9 @@ pub async fn start_transcription(
         log::info!("[STT-{provider_log_name_task_a}] Provider task exited");
     }));
 
-    // Task B: consume TranscriptEvents, emit to frontend, run detection
     let evt_active = stt_active.clone();
     let event_app = app.clone();
 
-    // Final and partial semantic detection each use latest-wins storage so
-    // fresh speech can replace stale queued work instead of being dropped.
     let final_semantic_job = Arc::new(Mutex::new(None::<detection_jobs::SemanticJob>));
     let final_semantic_notify = Arc::new(Notify::new());
     let partial_semantic_job = Arc::new(Mutex::new(None::<detection_jobs::SemanticJob>));
@@ -327,9 +323,6 @@ pub async fn start_transcription(
     // Background detection channel — direct + reading mode, non-blocking
     let (detect_tx, mut detect_rx) = tokio::sync::mpsc::channel::<(u64, String)>(64);
 
-    // [DIAG] Counters so we can see whether transcripts are being dropped
-    // because the detection workers can't keep up. Logged every 25 sends
-    // alongside current queue depth.
     let detect_sent = Arc::new(AtomicU64::new(0));
     let detect_dropped = Arc::new(AtomicU64::new(0));
     let semantic_sent = Arc::new(AtomicU64::new(0));
@@ -337,6 +330,7 @@ pub async fn start_transcription(
     let transcript_seq = Arc::new(AtomicU64::new(0));
     let latest_accepted_seq = Arc::new(AtomicU64::new(0));
     let egw_cue_at_ms = Arc::new(AtomicU64::new(0));
+    let egw_cue_books = load_egw_cue_books(&state);
 
     task_handles.push(spawn_latest_wins_semantic_worker(
         "final-semantic",
@@ -352,12 +346,11 @@ pub async fn start_transcription(
         "partial",
         app.clone(),
         transcript_seq.clone(),
-        egw_cue_at_ms,
+        egw_cue_at_ms.clone(),
         partial_semantic_job.clone(),
         partial_semantic_notify.clone(),
     ));
 
-    // Detection worker: direct detection + reading mode on spawn_blocking.
     let det_app = app.clone();
     let det_latest_seq = latest_accepted_seq.clone();
     task_handles.push(spawn_stt_task("detection", async move {
@@ -383,6 +376,7 @@ pub async fn start_transcription(
     let final_semantic_notify_evt = final_semantic_notify.clone();
     let partial_semantic_job_evt = partial_semantic_job.clone();
     let partial_semantic_notify_evt = partial_semantic_notify.clone();
+    let egw_cue_at_ms_evt = egw_cue_at_ms;
 
     task_handles.push(spawn_stt_task("event-router", async move {
         let mut transcript_router = TranscriptRouter::default();
@@ -553,6 +547,11 @@ pub async fn start_transcription(
                             // Fire-and-forget: detection runs in background thread pool.
                             // Event consumer proceeds immediately to next transcript.
                             if let Some(detection_text) = route.authoritative_detection {
+                                record_egw_cue(
+                                    &egw_cue_books,
+                                    &detection_text,
+                                    &egw_cue_at_ms_evt,
+                                );
                                 let final_semantic_allowed =
                                     final_semantic_detection_allowed_by_settings(
                                         semantic_detection_enabled,

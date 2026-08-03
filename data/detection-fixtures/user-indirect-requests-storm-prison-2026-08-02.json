@@ -1,0 +1,30 @@
+[
+  {
+    "language": "en",
+    "category": "indirect-request",
+    "mode": "hint",
+    "text": "Please show the verse that talks about Jesus coming the storm in the boat.",
+    "expected": "Mark 4:39"
+  },
+  {
+    "language": "en",
+    "category": "indirect-request",
+    "mode": "hint",
+    "text": "Paul and Silas in prison.",
+    "expected": "Acts 16:25"
+  },
+  {
+    "language": "en",
+    "category": "indirect-request",
+    "mode": "hint",
+    "text": "Let's go to the verse which talks about John the Baptist baptizing Jesus.",
+    "expected": "Matthew 3:13"
+  },
+  {
+    "language": "en",
+    "category": "indirect-request",
+    "mode": "hint",
+    "text": "Let's go to the verse where Jesus and Nicodemus talk about being born again.",
+    "expected": "John 3:3"
+  }
+]

@@ -15,7 +15,7 @@ fn recall_db() -> BibleDb {
     )
     .unwrap();
 
-    let verses: [(i64, i32, &str, i32, i32, &str); 10] = [
+    let verses: [(i64, i32, &str, i32, i32, &str); 12] = [
         (1, 17, "Esther", 4, 14, "For if thou altogether holdest thy peace at this time, then shall there enlargement and deliverance arise to the Jews from another place; but thou and thy father's house shall be destroyed: and who knoweth whether thou art come to the kingdom for such a time as this?"),
         (2, 30, "Amos", 5, 13, "Therefore the prudent shall keep silence in that time; for it is an evil time."),
         (3, 39, "Malachi", 1, 1, "The burden of the word of the LORD to Israel by Malachi."),
@@ -26,6 +26,8 @@ fn recall_db() -> BibleDb {
         (8, 66, "Revelation", 14, 6, "And I saw another angel fly in the midst of heaven, having the everlasting gospel to preach unto them that dwell on the earth, and to every nation, and kindred, and tongue, and people,"),
         (9, 51, "Colossians", 1, 27, "To whom God would make known what is the riches of the glory of this mystery among the Gentiles; which is Christ in you, the hope of glory:"),
         (10, 66, "Revelation", 13, 8, "And all that dwell upon the earth shall worship him, whose names are not written in the book of life of the Lamb slain from the foundation of the world."),
+        (11, 40, "Matthew", 3, 13, "Then cometh Jesus from Galilee to Jordan unto John, to be baptized of him."),
+        (12, 43, "John", 3, 3, "Jesus answered and said unto him, Verily, verily, I say unto thee, Except a man be born again, he cannot see the kingdom of God."),
     ];
     for (id, book_number, book_name, chapter, verse, text) in verses {
         conn.execute(
@@ -62,6 +64,48 @@ fn verbatim_quote_that_fills_the_window_is_recalled() {
         "Acts",
         16,
         25,
+    );
+}
+
+#[test]
+fn modern_storm_and_boat_request_recalls_the_kjv_calm() {
+    let db = recall_db();
+    assert_recalls(
+        &db,
+        "Please show the verse that talks about Jesus coming the storm in the boat",
+        "Mark",
+        4,
+        39,
+    );
+}
+
+#[test]
+fn prison_scene_request_recalls_paul_and_silas_praying() {
+    let db = recall_db();
+    assert_recalls(&db, "Paul and Silas in prison", "Acts", 16, 25);
+}
+
+#[test]
+fn baptism_request_recalls_jesus_baptized_by_john() {
+    let db = recall_db();
+    assert_recalls(
+        &db,
+        "the verse where John the Baptist baptizes Jesus",
+        "Matthew",
+        3,
+        13,
+    );
+}
+
+#[test]
+fn born_again_request_recalls_nicodemus_anchor() {
+    let db = recall_db();
+    assert_recalls(
+        &db,
+        "where Jesus and Nicodemus talk about being born again",
+        "John",
+        3,
+        3,
     );
 }
 

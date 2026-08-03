@@ -7,7 +7,7 @@ import {
 } from "@/lib/detection-profiler"
 import {
   handleReadingAdvance,
-  handleVerseDetections,
+  scheduleVerseDetections,
 } from "@/lib/verse-detection-workflow"
 import { refreshLiveTranslation } from "@/lib/presentation-workflow"
 import { useAudioStore } from "@/stores/audio-store"
@@ -380,7 +380,7 @@ export function useTranscriptionEventBridge() {
       ...traceDetectionBatchDetails(detections),
     })
     profileDetectionEvent("verse_detections", detections.length, () => {
-      return handleVerseDetections(detections)
+      return scheduleVerseDetections(detections)
     })
   })
 

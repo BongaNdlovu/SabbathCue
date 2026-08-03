@@ -262,7 +262,7 @@ function ReadingModeRow({
       )}
     >
       <span className="truncate text-xs text-muted-foreground">
-        Auto-live reading mode
+        Auto Live output
       </span>
       <Switch
         checked={readingModeAutoLive}

@@ -35,7 +35,10 @@ let pendingAfterFlight: ScheduledRanking | null = null
 let activeScheduled: ScheduledRanking | null = null
 let scheduleGeneration = 0
 
-function resolveScheduled(entry: ScheduledRanking, value: DetectionResult | null) {
+function resolveScheduled(
+  entry: ScheduledRanking,
+  value: DetectionResult | null
+) {
   entry.resolve(value)
 }
 
@@ -112,6 +115,7 @@ function rankableSemantic(detections: DetectionResult[]): DetectionResult[] {
   for (const detection of detections) {
     if (
       detection.source !== "semantic" ||
+      detection.content_type === "egw" ||
       detection.book_number <= 0 ||
       detection.is_chapter_only
     ) {
@@ -235,10 +239,7 @@ export function pickRankingTranscript(detections: DetectionResult[]): string {
   return longest.slice(0, MAX_TRANSCRIPT_CHARS)
 }
 
-function cacheKey(
-  transcript: string,
-  candidates: RankingCandidate[]
-): string {
+function cacheKey(transcript: string, candidates: RankingCandidate[]): string {
   const ids = [...candidates.map((candidate) => candidate.id)].sort()
   return JSON.stringify([transcript, ids])
 }
@@ -262,8 +263,12 @@ export function scheduleRanking(
   noteBatchForGating(detections, gate)
   supersedeScheduledWork()
   if (debounceTimer) clearTimeout(debounceTimer)
-
   const generation = ++scheduleGeneration
+
+  if (!shouldRankDetections(detections, gate)) {
+    return Promise.resolve(null)
+  }
+
   return new Promise((resolve) => {
     pendingDebounced = { generation, detections, gate, resolve }
     debounceTimer = setTimeout(() => {

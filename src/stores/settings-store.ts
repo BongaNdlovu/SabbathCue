@@ -8,8 +8,6 @@ export type SttLanguage = "en" | "af" | "es" | "fr" | "pt"
 
 const DEFAULT_CONFIDENCE_THRESHOLD = 0.9
 const DEFAULT_SEMANTIC_CONFIDENCE_THRESHOLD = 0.7
-const LEGACY_DEFAULT_CONFIDENCE_THRESHOLD = 0.8
-const LEGACY_AUTO_LIVE_THRESHOLD = 0.85
 
 function normalizeConfidenceThreshold(value: number): number {
   if (!Number.isFinite(value)) return DEFAULT_CONFIDENCE_THRESHOLD
@@ -21,7 +19,6 @@ interface SettingsState {
   audioDeviceId: string | null
   gain: number
   autoMode: boolean
-  autoPreviewDetections: boolean
   bibleDetectionEnabled: boolean
   semanticDetectionEnabled: boolean
   confidenceThreshold: number
@@ -45,7 +42,6 @@ interface SettingsState {
   setAudioDeviceId: (id: string | null) => void
   setGain: (gain: number) => void
   setAutoMode: (auto: boolean) => void
-  setAutoPreviewDetections: (enabled: boolean) => void
   setBibleDetectionEnabled: (enabled: boolean) => void
   setSemanticDetectionEnabled: (enabled: boolean) => void
   setConfidenceThreshold: (threshold: number) => void
@@ -71,7 +67,6 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   audioDeviceId: null,
   gain: 1.0,
   autoMode: false,
-  autoPreviewDetections: true,
   bibleDetectionEnabled: true,
   semanticDetectionEnabled: true,
   confidenceThreshold: DEFAULT_CONFIDENCE_THRESHOLD,
@@ -93,8 +88,6 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   setAudioDeviceId: (audioDeviceId) => set({ audioDeviceId }),
   setGain: (gain) => set({ gain }),
   setAutoMode: (autoMode) => set({ autoMode }),
-  setAutoPreviewDetections: (autoPreviewDetections) =>
-    set({ autoPreviewDetections }),
   setBibleDetectionEnabled: (bibleDetectionEnabled) =>
     set({ bibleDetectionEnabled }),
   setSemanticDetectionEnabled: (semanticDetectionEnabled) =>
@@ -118,7 +111,6 @@ const PERSISTED_KEYS = [
   "audioDeviceId",
   "gain",
   "autoMode",
-  "autoPreviewDetections",
   "bibleDetectionEnabled",
   "semanticDetectionEnabled",
   "confidenceThreshold",
@@ -153,13 +145,6 @@ function parseSttLanguage(value: unknown): SttLanguage {
 }
 
 function parseConfidenceThreshold(value: unknown): unknown {
-  if (
-    typeof value === "number" &&
-    (Math.abs(value - LEGACY_DEFAULT_CONFIDENCE_THRESHOLD) < Number.EPSILON ||
-      Math.abs(value - LEGACY_AUTO_LIVE_THRESHOLD) < Number.EPSILON)
-  ) {
-    return DEFAULT_CONFIDENCE_THRESHOLD
-  }
   if (typeof value === "number") {
     return normalizeConfidenceThreshold(value)
   }
