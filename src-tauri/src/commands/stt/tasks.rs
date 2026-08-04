@@ -54,6 +54,7 @@ pub(super) fn spawn_latest_wins_semantic_worker(
                 let SemanticJob {
                     seq,
                     text,
+                    egw_text,
                     stt_confidence,
                 } = job;
                 let check_seq = latest_seq.load(Ordering::Acquire);
@@ -74,6 +75,7 @@ pub(super) fn spawn_latest_wins_semantic_worker(
                         &latest_seq,
                         &egw_cue_at_ms,
                         &text,
+                        &egw_text,
                         stt_confidence,
                     );
                 })

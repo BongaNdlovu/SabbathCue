@@ -606,6 +606,11 @@ const BUILT_IN_ABSTAIN_UTTERANCES: &[&str] = &[
     reason = "benchmark case counts are small enough for exact f64 metric math"
 )]
 fn main() {
+    // Off unless RUST_LOG asks for it. The per-candidate scoring lines in
+    // `live_fts_candidate_confidence` are the only way to see why one verse
+    // outranked another, and without this they were unreachable from the
+    // harness.
+    env_logger::init();
     let args: Vec<String> = std::env::args().collect();
     let threshold: f64 = arg(&args, "--threshold")
         .and_then(|s| s.parse().ok())

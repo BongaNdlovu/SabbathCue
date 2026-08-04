@@ -74,14 +74,26 @@ pub(crate) const LIVE_SEMANTIC_MIN_CONFIDENCE: f64 = 0.70;
 /// semantic + FTS5 detection.
 pub(crate) const LIVE_DETECTION_WINDOW_WORDS: usize = 12;
 
+/// Maximum trailing words of the rolling window fed to live EGW quote matching.
+///
+/// Deliberately wider than `LIVE_DETECTION_WINDOW_WORDS`: Bible verses are
+/// short and a tight window keeps vector search off adjacent sentences, but an
+/// EGW paragraph sentence runs 25-40 words. At 12 words the shared run with the
+/// spoken quote tops out around 5, which scores in the cued-hint band (75-80%)
+/// and never reaches the fire (6) or auto-queue (8) tiers. On 2026-08-04 a
+/// verbatim Great Controversy quote scored 75-80% for this reason while
+/// keyword-floored Bible hits sat at 88% and buried it.
+pub(crate) const LIVE_EGW_QUOTE_WINDOW_WORDS: usize = 40;
+
 /// Clear the rolling detection window after this much silence between finals.
 pub(crate) const WINDOW_RESET_GAP: Duration = Duration::from_secs(8);
 
 #[cfg(test)]
 mod tests {
     use super::{
-        LIVE_SEMANTIC_CAP, LIVE_SEMANTIC_MIN_CONFIDENCE, PARTIAL_SEMANTIC_DEBOUNCE,
-        PARTIAL_SEMANTIC_MIN_WORDS, SEMANTIC_WINDOW_SEGMENTS,
+        LIVE_DETECTION_WINDOW_WORDS, LIVE_EGW_QUOTE_WINDOW_WORDS, LIVE_SEMANTIC_CAP,
+        LIVE_SEMANTIC_MIN_CONFIDENCE, PARTIAL_SEMANTIC_DEBOUNCE, PARTIAL_SEMANTIC_MIN_WORDS,
+        SEMANTIC_WINDOW_SEGMENTS,
     };
     use crate::commands::stt::detection_jobs::{
         enqueue_final_semantic_job, enqueue_partial_semantic_job, finalize_live_semantic_results,
@@ -166,6 +178,7 @@ mod tests {
             &replaced,
             1,
             "John chapter 8 verse 9".to_string(),
+            "John chapter 8 verse 9".to_string(),
             0.9,
         );
         assert!(
@@ -181,6 +194,7 @@ mod tests {
             &replaced,
             2,
             "let's go to the next verse".to_string(),
+            "let's go to the next verse".to_string(),
             0.9,
         );
         assert!(
@@ -188,7 +202,16 @@ mod tests {
             "command window must not enqueue a semantic job"
         );
 
-        enqueue_final_semantic_job(&slot, &notify, &sent, &replaced, 3, "one".to_string(), 0.9);
+        enqueue_final_semantic_job(
+            &slot,
+            &notify,
+            &sent,
+            &replaced,
+            3,
+            "one".to_string(),
+            "one".to_string(),
+            0.9,
+        );
         assert!(
             slot.lock().unwrap().is_none(),
             "tiny final window must not enqueue a semantic job"
@@ -201,6 +224,7 @@ mod tests {
             &sent,
             &replaced,
             4,
+            "for God so loved the world that he gave his only begotten son".to_string(),
             "for God so loved the world that he gave his only begotten son".to_string(),
             0.73,
         );
@@ -495,6 +519,38 @@ mod tests {
         assert!(
             !trailing.contains("Patriarchs and Prophets"),
             "the live cue must be recorded before window truncation: {trailing}"
+        );
+    }
+
+    #[test]
+    fn egw_quote_window_keeps_a_quote_the_bible_window_truncates() {
+        // The 2026-08-04 Great Controversy quote as it arrived across STT
+        // finals. The 12-word Bible window keeps only the tail, so the shared
+        // run with the paragraph topped out at 5 (cued-hint band, 75-80%).
+        // The wider EGW window keeps the whole sentence, which the harness
+        // scores at run=9 -> 92% auto-queue.
+        let joined = [
+            "And then there's Ellen White's quote that says",
+            "Fearful is the issue to which the world is to be brought",
+            "the powers of earth uniting",
+            "to war against the commandment of God",
+        ]
+        .join(" ");
+
+        let bible_window = clamp_to_recent_words(&joined, LIVE_DETECTION_WINDOW_WORDS);
+        let egw_window = clamp_to_recent_words(&joined, LIVE_EGW_QUOTE_WINDOW_WORDS);
+
+        assert!(
+            !bible_window.contains("Fearful is the issue"),
+            "bible window should still be tight: {bible_window}"
+        );
+        assert!(
+            egw_window.contains("Fearful is the issue"),
+            "egw window must retain the head of the quote: {egw_window}"
+        );
+        assert!(
+            egw_window.contains("commandment of God"),
+            "egw window must retain the tail of the quote: {egw_window}"
         );
     }
 
@@ -829,11 +885,13 @@ mod tests {
         let old = SemanticJob {
             seq: 1,
             text: "old".to_string(),
+            egw_text: "old".to_string(),
             stt_confidence: 0.5,
         };
         let new = SemanticJob {
             seq: 2,
             text: "new".to_string(),
+            egw_text: "new".to_string(),
             stt_confidence: 0.8,
         };
         assert!(!replace_semantic_job(&slot, old, "test"));
@@ -853,6 +911,7 @@ mod tests {
             guard.replace(SemanticJob {
                 seq: 1,
                 text: "poisoned".to_string(),
+                egw_text: "poisoned".to_string(),
                 stt_confidence: 0.4,
             });
             panic!("poison semantic slot");
@@ -863,6 +922,7 @@ mod tests {
             SemanticJob {
                 seq: 2,
                 text: "recovered".to_string(),
+                egw_text: "recovered".to_string(),
                 stt_confidence: 0.9,
             },
             "test"
@@ -872,6 +932,7 @@ mod tests {
             Some(SemanticJob {
                 seq: 2,
                 text: "recovered".to_string(),
+                egw_text: "recovered".to_string(),
                 stt_confidence: 0.9,
             })
         );

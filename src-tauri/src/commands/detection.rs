@@ -23,6 +23,7 @@ mod settings;
 
 pub(crate) use egw::{
     apply_egw_auto_queue, dampen_egw_for_low_stt_confidence, detect_egw_quotes,
+    drop_egw_quotes_echoing_scripture,
     detect_egw_references, note_and_check_egw_cue,
 };
 pub use result::{to_result, DetectionResult};
@@ -189,6 +190,21 @@ fn set_reading_mode_reference_inner(
         .bible_db
         .as_ref()
         .ok_or_else(|| "Bible database not initialized".to_string())?;
+    // Auto-live commits are dispatched from the frontend and land after the STT
+    // path has already advanced reading mode. Within the chapter we are already
+    // reading, a commit for a verse at or behind the cursor is therefore stale
+    // and must not re-anchor: the 2026-08-04 "John 3 verse 16" partial resolved
+    // to 3:1 first, and its late commit dragged the projected verse back to 1.
+    // Mirrors `should_restart_reading` for this frontend-driven path.
+    if reading_mode.is_active()
+        && reading_mode.current_book() == book_number
+        && reading_mode.current_chapter() == chapter
+        && reading_mode
+            .current_verse()
+            .is_some_and(|current| verse <= current)
+    {
+        return Ok(());
+    }
     let chapter_verses = db
         .get_chapter(app_state.active_translation_id, book_number, chapter)
         .map_err(|error| error.to_string())?;
@@ -438,6 +454,7 @@ mod tests {
                (4, 4, 43, 'Juan', 'Jn', 'NT'),
                (5, 5, 43, 'Jean', 'Jn', 'NT');
              INSERT INTO verses VALUES
+               (99, 1, 43, 'John', 'Jn', 3, 1, 'KJV John 3:1 text.'),
                (100, 1, 43, 'John', 'Jn', 3, 16, 'KJV John 3:16 text.'),
                (101, 1, 43, 'John', 'Jn', 3, 17, 'KJV John 3:17 text.'),
                (200, 2, 43, 'John', 'Jn', 3, 16, 'NKJV John 3:16 text.'),
@@ -603,6 +620,48 @@ mod tests {
         assert_eq!(advance.book_name, "John");
         assert_eq!(advance.chapter, 3);
         assert_eq!(advance.verse, 17);
+    }
+
+    #[test]
+    fn late_live_realignment_does_not_drag_cursor_backward() {
+        // Auto-live commits lag the STT path. On 2026-08-04 the speaker said
+        // "John 3 verse 16"; the partial resolved to John 3:1 first, so a late
+        // commit for 3:1 landed after reading mode had already advanced to 3:16
+        // and dragged the projected verse back (Started 3:1 -> 3:16 -> 3:1).
+        let fixture = fixture_state(1);
+        let mut reading_mode = ReadingMode::new();
+
+        set_reading_mode_reference_inner(&fixture.state, &mut reading_mode, 43, "John", 3, 16)
+            .expect("seed reading mode at 3:16");
+        assert_eq!(reading_mode.current_verse(), Some(16));
+
+        set_reading_mode_reference_inner(&fixture.state, &mut reading_mode, 43, "John", 3, 1)
+            .expect("late auto-live commit for 3:1");
+
+        assert_eq!(
+            reading_mode.current_verse(),
+            Some(16),
+            "a late live commit for an earlier verse must not re-anchor backward"
+        );
+    }
+
+    #[test]
+    fn live_realignment_still_reanchors_forward() {
+        let fixture = fixture_state(1);
+        let mut reading_mode = ReadingMode::new();
+
+        set_reading_mode_reference_inner(&fixture.state, &mut reading_mode, 43, "John", 3, 1)
+            .expect("seed reading mode at 3:1");
+        assert_eq!(reading_mode.current_verse(), Some(1));
+
+        set_reading_mode_reference_inner(&fixture.state, &mut reading_mode, 43, "John", 3, 16)
+            .expect("forward commit for 3:16");
+
+        assert_eq!(
+            reading_mode.current_verse(),
+            Some(16),
+            "forward re-anchoring within the chapter must still work"
+        );
     }
 
     #[test]

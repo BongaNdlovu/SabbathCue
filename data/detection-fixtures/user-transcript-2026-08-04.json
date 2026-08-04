@@ -1,0 +1,104 @@
+[
+  {
+    "language": "en",
+    "category": "mic-check-noise",
+    "mode": "silent",
+    "timestamp": "12:09:35",
+    "text": "Testing, testing, one, two, one, two."
+  },
+  {
+    "language": "en",
+    "category": "direct-reference",
+    "mode": "fire",
+    "timestamp": "12:10:09",
+    "text": "John 3 verse 16",
+    "expected": "John 3:16",
+    "forbidden": ["John 3:1"]
+  },
+  {
+    "language": "en",
+    "category": "direct-reference-partial-race",
+    "mode": "fire",
+    "timestamp": "12:10:09",
+    "text": "John 3 verse 1",
+    "expected": "John 3:1"
+  },
+  {
+    "language": "en",
+    "category": "verbatim-quote",
+    "mode": "fire",
+    "timestamp": "12:10:30",
+    "text": "For God so loved the world that He gave His only begotten Son, that whoever believes Him should not perish but have everlasting life.",
+    "expected": "John 3:16",
+    "forbidden": ["John 3:15", "I John 4:9", "John 3:18", "John 12:46"]
+  },
+  {
+    "language": "en",
+    "category": "verbatim-quote-kjv",
+    "mode": "fire",
+    "timestamp": "12:13:26",
+    "text": "For God so loved the world that He that He gave His only begotten Son, that whosoever believeth in Him should not perish but have everlasting life.",
+    "expected": "John 3:16",
+    "forbidden": ["John 3:15", "I John 4:9", "John 3:18", "John 12:46"]
+  },
+  {
+    "language": "en",
+    "category": "direct-reference",
+    "mode": "fire",
+    "timestamp": "12:10:59",
+    "text": "Psalms 23 verse 1.",
+    "expected": "Psalms 23:1"
+  },
+  {
+    "language": "en",
+    "category": "filler-noise",
+    "mode": "silent",
+    "timestamp": "12:12:44",
+    "text": "Um, this is verse, this verse that shows we are pleased, um,"
+  },
+  {
+    "language": "en",
+    "category": "indirect-request",
+    "mode": "hint",
+    "timestamp": "12:12:52",
+    "text": "I need a verse that shows or that talks about Lot's wife turning into a pile of salt.",
+    "expected": "Genesis 19:26",
+    "forbidden": ["Job 24:21", "Job 36:9", "Proverbs 12:16", "Leviticus 13:10", "Leviticus 13:19", "Ezekiel 24:5"]
+  },
+  {
+    "language": "en",
+    "category": "filler-then-direct",
+    "mode": "fire",
+    "timestamp": "12:13:19",
+    "text": "Um, John 3 verse 16",
+    "expected": "John 3:16",
+    "forbidden": ["John 3:1"]
+  },
+  {
+    "language": "en",
+    "category": "egw-cue-noise",
+    "mode": "silent",
+    "timestamp": "12:14:00",
+    "text": "And then there's Ellen White's quote that says,"
+  },
+  {
+    "language": "en",
+    "category": "egw-quote-not-bible",
+    "mode": "silent",
+    "timestamp": "12:14:02",
+    "text": "Fearful is the issue to which the world is to be brought: the powers of earth uniting to war against the commandment of God.",
+    "forbidden": [
+      "I Peter 1:13",
+      "I Peter 2:11",
+      "Isaiah 26:18",
+      "Isaiah 1:2",
+      "I Timothy 1:1",
+      "Mark 7:9",
+      "Matthew 15:3",
+      "Galatians 6:14",
+      "I John 2:17",
+      "Luke 21:26",
+      "Revelation of John 19:19"
+    ]
+  }
+]

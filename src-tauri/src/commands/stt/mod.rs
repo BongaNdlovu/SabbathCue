@@ -21,7 +21,8 @@ use tokio::sync::Notify;
 
 use self::detection::{
     is_bible_detection_enabled, is_detection_paused, is_semantic_detection_enabled,
-    load_egw_cue_books, record_egw_cue, LIVE_DETECTION_WINDOW_WORDS, PARTIAL_SEMANTIC_DEBOUNCE,
+    load_egw_cue_books, record_egw_cue, LIVE_DETECTION_WINDOW_WORDS, LIVE_EGW_QUOTE_WINDOW_WORDS,
+    PARTIAL_SEMANTIC_DEBOUNCE,
     PARTIAL_SEMANTIC_MIN_WORDS, SEMANTIC_WINDOW_SEGMENTS, WINDOW_RESET_GAP,
 };
 use self::detection_jobs::{
@@ -460,12 +461,20 @@ pub async fn start_transcription(
                                 last_partial_semantic_at = Instant::now();
                                 let mut parts = semantic_window.iter().cloned().collect::<Vec<_>>();
                                 parts.push(transcript.clone());
+                                let joined = parts.join(" ");
                                 let semantic_text = trim_to_sentence_start(
                                     &clamp_to_recent_words(
-                                        &parts.join(" "),
+                                        &joined,
                                         LIVE_DETECTION_WINDOW_WORDS,
                                     ),
                                     SENTENCE_TRIM_MIN_WORDS,
+                                );
+                                // No sentence trim: EGW quotes routinely span a
+                                // sentence boundary, and the run matcher already
+                                // ignores non-matching leading words.
+                                let egw_text = clamp_to_recent_words(
+                                    &joined,
+                                    LIVE_EGW_QUOTE_WINDOW_WORDS,
                                 );
                                 enqueue_partial_semantic_job(
                                     &partial_semantic_job_evt,
@@ -474,6 +483,7 @@ pub async fn start_transcription(
                                     &semantic_dropped_evt,
                                     seq,
                                     semantic_text,
+                                    egw_text,
                                     confidence,
                                 );
                             }
@@ -585,6 +595,10 @@ pub async fn start_transcription(
                                             speech_final,
                                         )
                                     {
+                                        // Deepgram buffers a whole utterance, so
+                                        // this text is already the widest context
+                                        // available for the EGW pass.
+                                        let egw_text = semantic_text.clone();
                                         enqueue_final_semantic_job(
                                             &final_semantic_job_evt,
                                             &final_semantic_notify_evt,
@@ -592,6 +606,7 @@ pub async fn start_transcription(
                                             &semantic_dropped_evt,
                                             semantic_seq,
                                             semantic_text,
+                                            egw_text,
                                             confidence,
                                         );
                                     }
@@ -604,16 +619,24 @@ pub async fn start_transcription(
                                     while semantic_window.len() > SEMANTIC_WINDOW_SEGMENTS {
                                         semantic_window.pop_front();
                                     }
+                                    let joined = semantic_window
+                                        .iter()
+                                        .cloned()
+                                        .collect::<Vec<_>>()
+                                        .join(" ");
                                     let semantic_text = trim_to_sentence_start(
                                         &clamp_to_recent_words(
-                                            &semantic_window
-                                                .iter()
-                                                .cloned()
-                                                .collect::<Vec<_>>()
-                                                .join(" "),
+                                            &joined,
                                             LIVE_DETECTION_WINDOW_WORDS,
                                         ),
                                         SENTENCE_TRIM_MIN_WORDS,
+                                    );
+                                    // No sentence trim: EGW quotes routinely span
+                                    // a sentence boundary, and the run matcher
+                                    // ignores non-matching leading words anyway.
+                                    let egw_text = clamp_to_recent_words(
+                                        &joined,
+                                        LIVE_EGW_QUOTE_WINDOW_WORDS,
                                     );
                                     enqueue_final_semantic_job(
                                         &final_semantic_job_evt,
@@ -622,6 +645,7 @@ pub async fn start_transcription(
                                         &semantic_dropped_evt,
                                         seq,
                                         semantic_text,
+                                        egw_text,
                                         confidence,
                                     );
                                 }
@@ -635,6 +659,7 @@ pub async fn start_transcription(
                                 if let Some((semantic_seq, semantic_text)) =
                                     deepgram_semantic_buffer.flush_with_seq(seq)
                                 {
+                                    let egw_text = semantic_text.clone();
                                     enqueue_final_semantic_job(
                                         &final_semantic_job_evt,
                                         &final_semantic_notify_evt,
@@ -642,6 +667,7 @@ pub async fn start_transcription(
                                         &semantic_dropped_evt,
                                         semantic_seq,
                                         semantic_text,
+                                        egw_text,
                                         confidence,
                                     );
                                 }
@@ -665,6 +691,7 @@ pub async fn start_transcription(
                             .flush_when_enabled(is_semantic_detection_enabled(&event_app));
                         if !is_detection_paused(&event_app) {
                             if let Some((semantic_seq, semantic_text)) = pending {
+                                let egw_text = semantic_text.clone();
                                 enqueue_final_semantic_job(
                                     &final_semantic_job_evt,
                                     &final_semantic_notify_evt,
@@ -672,6 +699,7 @@ pub async fn start_transcription(
                                     &semantic_dropped_evt,
                                     semantic_seq,
                                     semantic_text,
+                                    egw_text,
                                     0.0,
                                 );
                             }

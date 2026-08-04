@@ -18,6 +18,9 @@ use super::detection_logic::transcript_defers_to_direct;
 pub(crate) struct SemanticJob {
     pub(crate) seq: u64,
     pub(crate) text: String,
+    /// Wider trailing window used only for EGW quote run-matching. See
+    /// `LIVE_EGW_QUOTE_WINDOW_WORDS` — Bible detection keeps the tight `text`.
+    pub(crate) egw_text: String,
     pub(crate) stt_confidence: f64,
 }
 
@@ -61,6 +64,7 @@ pub(crate) fn enqueue_final_semantic_job(
     replaced_counter: &Arc<AtomicU64>,
     seq: u64,
     text: String,
+    egw_text: String,
     stt_confidence: f64,
 ) {
     if text.trim().is_empty() {
@@ -88,6 +92,7 @@ pub(crate) fn enqueue_final_semantic_job(
         SemanticJob {
             seq,
             text,
+            egw_text,
             stt_confidence,
         },
         "final",
@@ -115,6 +120,7 @@ pub(crate) fn enqueue_partial_semantic_job(
     replaced_counter: &Arc<AtomicU64>,
     seq: u64,
     text: String,
+    egw_text: String,
     stt_confidence: f64,
 ) {
     if text.trim().is_empty() {
@@ -133,6 +139,7 @@ pub(crate) fn enqueue_partial_semantic_job(
         SemanticJob {
             seq,
             text,
+            egw_text,
             stt_confidence,
         },
         "partial",

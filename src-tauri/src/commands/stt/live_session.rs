@@ -445,6 +445,7 @@ pub(crate) fn run_semantic_detection(
     latest_seq: &Arc<AtomicU64>,
     egw_cue_at_ms: &AtomicU64,
     transcript: &str,
+    egw_transcript: &str,
     stt_confidence: f64,
 ) {
     if !is_semantic_detection_enabled(app) {
@@ -493,7 +494,7 @@ pub(crate) fn run_semantic_detection(
     }
 
     if !is_bible_detection_enabled(app) {
-        let results = detect_live_egw_quotes(app, egw_cue_at_ms, transcript, stt_confidence);
+        let results = detect_live_egw_quotes(app, egw_cue_at_ms, egw_transcript, stt_confidence);
         if results.is_empty() || seq < latest_seq.load(Ordering::Acquire) {
             return;
         }
@@ -617,12 +618,14 @@ pub(crate) fn run_semantic_detection(
         }
     }
 
-    results.extend(detect_live_egw_quotes(
-        app,
-        egw_cue_at_ms,
-        transcript,
-        stt_confidence,
-    ));
+    let mut egw_quotes =
+        detect_live_egw_quotes(app, egw_cue_at_ms, egw_transcript, stt_confidence);
+    crate::commands::detection::drop_egw_quotes_echoing_scripture(
+        &mut egw_quotes,
+        &results,
+        egw_transcript,
+    );
+    results.extend(egw_quotes);
 
     if !is_bible_detection_enabled(app) {
         retain_results_allowed_by_bible_mode(&mut results, false);

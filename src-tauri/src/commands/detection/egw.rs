@@ -315,6 +315,48 @@ pub(crate) fn dampen_egw_for_low_stt_confidence(
     }
 }
 
+/// Drop EGW quote hits that the scripture in the window already explains.
+///
+/// EGW paragraphs quote scripture verbatim — The Desire of Ages p.419 par.2
+/// carries John 3:16 word for word. Reading that verse aloud therefore shares a
+/// long run with the paragraph and fires it at the 0.92 cap: on 2026-08-04 that
+/// put 33 Desire of Ages hits in the operator's box while the speaker was
+/// simply reading John 3:16.
+///
+/// The discriminator is which source explains the spoken words better. When the
+/// Bible verse matches the transcript at least as well as the paragraph does,
+/// the speaker is reading scripture and the paragraph is an echo. A genuine
+/// Ellen White quote outruns every verse in the window, so it survives.
+pub(crate) fn drop_egw_quotes_echoing_scripture(
+    egw_results: &mut Vec<DetectionResult>,
+    bible_results: &[DetectionResult],
+    spoken: &str,
+) {
+    if egw_results.is_empty() {
+        return;
+    }
+    let best_verse_run = bible_results
+        .iter()
+        .filter(|result| result.content_type != "egw")
+        .map(|result| longest_shared_content_run(spoken, &result.verse_text).len)
+        .max()
+        .unwrap_or(0);
+    if best_verse_run == 0 {
+        return;
+    }
+    egw_results.retain(|result| {
+        let egw_run = longest_shared_content_run(spoken, &result.verse_text).len;
+        if egw_run <= best_verse_run {
+            log::info!(
+                "[DET-EGW-QUOTE] Dropped {} (run={egw_run}) - scripture echo, best verse run={best_verse_run}",
+                result.verse_ref
+            );
+            return false;
+        }
+        true
+    });
+}
+
 /// Minimum spoken words before a quote search is worth running.
 const EGW_QUOTE_MIN_WORDS: usize = 5;
 /// BM25 nominates this many candidates; run-length verification decides.
@@ -499,7 +541,9 @@ pub(crate) fn apply_egw_auto_queue(
 
 #[cfg(test)]
 mod low_stt_dampening_tests {
-    use super::{dampen_egw_for_low_stt_confidence, egw_to_result};
+    use super::{
+        dampen_egw_for_low_stt_confidence, drop_egw_quotes_echoing_scripture, egw_to_result,
+    };
     use crate::commands::detection::DetectionResult;
     use rhema_bible::EgwParagraph;
 
@@ -520,6 +564,74 @@ mod low_stt_dampening_tests {
         result.rank_score = 0.92;
         result.auto_queued = true;
         result
+    }
+
+    fn egw_hit_with_text(title: &str, text: &str) -> DetectionResult {
+        let paragraph = EgwParagraph {
+            id: 9,
+            book_number: 2,
+            book_title: title.to_string(),
+            chapter: 12,
+            chapter_title: "Nicodemus".to_string(),
+            paragraph: 2,
+            page: 419,
+            page_paragraph: 2,
+            text: text.to_string(),
+        };
+        let mut result = egw_to_result(paragraph, 0.92, text);
+        result.source = "semantic".to_string();
+        result.rank_score = 0.92;
+        result
+    }
+
+    fn bible_hit_with_text(reference: &str, text: &str) -> DetectionResult {
+        let mut result = egw_hit_with_text("unused", text);
+        result.content_type = "bible".to_string();
+        result.verse_ref = reference.to_string();
+        result.egw_paragraph = None;
+        result
+    }
+
+    #[test]
+    fn scripture_echo_drops_an_egw_paragraph_that_merely_quotes_the_verse() {
+        // 2026-08-04: reading John 3:16 aloud fired The Desire of Ages p.419
+        // par.2 at 92% (run=14) because that paragraph quotes the verse.
+        let spoken = "For God so loved the world that he gave his only begotten Son that whosoever believeth in him should not perish but have everlasting life";
+        let mut egw = vec![egw_hit_with_text(
+            "The Desire of Ages",
+            "For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life. In this verse the Saviour unfolds the plan of redemption.",
+        )];
+        let bible = vec![bible_hit_with_text("John 3:16", spoken)];
+
+        drop_egw_quotes_echoing_scripture(&mut egw, &bible, spoken);
+
+        assert!(
+            egw.is_empty(),
+            "a paragraph explained by the spoken verse must not reach the operator"
+        );
+    }
+
+    #[test]
+    fn scripture_echo_keeps_a_genuine_egw_quote() {
+        // The Great Controversy quote from the same session: no verse in the
+        // window explains it, so it must survive.
+        let spoken = "Fearful is the issue to which the world is to be brought the powers of earth uniting to war against the commandment of God";
+        let mut egw = vec![egw_hit_with_text(
+            "The Great Controversy",
+            "Fearful is the issue to which the world is to be brought. The powers of earth, uniting to war against the commandments of God, will decree that all shall conform to custom.",
+        )];
+        let bible = vec![bible_hit_with_text(
+            "I Timothy 1:1",
+            "Paul, an apostle of Jesus Christ by the commandment of God our Saviour, and Lord Jesus Christ, which is our hope;",
+        )];
+
+        drop_egw_quotes_echoing_scripture(&mut egw, &bible, spoken);
+
+        assert_eq!(
+            egw.len(),
+            1,
+            "a genuine Ellen White quote outruns every verse in the window"
+        );
     }
 
     #[test]

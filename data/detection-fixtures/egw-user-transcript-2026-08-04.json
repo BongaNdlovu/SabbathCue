@@ -1,0 +1,55 @@
+[
+  {
+    "category": "egw-verbatim-full",
+    "mode": "fire",
+    "cue": true,
+    "text": "Fearful is the issue to which the world is to be brought: the powers of earth uniting to war against the commandment of God.",
+    "expectedBook": "The Great Controversy"
+  },
+  {
+    "category": "egw-verbatim-as-spoken-first-half",
+    "mode": "fire",
+    "cue": true,
+    "text": "And then there's Ellen White's quote that says, Fearful is the issue to which the world is to be brought: the powers of earth uniting",
+    "expectedBook": "The Great Controversy"
+  },
+  {
+    "category": "egw-tail-fragment-alone-must-not-fire",
+    "mode": "silent",
+    "cue": true,
+    "text": "To war against the commandment of God",
+    "expectedBook": "The Great Controversy"
+  },
+  {
+    "category": "egw-verbatim-window-12word",
+    "mode": "fire",
+    "cue": true,
+    "text": "Fearful is the issue to which the world is to be brought",
+    "expectedBook": "The Great Controversy"
+  },
+  {
+    "category": "egw-verbatim-window-40word",
+    "mode": "fire",
+    "cue": true,
+    "text": "And then there's Ellen White's quote that says Fearful is the issue to which the world is to be brought the powers of earth uniting to war against the commandment of God",
+    "expectedBook": "The Great Controversy"
+  },
+  {
+    "category": "egw-noise-mic-check",
+    "mode": "silent",
+    "cue": false,
+    "text": "Testing, testing, one, two, one, two."
+  },
+  {
+    "category": "egw-noise-indirect-request",
+    "mode": "silent",
+    "cue": false,
+    "text": "Can we please stand as we sing our closing hymn?"
+  },
+  {
+    "category": "egw-noise-indirect-request",
+    "mode": "silent",
+    "cue": false,
+    "text": "I need a verse that shows or that talks about Lot's wife turning into a pile of salt."
+  }
+]
