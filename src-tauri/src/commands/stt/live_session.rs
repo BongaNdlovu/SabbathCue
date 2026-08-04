@@ -9,7 +9,8 @@ use crate::state::AppState;
 use rhema_detection::{DetectionMerger, DirectDetector, ReadingMode};
 
 use super::detection::{
-    is_bible_detection_enabled, is_semantic_detection_enabled, FINAL_SEMANTIC_MIN_WORDS,
+    is_bible_detection_enabled, is_semantic_detection_enabled, RecentDirectEmissions,
+    DIRECT_REPEAT_SUPPRESSION, FINAL_SEMANTIC_MIN_WORDS,
 };
 use super::detection_jobs::finalize_live_semantic_results;
 use super::detection_logic::{
@@ -259,6 +260,28 @@ fn retain_results_allowed_by_bible_mode(
     clippy::too_many_lines,
     reason = "direct detection orchestration is intentionally kept together"
 )]
+/// Drop references already emitted inside `DIRECT_REPEAT_SUPPRESSION`.
+///
+/// A poisoned lock must not silence detection, so recover the guard rather than
+/// bail: losing repeat suppression is far cheaper than losing every hit.
+fn suppress_repeat_direct_emissions(
+    slot: &std::sync::OnceLock<Mutex<RecentDirectEmissions>>,
+    results: &mut Vec<crate::commands::detection::DetectionResult>,
+) {
+    if results.is_empty() {
+        return;
+    }
+    let guard = slot.get_or_init(|| Mutex::new(RecentDirectEmissions::default()));
+    let mut recent = match guard.lock() {
+        Ok(recent) => recent,
+        Err(poisoned) => {
+            log::error!("[DET-DIRECT] Repeat-suppression lock poisoned; recovering");
+            poisoned.into_inner()
+        }
+    };
+    recent.suppress_repeats(results, DIRECT_REPEAT_SUPPRESSION, std::time::Instant::now());
+}
+
 pub(crate) fn run_direct_detection(
     app: &AppHandle,
     seq: u64,
@@ -268,6 +291,9 @@ pub(crate) fn run_direct_detection(
     // [DIAG] AppState mutex contention on the direct-detection hot path.
     static LOCK_OK: AtomicU64 = AtomicU64::new(0);
     static LOCK_CONTENDED: AtomicU64 = AtomicU64::new(0);
+    // Repeat suppression outlives individual jobs, so it lives beside them.
+    static RECENT_DIRECT: std::sync::OnceLock<Mutex<RecentDirectEmissions>> =
+        std::sync::OnceLock::new();
 
     // Stale detection suppression: if this job's sequence is older than the
     // latest accepted transcript sequence, skip emission.
@@ -359,7 +385,8 @@ pub(crate) fn run_direct_detection(
                 }
             })
             .collect();
-        let results = filter_live_direct_results_to_reading_scope(app, results);
+        let mut results = filter_live_direct_results_to_reading_scope(app, results);
+        suppress_repeat_direct_emissions(&RECENT_DIRECT, &mut results);
         for r in &results {
             log::info!(
                 "[DET-DIRECT] Found: {} ({:.0}%) (no DB)",
@@ -392,6 +419,7 @@ pub(crate) fn run_direct_detection(
         reading_candidates.clear();
     }
     let mut results = filter_live_direct_results_to_reading_scope(app, results);
+    suppress_repeat_direct_emissions(&RECENT_DIRECT, &mut results);
 
     for r in &results {
         log::info!(

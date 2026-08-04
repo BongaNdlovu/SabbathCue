@@ -74,6 +74,61 @@ pub(crate) const LIVE_SEMANTIC_MIN_CONFIDENCE: f64 = 0.70;
 /// semantic + FTS5 detection.
 pub(crate) const LIVE_DETECTION_WINDOW_WORDS: usize = 12;
 
+/// How long an identical direct reference stays suppressed after being emitted.
+///
+/// Every dispatched partial re-runs direct detection, so one slowly-spoken
+/// "John 3 verse 16" emits `John 3:1` once per partial while the verse number
+/// is still arriving — 12 times in 2s on 2026-08-04. The frontend store keys
+/// detections by reference so these collapse to one row, but each re-emission
+/// refreshes its `received_at`, keeping a superseded reference as "recent" as
+/// the verse the speaker actually reached.
+pub(crate) const DIRECT_REPEAT_SUPPRESSION: Duration = Duration::from_millis(3000);
+
+/// Suppress re-emission of references already sent very recently.
+///
+/// Keyed on the resolved reference rather than the transcript, so a refined
+/// reference (`John 3:16` after `John 3:1`) is always a distinct key and is
+/// never suppressed by its own prefix.
+#[derive(Default)]
+pub(crate) struct RecentDirectEmissions {
+    seen: std::collections::HashMap<(String, i32, i32, i32), std::time::Instant>,
+}
+
+impl RecentDirectEmissions {
+    pub(crate) fn suppress_repeats(
+        &mut self,
+        results: &mut Vec<crate::commands::detection::DetectionResult>,
+        window: Duration,
+        now: std::time::Instant,
+    ) {
+        // Bound growth on a long service without needing a separate sweep.
+        self.seen
+            .retain(|_, seen_at| now.duration_since(*seen_at) < window.saturating_mul(4));
+        results.retain(|result| {
+            let key = (
+                result.content_type.clone(),
+                result.book_number,
+                result.chapter,
+                result.verse,
+            );
+            match self.seen.get(&key) {
+                Some(seen_at) if now.duration_since(*seen_at) < window => {
+                    log::debug!(
+                        "[DET-DIRECT] Suppressed repeat {} within {}ms",
+                        result.verse_ref,
+                        window.as_millis()
+                    );
+                    false
+                }
+                _ => {
+                    self.seen.insert(key, now);
+                    true
+                }
+            }
+        });
+    }
+}
+
 /// Maximum trailing words of the rolling window fed to live EGW quote matching.
 ///
 /// Deliberately wider than `LIVE_DETECTION_WINDOW_WORDS`: Bible verses are
@@ -91,9 +146,9 @@ pub(crate) const WINDOW_RESET_GAP: Duration = Duration::from_secs(8);
 #[cfg(test)]
 mod tests {
     use super::{
-        LIVE_DETECTION_WINDOW_WORDS, LIVE_EGW_QUOTE_WINDOW_WORDS, LIVE_SEMANTIC_CAP,
-        LIVE_SEMANTIC_MIN_CONFIDENCE, PARTIAL_SEMANTIC_DEBOUNCE, PARTIAL_SEMANTIC_MIN_WORDS,
-        SEMANTIC_WINDOW_SEGMENTS,
+        RecentDirectEmissions, DIRECT_REPEAT_SUPPRESSION, LIVE_DETECTION_WINDOW_WORDS,
+        LIVE_EGW_QUOTE_WINDOW_WORDS, LIVE_SEMANTIC_CAP, LIVE_SEMANTIC_MIN_CONFIDENCE,
+        PARTIAL_SEMANTIC_DEBOUNCE, PARTIAL_SEMANTIC_MIN_WORDS, SEMANTIC_WINDOW_SEGMENTS,
     };
     use crate::commands::stt::detection_jobs::{
         enqueue_final_semantic_job, enqueue_partial_semantic_job, finalize_live_semantic_results,
@@ -520,6 +575,87 @@ mod tests {
             !trailing.contains("Patriarchs and Prophets"),
             "the live cue must be recorded before window truncation: {trailing}"
         );
+    }
+
+    use crate::commands::detection::DetectionResult;
+
+    fn direct_result(reference: &str, book: i32, chapter: i32, verse: i32) -> DetectionResult {
+        DetectionResult {
+            content_type: "bible".to_string(),
+            verse_ref: reference.to_string(),
+            verse_text: String::new(),
+            book_name: "John".to_string(),
+            book_number: book,
+            chapter,
+            verse,
+            confidence: 1.0,
+            rank_score: 1.0,
+            source: "direct".to_string(),
+            auto_queued: false,
+            transcript_snippet: String::new(),
+            is_chapter_only: false,
+            egw_paragraph: None,
+            match_char_start: None,
+        }
+    }
+
+    #[test]
+    fn repeat_direct_reference_is_suppressed_within_the_window() {
+        // 2026-08-04: one slow "John 3 verse 16" emitted John 3:1 twelve times
+        // across consecutive partials, refreshing its recency each time.
+        let mut recent = RecentDirectEmissions::default();
+        let start = std::time::Instant::now();
+
+        let mut first = vec![direct_result("John 3:1", 43, 3, 1)];
+        recent.suppress_repeats(&mut first, DIRECT_REPEAT_SUPPRESSION, start);
+        assert_eq!(first.len(), 1, "the first emission must go through");
+
+        let mut repeat = vec![direct_result("John 3:1", 43, 3, 1)];
+        recent.suppress_repeats(
+            &mut repeat,
+            DIRECT_REPEAT_SUPPRESSION,
+            start + Duration::from_millis(400),
+        );
+        assert!(repeat.is_empty(), "an identical repeat must be suppressed");
+    }
+
+    #[test]
+    fn refined_reference_is_never_suppressed_by_its_own_prefix() {
+        // The whole point of the partial race: John 3:16 arrives after John 3:1
+        // and must always reach the operator.
+        let mut recent = RecentDirectEmissions::default();
+        let start = std::time::Instant::now();
+
+        let mut first = vec![direct_result("John 3:1", 43, 3, 1)];
+        recent.suppress_repeats(&mut first, DIRECT_REPEAT_SUPPRESSION, start);
+
+        let mut refined = vec![direct_result("John 3:16", 43, 3, 16)];
+        recent.suppress_repeats(
+            &mut refined,
+            DIRECT_REPEAT_SUPPRESSION,
+            start + Duration::from_millis(200),
+        );
+
+        assert_eq!(refined.len(), 1, "John 3:16 must survive after John 3:1");
+    }
+
+    #[test]
+    fn reference_re_emits_once_the_window_has_passed() {
+        // A verse genuinely read again later must surface again.
+        let mut recent = RecentDirectEmissions::default();
+        let start = std::time::Instant::now();
+
+        let mut first = vec![direct_result("Psalms 23:1", 19, 23, 1)];
+        recent.suppress_repeats(&mut first, DIRECT_REPEAT_SUPPRESSION, start);
+
+        let mut later = vec![direct_result("Psalms 23:1", 19, 23, 1)];
+        recent.suppress_repeats(
+            &mut later,
+            DIRECT_REPEAT_SUPPRESSION,
+            start + DIRECT_REPEAT_SUPPRESSION + Duration::from_millis(1),
+        );
+
+        assert_eq!(later.len(), 1, "a genuine re-reading must surface again");
     }
 
     #[test]
