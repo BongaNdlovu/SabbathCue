@@ -113,6 +113,22 @@ fn load_first_healthy_index(
     None
 }
 
+/// Read `record_count` out of a composition manifest.
+///
+/// Tolerates a leading UTF-8 BOM: editors on Windows readily add one, and
+/// `serde_json` rejects U+FEFF outright. That cost a full session of semantic
+/// vector search on 2026-08-04 — the manifest was present and correct, and the
+/// only symptom was `could not parse manifest`.
+fn manifest_record_count(manifest_text: &str) -> Result<u64, String> {
+    let manifest_text = manifest_text.trim_start_matches('\u{feff}');
+    let manifest: serde_json::Value =
+        serde_json::from_str(manifest_text).map_err(|e| format!("could not parse manifest: {e}"))?;
+    manifest
+        .get("record_count")
+        .and_then(serde_json::Value::as_u64)
+        .ok_or_else(|| "manifest missing record_count".to_string())
+}
+
 /// Composition fingerprint written by `export:verses` / setup (shared for f32 + q8).
 /// Fail closed when missing or mismatched so a silent stale/wrong corpus cannot load.
 fn embeddings_manifest_matches(
@@ -146,25 +162,15 @@ fn embeddings_manifest_matches(
             return false;
         }
     };
-    let manifest: serde_json::Value = match serde_json::from_str(&manifest_text) {
-        Ok(value) => value,
-        Err(e) => {
+    let expected = match manifest_record_count(&manifest_text) {
+        Ok(count) => count,
+        Err(reason) => {
             log::error!(
-                "SEMANTIC VECTOR SEARCH DISABLED — could not parse manifest {}: {e}",
+                "SEMANTIC VECTOR SEARCH DISABLED — {reason}: {}",
                 manifest_path.display()
             );
             return false;
         }
-    };
-    let Some(expected) = manifest
-        .get("record_count")
-        .and_then(serde_json::Value::as_u64)
-    else {
-        log::error!(
-            "SEMANTIC VECTOR SEARCH DISABLED — manifest missing record_count: {}",
-            manifest_path.display()
-        );
-        return false;
     };
     let actual = index.len() as u64;
     if actual != expected {
@@ -457,5 +463,37 @@ pub fn run() {
 
     if let Err(error) = run_result {
         log::error!("Tauri application exited with error: {error}");
+    }
+}
+
+#[cfg(test)]
+mod manifest_tests {
+    use super::manifest_record_count;
+
+    const MANIFEST: &str = r#"{"schema_version":1,"record_count":155345}"#;
+
+    #[test]
+    fn reads_record_count() {
+        assert_eq!(manifest_record_count(MANIFEST), Ok(155345));
+    }
+
+    #[test]
+    fn tolerates_a_utf8_bom() {
+        // The shipped manifest carried EF BB BF and disabled vector search for
+        // an entire service; the file itself was correct.
+        let with_bom = format!("\u{feff}{MANIFEST}");
+        assert_eq!(manifest_record_count(&with_bom), Ok(155345));
+    }
+
+    #[test]
+    fn reports_missing_record_count() {
+        assert!(manifest_record_count(r#"{"schema_version":1}"#)
+            .is_err_and(|reason| reason.contains("missing record_count")));
+    }
+
+    #[test]
+    fn reports_unparseable_manifest() {
+        assert!(manifest_record_count("not json")
+            .is_err_and(|reason| reason.contains("could not parse")));
     }
 }
