@@ -4,6 +4,7 @@ import {
   previewEgwParagraph,
   presentEgwParagraph,
   createEgwQueueItem,
+  isDigitPrefixExtension,
 } from "@/lib/presentation-workflow"
 import { bibleActions } from "@/hooks/use-bible"
 import { useBibleStore } from "@/stores/bible-store"
@@ -189,6 +190,152 @@ function detectionAllowedBySettings(
   )
 }
 
+/**
+ * Drop intermediate STT digit-growth losers in the same batch.
+ * e.g. Matthew 6:3 loses to Matthew 6:33 when both arrive together.
+ */
+export function dropDigitPrefixLosers(
+  detections: DetectionResult[]
+): DetectionResult[] {
+  return detections.filter((candidate) => {
+    if (candidate.content_type === "egw" || candidate.is_chapter_only) {
+      return true
+    }
+    if (candidate.book_number <= 0 || candidate.chapter <= 0 || candidate.verse <= 0) {
+      return true
+    }
+    return !detections.some(
+      (other) =>
+        other !== candidate &&
+        other.content_type !== "egw" &&
+        !other.is_chapter_only &&
+        other.book_number === candidate.book_number &&
+        other.chapter === candidate.chapter &&
+        isDigitPrefixExtension(candidate.verse, other.verse)
+    )
+  })
+}
+
+/** Last direct Bible citation we auto-staged — used when liveItem lags. */
+let lastStableDirectCitation: {
+  book_number: number
+  chapter: number
+  verse: number
+  at: number
+} | null = null
+const STABLE_DIRECT_STICKY_MS = 90_000
+
+function rememberStableDirectCitation(detection: DetectionResult): void {
+  if (
+    detection.source !== "direct" ||
+    detection.is_chapter_only ||
+    detection.content_type === "egw" ||
+    detection.book_number <= 0 ||
+    detection.chapter <= 0 ||
+    detection.verse <= 0
+  ) {
+    return
+  }
+  // Do not sticky-lock on provisional single-digit partials.
+  if (detection.verse >= 1 && detection.verse <= 9) return
+  lastStableDirectCitation = {
+    book_number: detection.book_number,
+    chapter: detection.chapter,
+    verse: detection.verse,
+    at: Date.now(),
+  }
+}
+
+export function resetStableDirectCitationForTests(): void {
+  lastStableDirectCitation = null
+}
+
+function liveScriptureCoords(): {
+  book_number: number
+  chapter: number
+  verse: number
+} | null {
+  const live = useBroadcastLiveStore.getState().liveItem
+  if (live?.kind === "scripture" && live.scripture) {
+    const { book_number, chapter, verse } = live.scripture
+    if (book_number > 0 && chapter > 0 && verse > 0) {
+      return { book_number, chapter, verse }
+    }
+  }
+  // Fallback: recent direct citation (covers auto_q=false races where live
+  // commit lagged behind semantic quote matching).
+  if (
+    lastStableDirectCitation &&
+    Date.now() - lastStableDirectCitation.at <= STABLE_DIRECT_STICKY_MS
+  ) {
+    return {
+      book_number: lastStableDirectCitation.book_number,
+      chapter: lastStableDirectCitation.chapter,
+      verse: lastStableDirectCitation.verse,
+    }
+  }
+  return null
+}
+
+/**
+ * Prefer the currently live verse / a competitive EGW hit over a raw semantic
+ * top score so adjacent-verse quote matching and residual scripture windows
+ * do not yank auto-live off a correct citation.
+ */
+export function refineSemanticAutoLiveWinner(
+  strongest: DetectionResult,
+  semanticCandidates: DetectionResult[],
+  live: { book_number: number; chapter: number; verse: number } | null
+): DetectionResult | null {
+  let winner = strongest
+
+  // Prefer a competitive EGW paragraph over Bible semantic noise.
+  const egwWinner = semanticCandidates
+    .filter((candidate) => isEgwDetection(candidate))
+    .sort(
+      (a, b) =>
+        b.confidence - a.confidence ||
+        (b.rank_score ?? b.confidence) - (a.rank_score ?? a.confidence)
+    )[0]
+  if (
+    egwWinner &&
+    !isEgwDetection(winner) &&
+    egwWinner.confidence + EGW_OVER_BIBLE_SEMANTIC_MARGIN >= winner.confidence
+  ) {
+    winner = egwWinner
+  }
+
+  if (isEgwDetection(winner) || !live) {
+    return winner
+  }
+
+  const sticky = semanticCandidates.find(
+    (candidate) =>
+      !isEgwDetection(candidate) &&
+      candidate.book_number === live.book_number &&
+      candidate.chapter === live.chapter &&
+      candidate.verse === live.verse
+  )
+  if (sticky) {
+    if (detectionOrderingGap(winner, sticky) < STICKY_LIVE_SEMANTIC_MARGIN) {
+      return sticky
+    }
+    return winner
+  }
+
+  // Adjacent-verse steal: live is John 3:16, semantic only has 3:15 — keep live.
+  if (
+    winner.book_number === live.book_number &&
+    winner.chapter === live.chapter &&
+    Math.abs(winner.verse - live.verse) <= 2 &&
+    winner.verse !== live.verse
+  ) {
+    return null
+  }
+
+  return winner
+}
+
 function selectPreviewHit(
   detections: DetectionResult[],
   minConfidence: number,
@@ -196,12 +343,14 @@ function selectPreviewHit(
   semanticMinConfidence: number,
   aiWinner: DetectionResult | null
 ): DetectionResult | null {
-  const directHits = detections.filter(
-    (d) =>
-      d.source === "direct" &&
-      d.confidence >= minConfidence &&
-      !d.is_chapter_only &&
-      (isEgwDetection(d) || d.book_number > 0)
+  const directHits = dropDigitPrefixLosers(
+    detections.filter(
+      (d) =>
+        d.source === "direct" &&
+        d.confidence >= minConfidence &&
+        !d.is_chapter_only &&
+        (isEgwDetection(d) || d.book_number > 0)
+    )
   )
   if (!semanticDetectionEnabled) return bestDetection(directHits)
 
@@ -221,7 +370,7 @@ function selectPreviewHit(
       b.confidence - a.confidence ||
       (b.rank_score ?? b.confidence) - (a.rank_score ?? a.confidence)
   )
-  const strongest = semanticCandidates.find(
+  let strongest = semanticCandidates.find(
     (candidate) => candidate.confidence >= semanticAutoLiveThreshold
   )
   const aiConfirmed =
@@ -234,11 +383,29 @@ function selectPreviewHit(
       aiConfirmed ? [...directHits, aiConfirmed] : directHits
     )
   }
+
+  const refined = refineSemanticAutoLiveWinner(
+    strongest,
+    semanticCandidates.filter(
+      (candidate) => candidate.confidence >= semanticAutoLiveThreshold
+    ),
+    liveScriptureCoords()
+  )
+  if (!refined) {
+    // Adjacent semantic steal blocked — keep direct-only finalists (may be none).
+    return bestDetection(
+      aiConfirmed ? [...directHits, aiConfirmed] : directHits
+    )
+  }
+  strongest = refined
+
   const runnerUp = semanticCandidates.find(
     (candidate) => candidate !== strongest
   )
   if (
     runnerUp &&
+    !isEgwDetection(strongest) &&
+    !isEgwDetection(runnerUp) &&
     detectionOrderingGap(strongest, runnerUp) < SEMANTIC_AUTO_LIVE_MIN_MARGIN
   ) {
     return bestDetection(
@@ -359,6 +526,18 @@ let detectionArbitrationTimer: ReturnType<typeof setTimeout> | null = null
 let detectionArbitrationWaiters: Array<() => void> = []
 const SEMANTIC_SINGLE_PASS_MATCH_STRENGTH = 0.95
 const SEMANTIC_AUTO_LIVE_MIN_MARGIN = 0.02
+/**
+ * When the live screen is already on a verse that still appears in the
+ * semantic candidate list, prefer keeping it unless a rival is stronger by
+ * more than this margin. Live log 2026-08-04: quoting John 3:16 ranked
+ * John 3:15 at 98% vs 3:16 at 92% and auto-lived the wrong adjacent verse.
+ */
+const STICKY_LIVE_SEMANTIC_MARGIN = 0.15
+/**
+ * Prefer an EGW paragraph over a competing Bible semantic hit when EGW is
+ * within this confidence of the Bible winner (or higher).
+ */
+const EGW_OVER_BIBLE_SEMANTIC_MARGIN = 0.05
 const SEMANTIC_CONFIRMATION_WINDOW_MS = 8_000
 const pendingSemanticConfirmations = new Map<string, number>()
 
@@ -414,10 +593,25 @@ export function pendingSemanticConfirmationCountForTests() {
   return pendingSemanticConfirmations.size
 }
 
+/** EGW fire-band confidence (matches backend EGW_QUOTE fire threshold). */
+const EGW_SINGLE_PASS_MATCH_STRENGTH = 0.88
+
 function confirmedSemanticHit(
   detection: DetectionResult | null
 ): DetectionResult | null {
   if (!detection || detection.source !== "semantic") {
+    pendingSemanticConfirmations.clear()
+    return detection
+  }
+
+  // Live 2026-08-04: PP p.322 at 92% auto_q=true never reached preview/live
+  // because confirmation required 0.95 — first sighting was discarded. EGW
+  // fire-band (0.88+) and prequalified auto_q hits must single-pass.
+  if (
+    isEgwDetection(detection) &&
+    (detection.auto_queued ||
+      detection.confidence >= EGW_SINGLE_PASS_MATCH_STRENGTH)
+  ) {
     pendingSemanticConfirmations.clear()
     return detection
   }
@@ -427,7 +621,10 @@ function confirmedSemanticHit(
     return detection
   }
 
-  const key = `${detection.book_number}:${detection.chapter}:${detection.verse}`
+  const key =
+    detection.content_type === "egw"
+      ? `egw:${detection.verse_ref}`
+      : `${detection.book_number}:${detection.chapter}:${detection.verse}`
   const now = Date.now()
 
   // Evict confirmations that have aged out of the window so the map cannot
@@ -510,8 +707,13 @@ async function handleVerseDetectionsInternal(
   generation: number
 ) {
   const settings = useSettingsStore.getState()
-  const acceptedDetections = detections.filter((detection) =>
-    detectionAllowedBySettings(detection, settings)
+  // Drop digit-prefix intermediates (6:3 when 6:33 is also present) before
+  // panel insert and preview/auto-live selection — otherwise equal-confidence
+  // batches pick the wrong first hit and the panel shows the race.
+  const acceptedDetections = dropDigitPrefixLosers(
+    detections.filter((detection) =>
+      detectionAllowedBySettings(detection, settings)
+    )
   )
   useDetectionStore.getState().addDetections(acceptedDetections)
 
@@ -581,6 +783,7 @@ async function handleVerseDetectionsInternal(
     ResolvedDetectionVerse
   >()
   if (previewHit) {
+    rememberStableDirectCitation(previewHit)
     recordAutoSelectionPerformance(previewHit)
     recordDetectionFeedback(previewHit, "auto-selected")
     if (isEgwDetection(previewHit)) {

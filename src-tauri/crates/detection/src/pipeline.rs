@@ -746,24 +746,38 @@ fn quote_overlap_confidence(fragment: &str, verse_text: &str) -> Option<f64> {
         .len()
         .saturating_mul(2)
         .max(QUOTE_OVERLAP_MIN_MATCHED);
-    let matched = fragment_words
+    // Track how much of the matching window the verse explains alongside how
+    // much of the verse was spoken. A verse whose vocabulary nests inside a
+    // longer quotation otherwise wins on verse-coverage alone: reading John
+    // 3:16 in full covers ~96% of John 3:15's shorter text and outranked the
+    // verse actually being read (2026-08-04, John 3:15 96% vs John 3:16 95%).
+    let (matched, fragment_coverage) = fragment_words
         .windows(window_len.min(fragment_words.len()).max(1))
         .map(|window| {
             let local: HashSet<&str> = window.iter().map(String::as_str).collect();
-            verse_words
+            let hits = verse_words
                 .iter()
                 .filter(|word| local.contains(word.as_str()))
-                .count()
+                .count();
+            let coverage = if local.is_empty() {
+                0.0
+            } else {
+                hits as f64 / local.len() as f64
+            };
+            (hits, coverage)
         })
-        .max()
-        .unwrap_or(0);
+        .max_by(|(left, _), (right, _)| left.cmp(right))
+        .unwrap_or((0, 0.0));
     if matched < QUOTE_OVERLAP_MIN_MATCHED {
         return None;
     }
     if longest_shared_contiguous_word_run(fragment, verse_text) < QUOTE_OVERLAP_MIN_CONTIGUOUS_RUN {
         return None;
     }
-    let fraction = matched as f64 / verse_words.len() as f64;
+    // Both directions must hold. Where the quotation and the verse are the same
+    // span - the ordinary case - the two are near-identical and this is a no-op;
+    // it only bites when the verse is a fragment of what was actually spoken.
+    let fraction = (matched as f64 / verse_words.len() as f64).min(fragment_coverage);
     if fraction < QUOTE_OVERLAP_MIN_FRACTION {
         return None;
     }

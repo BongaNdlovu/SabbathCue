@@ -809,6 +809,11 @@ struct IncompleteRef {
     /// When true, the chapter field is a default (1), not explicitly spoken.
     /// Bare numbers should be interpreted as chapter, not verse.
     chapter_is_default: bool,
+    /// True when the speaker already said "verse" but the number has not
+    /// arrived yet ("John verse" … "five"). Bare spoken/digit numbers may
+    /// complete the verse. When false after an explicit chapter hold, bare
+    /// digits must not refine the verse (STT residue after chapter-only).
+    expecting_verse_number: bool,
 }
 
 /// Main orchestrator for direct Bible reference detection.
@@ -1029,9 +1034,11 @@ impl DirectDetector {
                     is_usable && book_match.book_number != incomplete.verse_ref.book_number
                 })
             {
-                if let Some(cont) =
-                    parser::try_extract_continuation(text, incomplete.chapter_is_default)
-                {
+                if let Some(cont) = parser::try_extract_continuation(
+                    text,
+                    incomplete.chapter_is_default,
+                    incomplete.expecting_verse_number,
+                ) {
                     match cont {
                         parser::Continuation::ChapterAndVerse(ch, v, verse_end) => {
                             let mut completed = incomplete.verse_ref.clone();
@@ -1078,6 +1085,9 @@ impl DirectDetector {
                                 verse_ref: updated.clone(),
                                 timestamp: Instant::now(),
                                 chapter_is_default: false,
+                                // Chapter just arrived; require "verse N" (or a
+                                // fresh dangling "verse") before bare digits.
+                                expecting_verse_number: false,
                             });
                             self.context.update(&updated);
                             // Fall through to book matcher (text may also contain a new book)
@@ -1174,7 +1184,7 @@ impl DirectDetector {
                     let mut has_explicit_chapter = after_book
                         .starts_with(|c: char| c.is_ascii_digit())
                         || matches!(
-                            parser::try_extract_continuation(after_book, true),
+                            parser::try_extract_continuation(after_book, true, false),
                             Some(
                                 parser::Continuation::ChapterAndVerse(..)
                                     | parser::Continuation::ChapterOnly(_)
@@ -1199,6 +1209,7 @@ impl DirectDetector {
                         verse_ref: resolved.clone(),
                         timestamp: Instant::now(),
                         chapter_is_default: !has_explicit_chapter && !starts_with_verse_keyword,
+                        expecting_verse_number: starts_with_verse_keyword,
                     });
                     self.context.update(&resolved);
                     self.save_context_if_requested(&lower_text, &resolved);
@@ -1363,7 +1374,7 @@ impl DirectDetector {
 
         let mut restored = self.saved_contexts.front()?.clone();
         let mut is_chapter_only = false;
-        match parser::try_extract_continuation(text, false)? {
+        match parser::try_extract_continuation(text, false, false)? {
             parser::Continuation::ChapterAndVerse(chapter, verse, verse_end) => {
                 restored.chapter = chapter;
                 restored.verse_start = verse;
@@ -1389,6 +1400,7 @@ impl DirectDetector {
                 verse_ref: restored.clone(),
                 timestamp: Instant::now(),
                 chapter_is_default: false,
+                expecting_verse_number: false,
             });
         } else {
             self.incomplete = None;
@@ -1921,12 +1933,14 @@ mod tests {
         assert!(detector.incomplete.is_some());
 
         // Simulate timeout by replacing with an expired timestamp (exceeds 15s)
+        let prev = detector.incomplete.as_ref().unwrap().clone();
         detector.incomplete = Some(IncompleteRef {
-            verse_ref: detector.incomplete.as_ref().unwrap().verse_ref.clone(),
+            verse_ref: prev.verse_ref,
             timestamp: Instant::now()
                 .checked_sub(std::time::Duration::from_secs(20))
                 .unwrap(),
-            chapter_is_default: detector.incomplete.as_ref().unwrap().chapter_is_default,
+            chapter_is_default: prev.chapter_is_default,
+            expecting_verse_number: prev.expecting_verse_number,
         });
 
         // Next detect call should clean up without emitting
@@ -2723,8 +2737,9 @@ mod tests {
         assert_eq!(inc.verse_ref.chapter, 3);
         assert!(!inc.chapter_is_default);
 
-        // Segment 3: Verse completion via bare number
-        let results = detector.detect("22. Acts three, for Moses truly");
+        // Segment 3: Verse completion requires an explicit verse cue (bare
+        // digits alone no longer refine chapter-only holds).
+        let results = detector.detect("verse 22. Acts three, for Moses truly");
         let result = results.iter().find(|r| !r.is_chapter_only).unwrap();
         assert_eq!(result.verse_ref.book_name, "Acts");
         assert_eq!(result.verse_ref.chapter, 3);
@@ -2794,7 +2809,7 @@ mod tests {
         assert!(results.is_empty());
         assert!(detector.incomplete.is_some());
 
-        let results = detector.detect("9");
+        let results = detector.detect("verse 9");
         assert_eq!(results.len(), 1);
         assert!(!results[0].is_chapter_only);
         assert_eq!(results[0].verse_ref.book_name, "Daniel");
@@ -2804,7 +2819,7 @@ mod tests {
 
     #[test]
     fn test_bare_number_as_chapter_after_book_only() {
-        // "Acts" → "3" → "22"
+        // "Acts" → "3" → "verse 22"
         let mut detector = DirectDetector::new();
 
         let results = detector.detect("turn to Acts");
@@ -2817,11 +2832,39 @@ mod tests {
         let inc = detector.incomplete.as_ref().unwrap();
         assert_eq!(inc.verse_ref.chapter, 3);
 
-        // Bare "22" = verse (chapter already set)
+        // Bare "22" no longer completes a verse without the keyword.
         let results = detector.detect("22");
+        assert!(
+            results.is_empty(),
+            "bare digit after chapter must not refine: {results:?}"
+        );
+
+        let results = detector.detect("verse 22");
         assert!(!results.is_empty());
         assert_eq!(results[0].verse_ref.chapter, 3);
         assert_eq!(results[0].verse_ref.verse_start, 22);
+    }
+
+    #[test]
+    fn bare_digit_after_chapter_only_does_not_steal_to_another_verse() {
+        // Live 2026-08-04: after "Matthew chapter 1" (chapter-only 1:1), a
+        // stray bare "2" from STT must not refine to Matthew 1:2.
+        let mut detector = DirectDetector::new();
+        let first = detector.detect("Matthew chapter 1");
+        assert_eq!(first.len(), 1);
+        assert!(first[0].is_chapter_only);
+        assert_eq!(first[0].verse_ref.verse_start, 1);
+
+        let stolen = detector.detect("2");
+        assert!(
+            stolen.is_empty(),
+            "bare digit must not refine chapter-only: {stolen:?}"
+        );
+
+        let refined = detector.detect("verse 1");
+        assert_eq!(refined.len(), 1);
+        assert!(!refined[0].is_chapter_only);
+        assert_eq!(refined[0].verse_ref.verse_start, 1);
     }
 
     #[test]

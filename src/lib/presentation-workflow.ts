@@ -185,13 +185,62 @@ export function presentVerse(verse: Verse, options?: { navigate?: boolean }) {
   commitVerseToLive(verse, { makeLive: true })
 }
 
-export function previewVerseAndMaybeAutoLive(
+/**
+ * How long to wait before staging a single-digit verse to preview/live.
+ *
+ * Soniox/Deepgram partials often emit the first digit of a multi-digit verse
+ * ("Matthew chapter 6 verse 3…" → Matthew 6:3) before the full number arrives
+ * ("…thirty three" → Matthew 6:33). Committing immediately makes the wrong
+ * verse flash first. Single-digit citations are held briefly so a digit-prefix
+ * extension can replace them; multi-digit verses commit immediately.
+ */
+export const DIGIT_GROWTH_HOLD_MS = 900
+
+/** Bible verses never exceed 176, so a single digit 1–9 can still grow. */
+export function verseDigitsCouldGrow(verse: number): boolean {
+  return verse > 0 && verse <= 9
+}
+
+/** True when `longer` is `shorter` with extra trailing digits (3→33, 1→15). */
+export function isDigitPrefixExtension(shorter: number, longer: number): boolean {
+  if (shorter <= 0 || longer <= shorter) return false
+  const shortText = String(shorter)
+  const longText = String(longer)
+  return longText.startsWith(shortText) && longText.length > shortText.length
+}
+
+type PendingDigitGrowth = {
+  book_number: number
+  chapter: number
+  verse: number
+  verseData: Verse
+  options?: {
+    navigate?: boolean
+    autoLive?: boolean
+  }
+  timer: ReturnType<typeof setTimeout>
+}
+
+let pendingDigitGrowth: PendingDigitGrowth | null = null
+
+function clearPendingDigitGrowthTimer(): void {
+  if (!pendingDigitGrowth) return
+  clearTimeout(pendingDigitGrowth.timer)
+  pendingDigitGrowth = null
+}
+
+/** Test helper — cancel any hold so cases do not leak timers. */
+export function resetDigitGrowthHoldForTests(): void {
+  clearPendingDigitGrowthTimer()
+}
+
+function commitVersePreviewAndMaybeAutoLive(
   verse: Verse,
   options?: {
     navigate?: boolean
     autoLive?: boolean
   }
-) {
+): void {
   const broadcast = getBroadcastLiveStore()
 
   // Auto-live turns the live output on (and keeps it following) when the
@@ -214,6 +263,104 @@ export function previewVerseAndMaybeAutoLive(
   }
 
   selectPreviewVerse(verse, { navigate: options?.navigate })
+}
+
+function scheduleDigitGrowthHold(
+  verse: Verse,
+  options?: {
+    navigate?: boolean
+    autoLive?: boolean
+  }
+): void {
+  clearPendingDigitGrowthTimer()
+  const book_number = verse.book_number
+  const chapter = verse.chapter
+  const verseNum = verse.verse
+  recordWorkflowTrace(
+    "live.digit_growth_hold",
+    "Holding single-digit verse for possible STT digit growth",
+    {
+      holdMs: DIGIT_GROWTH_HOLD_MS,
+      verse: traceVerseDetails(verse),
+      autoLive: Boolean(options?.autoLive),
+    }
+  )
+  const timer = setTimeout(() => {
+    const pending = pendingDigitGrowth
+    if (
+      !pending ||
+      pending.book_number !== book_number ||
+      pending.chapter !== chapter ||
+      pending.verse !== verseNum
+    ) {
+      return
+    }
+    pendingDigitGrowth = null
+    commitVersePreviewAndMaybeAutoLive(pending.verseData, pending.options)
+  }, DIGIT_GROWTH_HOLD_MS)
+  pendingDigitGrowth = {
+    book_number,
+    chapter,
+    verse: verseNum,
+    verseData: verse,
+    options,
+    timer,
+  }
+}
+
+export function previewVerseAndMaybeAutoLive(
+  verse: Verse,
+  options?: {
+    navigate?: boolean
+    autoLive?: boolean
+  }
+) {
+  // Auto-path only: manual present/select is intentional and must stay instant.
+  if (
+    options?.autoLive &&
+    verse.book_number > 0 &&
+    verse.chapter > 0 &&
+    verse.verse > 0
+  ) {
+    const pending = pendingDigitGrowth
+    if (
+      pending &&
+      pending.book_number === verse.book_number &&
+      pending.chapter === verse.chapter
+    ) {
+      if (verse.verse === pending.verse) {
+        // Same citation refreshed — keep the existing hold.
+        pending.verseData = verse
+        pending.options = options
+        return
+      }
+      if (isDigitPrefixExtension(pending.verse, verse.verse)) {
+        // e.g. 6:3 → 6:33. Drop the intermediate and either hold again or commit.
+        clearPendingDigitGrowthTimer()
+        if (verseDigitsCouldGrow(verse.verse)) {
+          scheduleDigitGrowthHold(verse, options)
+          return
+        }
+        commitVersePreviewAndMaybeAutoLive(verse, options)
+        return
+      }
+      // Same chapter, unrelated verse (3 then 16) — abandon the hold.
+      clearPendingDigitGrowthTimer()
+    } else if (pending) {
+      // New book/chapter while a hold is open — drop the stale hold so it
+      // cannot commit after the operator has already moved on.
+      clearPendingDigitGrowthTimer()
+    }
+
+    if (verseDigitsCouldGrow(verse.verse)) {
+      scheduleDigitGrowthHold(verse, options)
+      return
+    }
+  } else if (pendingDigitGrowth) {
+    clearPendingDigitGrowthTimer()
+  }
+
+  commitVersePreviewAndMaybeAutoLive(verse, options)
 }
 
 // When the active translation changes (e.g. a "read in NIV" voice command),

@@ -74,14 +74,154 @@ pub(crate) const LIVE_SEMANTIC_MIN_CONFIDENCE: f64 = 0.70;
 /// semantic + FTS5 detection.
 pub(crate) const LIVE_DETECTION_WINDOW_WORDS: usize = 12;
 
+/// How long an identical direct reference stays suppressed after being emitted.
+///
+/// Every dispatched partial re-runs direct detection, so one slowly-spoken
+/// "John 3 verse 16" emits `John 3:1` once per partial while the verse number
+/// is still arriving — 12 times in 2s on 2026-08-04. The frontend store keys
+/// detections by reference so these collapse to one row, but each re-emission
+/// refreshes its `received_at`, keeping a superseded reference as "recent" as
+/// the verse the speaker actually reached.
+pub(crate) const DIRECT_REPEAT_SUPPRESSION: Duration = Duration::from_secs(3);
+
+/// Suppress re-emission of references already sent very recently.
+///
+/// Keyed on the resolved reference rather than the transcript, so a refined
+/// reference (`John 3:16` after `John 3:1`) is always a distinct key and is
+/// never suppressed by its own prefix.
+///
+/// `is_chapter_only` is part of the key: a chapter-only placeholder that
+/// defaults to verse 1 (`Matthew 1:1` at 92%) must not suppress the later full
+/// citation of the same verse (`Matthew 1:1` at 100%). Frontend preview and
+/// auto-live ignore chapter-only hits, so suppressing the upgrade left verse 1
+/// citations with no preview/live path.
+#[derive(Default)]
+pub(crate) struct RecentDirectEmissions {
+    seen: std::collections::HashMap<(String, i32, i32, i32, bool), std::time::Instant>,
+}
+
+impl RecentDirectEmissions {
+    pub(crate) fn suppress_repeats(
+        &mut self,
+        results: &mut Vec<crate::commands::detection::DetectionResult>,
+        window: Duration,
+        now: std::time::Instant,
+    ) {
+        // Bound growth on a long service without needing a separate sweep.
+        self.seen
+            .retain(|_, seen_at| now.duration_since(*seen_at) < window.saturating_mul(4));
+        results.retain(|result| {
+            let key = (
+                result.content_type.clone(),
+                result.book_number,
+                result.chapter,
+                result.verse,
+                result.is_chapter_only,
+            );
+            match self.seen.get(&key) {
+                Some(seen_at) if now.duration_since(*seen_at) < window => {
+                    log::debug!(
+                        "[DET-DIRECT] Suppressed repeat {} within {}ms",
+                        result.verse_ref,
+                        window.as_millis()
+                    );
+                    false
+                }
+                _ => {
+                    self.seen.insert(key, now);
+                    true
+                }
+            }
+        });
+    }
+}
+
+/// Maximum trailing words of the rolling window fed to live EGW quote matching.
+///
+/// Deliberately wider than `LIVE_DETECTION_WINDOW_WORDS`: Bible verses are
+/// short and a tight window keeps vector search off adjacent sentences, but an
+/// EGW paragraph sentence runs 25-40 words. At 12 words the shared run with the
+/// spoken quote tops out around 5, which scores in the cued-hint band (75-80%)
+/// and never reaches the fire (6) or auto-queue (8) tiers. On 2026-08-04 a
+/// verbatim Great Controversy quote scored 75-80% for this reason while
+/// keyword-floored Bible hits sat at 88% and buried it.
+pub(crate) const LIVE_EGW_QUOTE_WINDOW_WORDS: usize = 40;
+
 /// Clear the rolling detection window after this much silence between finals.
 pub(crate) const WINDOW_RESET_GAP: Duration = Duration::from_secs(8);
+
+/// Move auto-queue off provisional single-digit citations onto the digit-stable
+/// one in the same batch.
+///
+/// STT partials emit `Matthew 6:3` before `6:33` finishes arriving, so a
+/// single-digit full citation must never auto-fire. If stripping it left the
+/// batch with no auto-queue at all, hand the flag to the strongest multi-digit
+/// citation — live 2026-08-04 left `John 3:16` at `auto_q=false` after `3:1`
+/// consumed the merger's single slot. The re-award still has to clear the
+/// operator's threshold, so a hit the merger would have refused cannot inherit
+/// it (Manual mode sets the threshold to infinity and blocks this entirely).
+pub(crate) fn rebalance_auto_queue_for_digit_growth(
+    results: &mut [crate::commands::detection::DetectionResult],
+    auto_queue_threshold: f64,
+) {
+    let mut stripped_auto = false;
+    for result in results.iter_mut() {
+        if result.content_type == "bible"
+            && !result.is_chapter_only
+            && (1..=9).contains(&result.verse)
+            && result.auto_queued
+        {
+            result.auto_queued = false;
+            stripped_auto = true;
+        }
+    }
+
+    if !stripped_auto || results.iter().any(|result| result.auto_queued) {
+        return;
+    }
+
+    if let Some(best) = results
+        .iter_mut()
+        .filter(|result| {
+            result.content_type == "bible"
+                && !result.is_chapter_only
+                && result.verse >= 10
+                && result.source == "direct"
+                && result.confidence >= auto_queue_threshold
+        })
+        .max_by(|a, b| {
+            a.confidence
+                .partial_cmp(&b.confidence)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.verse.cmp(&b.verse))
+        })
+    {
+        best.auto_queued = true;
+    }
+}
+
+/// Extend EGW attribution while a reading block keeps matching.
+///
+/// Call this only with quotes that survived dampening and best-quote selection.
+/// Refreshing on a raw BM25 match let a quote that was then discarded hold
+/// Bible semantic detection off for the rest of the cue TTL.
+pub(crate) fn refresh_egw_cue_for_surviving_quote(
+    egw_cue_at_ms: &AtomicU64,
+    now_ms: u64,
+    cue_active: bool,
+    surviving: &[crate::commands::detection::DetectionResult],
+) {
+    if cue_active && !surviving.is_empty() {
+        egw_cue_at_ms.store(now_ms, Ordering::Relaxed);
+    }
+}
 
 #[cfg(test)]
 mod tests {
     use super::{
-        LIVE_SEMANTIC_CAP, LIVE_SEMANTIC_MIN_CONFIDENCE, PARTIAL_SEMANTIC_DEBOUNCE,
-        PARTIAL_SEMANTIC_MIN_WORDS, SEMANTIC_WINDOW_SEGMENTS,
+        RecentDirectEmissions, DIRECT_REPEAT_SUPPRESSION, LIVE_DETECTION_WINDOW_WORDS,
+        LIVE_EGW_QUOTE_WINDOW_WORDS, LIVE_SEMANTIC_CAP, LIVE_SEMANTIC_MIN_CONFIDENCE,
+        PARTIAL_SEMANTIC_DEBOUNCE, PARTIAL_SEMANTIC_MIN_WORDS, SEMANTIC_WINDOW_SEGMENTS,
     };
     use crate::commands::stt::detection_jobs::{
         enqueue_final_semantic_job, enqueue_partial_semantic_job, finalize_live_semantic_results,
@@ -166,6 +306,7 @@ mod tests {
             &replaced,
             1,
             "John chapter 8 verse 9".to_string(),
+            "John chapter 8 verse 9".to_string(),
             0.9,
         );
         assert!(
@@ -181,6 +322,7 @@ mod tests {
             &replaced,
             2,
             "let's go to the next verse".to_string(),
+            "let's go to the next verse".to_string(),
             0.9,
         );
         assert!(
@@ -188,7 +330,16 @@ mod tests {
             "command window must not enqueue a semantic job"
         );
 
-        enqueue_final_semantic_job(&slot, &notify, &sent, &replaced, 3, "one".to_string(), 0.9);
+        enqueue_final_semantic_job(
+            &slot,
+            &notify,
+            &sent,
+            &replaced,
+            3,
+            "one".to_string(),
+            "one".to_string(),
+            0.9,
+        );
         assert!(
             slot.lock().unwrap().is_none(),
             "tiny final window must not enqueue a semantic job"
@@ -201,6 +352,7 @@ mod tests {
             &sent,
             &replaced,
             4,
+            "for God so loved the world that he gave his only begotten son".to_string(),
             "for God so loved the world that he gave his only begotten son".to_string(),
             0.73,
         );
@@ -344,10 +496,46 @@ mod tests {
 
     #[test]
     fn different_book_restarts_only_when_explicit() {
-        let high = reading_candidate(43, 1, 1, 1.0, false);
+        let high = reading_candidate(43, 3, 16, 1.0, false);
         assert!(should_restart_reading(true, 39, 3, Some(16), &high));
-        let low = reading_candidate(43, 1, 1, 0.70, false);
+        let low = reading_candidate(43, 3, 16, 0.70, false);
         assert!(!should_restart_reading(true, 39, 3, Some(16), &low));
+    }
+
+    #[test]
+    fn single_digit_full_citation_does_not_reanchor_during_digit_growth() {
+        // Live: Matthew 6:1 (chapter-only) then provisional Matthew 6:3 before 6:33.
+        let provisional = reading_candidate(40, 6, 3, 1.0, false);
+        assert!(!should_restart_reading(
+            true,
+            40,
+            6,
+            Some(1),
+            &provisional
+        ));
+        let stable = reading_candidate(40, 6, 33, 1.0, false);
+        assert!(should_restart_reading(true, 40, 6, Some(1), &stable));
+    }
+
+    #[test]
+    fn inactive_mode_does_not_start_on_single_digit_full_citation() {
+        let provisional = reading_candidate(40, 6, 3, 1.0, false);
+        assert!(!should_restart_reading(false, 0, 0, None, &provisional));
+        let chapter_only = reading_candidate(40, 6, 1, 0.92, true);
+        assert!(should_restart_reading(false, 0, 0, None, &chapter_only));
+        let stable = reading_candidate(40, 6, 33, 1.0, false);
+        assert!(should_restart_reading(false, 0, 0, None, &stable));
+    }
+
+    #[test]
+    fn digit_prefix_loser_is_dropped_from_reading_candidates() {
+        let merged = vec![
+            make_merged_direct("Matthew", 40, 6, 3, 1.0, false),
+            make_merged_direct("Matthew", 40, 6, 33, 1.0, false),
+        ];
+        let candidates = direct_reading_candidates(&merged);
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].verse_ref.verse_start, 33);
     }
 
     #[test]
@@ -495,6 +683,151 @@ mod tests {
         assert!(
             !trailing.contains("Patriarchs and Prophets"),
             "the live cue must be recorded before window truncation: {trailing}"
+        );
+    }
+
+    use crate::commands::detection::DetectionResult;
+
+    fn direct_result(
+        reference: &str,
+        book: i32,
+        chapter: i32,
+        verse: i32,
+        is_chapter_only: bool,
+    ) -> DetectionResult {
+        DetectionResult {
+            content_type: "bible".to_string(),
+            verse_ref: reference.to_string(),
+            verse_text: String::new(),
+            book_name: "John".to_string(),
+            book_number: book,
+            chapter,
+            verse,
+            confidence: if is_chapter_only { 0.92 } else { 1.0 },
+            rank_score: if is_chapter_only { 0.92 } else { 1.0 },
+            source: "direct".to_string(),
+            auto_queued: false,
+            transcript_snippet: String::new(),
+            is_chapter_only,
+            egw_paragraph: None,
+            match_char_start: None,
+        }
+    }
+
+    #[test]
+    fn repeat_direct_reference_is_suppressed_within_the_window() {
+        // 2026-08-04: one slow "John 3 verse 16" emitted John 3:1 twelve times
+        // across consecutive partials, refreshing its recency each time.
+        let mut recent = RecentDirectEmissions::default();
+        let start = std::time::Instant::now();
+
+        let mut first = vec![direct_result("John 3:1", 43, 3, 1, false)];
+        recent.suppress_repeats(&mut first, DIRECT_REPEAT_SUPPRESSION, start);
+        assert_eq!(first.len(), 1, "the first emission must go through");
+
+        let mut repeat = vec![direct_result("John 3:1", 43, 3, 1, false)];
+        recent.suppress_repeats(
+            &mut repeat,
+            DIRECT_REPEAT_SUPPRESSION,
+            start + Duration::from_millis(400),
+        );
+        assert!(repeat.is_empty(), "an identical repeat must be suppressed");
+    }
+
+    #[test]
+    fn refined_reference_is_never_suppressed_by_its_own_prefix() {
+        // The whole point of the partial race: John 3:16 arrives after John 3:1
+        // and must always reach the operator.
+        let mut recent = RecentDirectEmissions::default();
+        let start = std::time::Instant::now();
+
+        let mut first = vec![direct_result("John 3:1", 43, 3, 1, true)];
+        recent.suppress_repeats(&mut first, DIRECT_REPEAT_SUPPRESSION, start);
+
+        let mut refined = vec![direct_result("John 3:16", 43, 3, 16, false)];
+        recent.suppress_repeats(
+            &mut refined,
+            DIRECT_REPEAT_SUPPRESSION,
+            start + Duration::from_millis(200),
+        );
+
+        assert_eq!(refined.len(), 1, "John 3:16 must survive after John 3:1");
+    }
+
+    #[test]
+    fn full_verse_one_is_not_suppressed_by_prior_chapter_only_placeholder() {
+        // Live 2026-08-04: "Matthew chapter 1" emitted chapter-only Matthew 1:1
+        // @ 92%, then "Matthew chapter 1 verse 1" was suppressed as a repeat of
+        // the same book/chapter/verse key — so preview/auto-live never ran
+        // (both require !is_chapter_only).
+        let mut recent = RecentDirectEmissions::default();
+        let start = std::time::Instant::now();
+
+        let mut chapter_only = vec![direct_result("Matthew 1:1", 40, 1, 1, true)];
+        recent.suppress_repeats(&mut chapter_only, DIRECT_REPEAT_SUPPRESSION, start);
+        assert_eq!(chapter_only.len(), 1);
+
+        let mut full = vec![direct_result("Matthew 1:1", 40, 1, 1, false)];
+        recent.suppress_repeats(
+            &mut full,
+            DIRECT_REPEAT_SUPPRESSION,
+            start + Duration::from_millis(200),
+        );
+        assert_eq!(
+            full.len(),
+            1,
+            "full Matthew 1:1 must upgrade past chapter-only placeholder"
+        );
+    }
+
+    #[test]
+    fn reference_re_emits_once_the_window_has_passed() {
+        // A verse genuinely read again later must surface again.
+        let mut recent = RecentDirectEmissions::default();
+        let start = std::time::Instant::now();
+
+        let mut first = vec![direct_result("Psalms 23:1", 19, 23, 1, false)];
+        recent.suppress_repeats(&mut first, DIRECT_REPEAT_SUPPRESSION, start);
+
+        let mut later = vec![direct_result("Psalms 23:1", 19, 23, 1, false)];
+        recent.suppress_repeats(
+            &mut later,
+            DIRECT_REPEAT_SUPPRESSION,
+            start + DIRECT_REPEAT_SUPPRESSION + Duration::from_millis(1),
+        );
+
+        assert_eq!(later.len(), 1, "a genuine re-reading must surface again");
+    }
+
+    #[test]
+    fn egw_quote_window_keeps_a_quote_the_bible_window_truncates() {
+        // The 2026-08-04 Great Controversy quote as it arrived across STT
+        // finals. The 12-word Bible window keeps only the tail, so the shared
+        // run with the paragraph topped out at 5 (cued-hint band, 75-80%).
+        // The wider EGW window keeps the whole sentence, which the harness
+        // scores at run=9 -> 92% auto-queue.
+        let joined = [
+            "And then there's Ellen White's quote that says",
+            "Fearful is the issue to which the world is to be brought",
+            "the powers of earth uniting",
+            "to war against the commandment of God",
+        ]
+        .join(" ");
+
+        let bible_window = clamp_to_recent_words(&joined, LIVE_DETECTION_WINDOW_WORDS);
+        let egw_window = clamp_to_recent_words(&joined, LIVE_EGW_QUOTE_WINDOW_WORDS);
+
+        assert!(
+            !bible_window.contains("Fearful is the issue"),
+            "bible window should still be tight: {bible_window}"
+        );
+        assert!(
+            egw_window.contains("Fearful is the issue"),
+            "egw window must retain the head of the quote: {egw_window}"
+        );
+        assert!(
+            egw_window.contains("commandment of God"),
+            "egw window must retain the tail of the quote: {egw_window}"
         );
     }
 
@@ -829,11 +1162,13 @@ mod tests {
         let old = SemanticJob {
             seq: 1,
             text: "old".to_string(),
+            egw_text: "old".to_string(),
             stt_confidence: 0.5,
         };
         let new = SemanticJob {
             seq: 2,
             text: "new".to_string(),
+            egw_text: "new".to_string(),
             stt_confidence: 0.8,
         };
         assert!(!replace_semantic_job(&slot, old, "test"));
@@ -853,6 +1188,7 @@ mod tests {
             guard.replace(SemanticJob {
                 seq: 1,
                 text: "poisoned".to_string(),
+                egw_text: "poisoned".to_string(),
                 stt_confidence: 0.4,
             });
             panic!("poison semantic slot");
@@ -863,6 +1199,7 @@ mod tests {
             SemanticJob {
                 seq: 2,
                 text: "recovered".to_string(),
+                egw_text: "recovered".to_string(),
                 stt_confidence: 0.9,
             },
             "test"
@@ -872,6 +1209,7 @@ mod tests {
             Some(SemanticJob {
                 seq: 2,
                 text: "recovered".to_string(),
+                egw_text: "recovered".to_string(),
                 stt_confidence: 0.9,
             })
         );
@@ -911,5 +1249,141 @@ mod tests {
             Some((7, "The Lord is my shepherd".to_string()))
         );
         assert!(buffer.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod auto_queue_digit_growth_tests {
+    use super::rebalance_auto_queue_for_digit_growth;
+    use crate::commands::detection::DetectionResult;
+
+    fn bible_hit(verse: i32, confidence: f64, auto_queued: bool) -> DetectionResult {
+        DetectionResult {
+            content_type: "bible".to_string(),
+            verse_ref: format!("John 3:{verse}"),
+            verse_text: String::new(),
+            book_name: "John".to_string(),
+            book_number: 43,
+            chapter: 3,
+            verse,
+            confidence,
+            rank_score: confidence,
+            source: "direct".to_string(),
+            auto_queued,
+            transcript_snippet: String::new(),
+            is_chapter_only: false,
+            egw_paragraph: None,
+            match_char_start: None,
+        }
+    }
+
+    #[test]
+    fn single_digit_citation_loses_auto_queue() {
+        // "John 3 verse 1..." while "sixteen" is still arriving.
+        let mut results = vec![bible_hit(3, 1.0, true)];
+        rebalance_auto_queue_for_digit_growth(&mut results, 0.98);
+        assert!(
+            !results[0].auto_queued,
+            "a provisional single-digit citation must not auto-fire"
+        );
+    }
+
+    #[test]
+    fn auto_queue_moves_to_the_digit_stable_citation() {
+        // Live 2026-08-04: 3:1 consumed the merger's single auto-queue slot and
+        // left the verse actually being read at auto_q=false.
+        let mut results = vec![bible_hit(1, 1.0, true), bible_hit(16, 1.0, false)];
+        rebalance_auto_queue_for_digit_growth(&mut results, 0.98);
+
+        assert!(!results[0].auto_queued, "John 3:1 must lose auto-queue");
+        assert!(results[1].auto_queued, "John 3:16 must inherit auto-queue");
+    }
+
+    #[test]
+    fn re_award_respects_the_operator_threshold() {
+        // 3:16 sits below the configured auto-queue threshold, so the merger
+        // would never have auto-queued it — the strip must not hand it the flag.
+        let mut results = vec![bible_hit(1, 1.0, true), bible_hit(16, 0.80, false)];
+        rebalance_auto_queue_for_digit_growth(&mut results, 0.98);
+
+        assert!(!results[0].auto_queued);
+        assert!(
+            !results[1].auto_queued,
+            "a sub-threshold hit must not inherit auto-queue"
+        );
+    }
+
+    #[test]
+    fn manual_mode_awards_nothing() {
+        // Manual mode sets the threshold to infinity, so nothing arrives
+        // auto-queued and there is nothing to re-award.
+        let mut results = vec![bible_hit(1, 1.0, false), bible_hit(16, 1.0, false)];
+        rebalance_auto_queue_for_digit_growth(&mut results, f64::INFINITY);
+
+        assert!(results.iter().all(|result| !result.auto_queued));
+    }
+
+    #[test]
+    fn an_untouched_auto_queue_elsewhere_blocks_re_award() {
+        // 3:33 already holds the slot; stripping 3:1 must not add a second.
+        let mut results = vec![bible_hit(1, 1.0, true), bible_hit(33, 1.0, true)];
+        rebalance_auto_queue_for_digit_growth(&mut results, 0.98);
+
+        assert!(!results[0].auto_queued);
+        assert!(results[1].auto_queued);
+        assert_eq!(
+            results.iter().filter(|result| result.auto_queued).count(),
+            1
+        );
+    }
+}
+
+#[cfg(test)]
+mod egw_cue_refresh_tests {
+    use super::refresh_egw_cue_for_surviving_quote;
+    use crate::commands::detection::DetectionResult;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    fn egw_quote() -> DetectionResult {
+        DetectionResult {
+            content_type: "egw".to_string(),
+            verse_ref: "Patriarchs and Prophets p.322 par.1".to_string(),
+            verse_text: String::new(),
+            book_name: "Patriarchs and Prophets".to_string(),
+            book_number: 1,
+            chapter: 322,
+            verse: 1,
+            confidence: 0.92,
+            rank_score: 0.92,
+            source: "semantic".to_string(),
+            auto_queued: false,
+            transcript_snippet: String::new(),
+            is_chapter_only: false,
+            egw_paragraph: None,
+            match_char_start: None,
+        }
+    }
+
+    #[test]
+    fn a_surviving_quote_extends_the_cue() {
+        let cue = AtomicU64::new(1_000);
+        refresh_egw_cue_for_surviving_quote(&cue, 9_000, true, &[egw_quote()]);
+        assert_eq!(cue.load(Ordering::Relaxed), 9_000);
+    }
+
+    #[test]
+    fn a_discarded_quote_does_not_extend_the_cue() {
+        // dampen_egw_for_low_stt_confidence / retain_best_egw_quote ran and left
+        // nothing; Bible semantic detection must be allowed to re-arm on time.
+        let cue = AtomicU64::new(1_000);
+        refresh_egw_cue_for_surviving_quote(&cue, 9_000, true, &[]);
+        assert_eq!(cue.load(Ordering::Relaxed), 1_000);
+    }
+
+    #[test]
+    fn no_cue_means_no_refresh() {
+        let cue = AtomicU64::new(0);
+        refresh_egw_cue_for_surviving_quote(&cue, 9_000, false, &[egw_quote()]);
+        assert_eq!(cue.load(Ordering::Relaxed), 0);
     }
 }
