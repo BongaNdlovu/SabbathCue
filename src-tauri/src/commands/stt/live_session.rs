@@ -9,8 +9,9 @@ use crate::state::AppState;
 use rhema_detection::{DetectionMerger, DirectDetector, ReadingMode};
 
 use super::detection::{
-    is_bible_detection_enabled, is_semantic_detection_enabled, RecentDirectEmissions,
-    DIRECT_REPEAT_SUPPRESSION, FINAL_SEMANTIC_MIN_WORDS,
+    is_bible_detection_enabled, is_semantic_detection_enabled,
+    rebalance_auto_queue_for_digit_growth, refresh_egw_cue_for_surviving_quote,
+    RecentDirectEmissions, DIRECT_REPEAT_SUPPRESSION, FINAL_SEMANTIC_MIN_WORDS,
 };
 use super::detection_jobs::finalize_live_semantic_results;
 use super::detection_logic::{
@@ -208,16 +209,16 @@ fn detect_live_egw_quotes(
     egw_cue_at_ms: &AtomicU64,
     transcript: &str,
     stt_confidence: f64,
-) -> Vec<crate::commands::detection::DetectionResult> {
+) -> (Vec<crate::commands::detection::DetectionResult>, bool) {
     let app_managed: State<'_, Mutex<AppState>> = app.state();
-    let mut results = if let Ok(app_state) = app_managed.lock() {
+    let (mut results, cue_active, now_ms) = if let Ok(app_state) = app_managed.lock() {
         let books = app_state
             .bible_db
             .as_ref()
             .and_then(|db| db.list_egw_books().ok())
             .unwrap_or_default();
         if books.is_empty() {
-            Vec::new()
+            (Vec::new(), false, 0)
         } else {
             let now_ms = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -230,16 +231,26 @@ fn detect_live_egw_quotes(
                 now_ms,
                 egw_cue_at_ms,
             );
-            crate::commands::detection::detect_egw_quotes(&app_state, transcript, cue_active)
+            let quotes =
+                crate::commands::detection::detect_egw_quotes(&app_state, transcript, cue_active);
+            (quotes, cue_active, now_ms)
         }
     } else {
         log::warn!("[DET-EGW-QUOTE] AppState busy; skipping EGW quote pass");
-        Vec::new()
+        (Vec::new(), false, 0)
     };
 
     crate::commands::detection::dampen_egw_for_low_stt_confidence(&mut results, stt_confidence);
+    // One operator-facing winner per window. Live 2026-08-04 21:32: PP p.325
+    // (correct) co-emitted with Desire of Ages p.327 (wrong book) at lower conf.
+    crate::commands::detection::retain_best_egw_quote(&mut results);
+    // Live 2026-08-04 21:32: cue TTL is 90s from the *spoken* attribution.
+    // Multi-quote readings (PP 322 → 324 → 325) outlive that window; once the
+    // clock expired, Bible hybrid re-armed and "apostle Peter" became I Peter
+    // 1:1. Refresh while matches keep landing under an already-live cue.
+    refresh_egw_cue_for_surviving_quote(egw_cue_at_ms, now_ms, cue_active, &results);
     mark_egw_auto_queue(app, &mut results);
-    results
+    (results, cue_active)
 }
 
 fn retain_results_allowed_by_bible_mode(
@@ -251,15 +262,40 @@ fn retain_results_allowed_by_bible_mode(
     }
 }
 
-/// Run direct (regex/pattern) detection only. Instant, no ONNX.
-/// Uses SEPARATE Mutex<DirectDetector> and Mutex<DetectionMerger> so it
-/// never blocks on the semantic worker, and cooldown state persists across calls.
-/// Returns direct references that are strong enough to hand reading mode to.
-#[expect(
-    clippy::similar_names,
-    clippy::too_many_lines,
-    reason = "direct detection orchestration is intentionally kept together"
-)]
+/// Log a direct hit with citation metadata always; include the STT window only
+/// when transcript logging is opted in (debug + `SABBATHCUE_DEBUG_TRANSCRIPTS`).
+fn log_direct_found(
+    result: &crate::commands::detection::DetectionResult,
+    transcript: &str,
+    suffix: &str,
+) {
+    let suffix = if suffix.is_empty() {
+        String::new()
+    } else {
+        format!(" {suffix}")
+    };
+    if transcript_logging_enabled() {
+        log::info!(
+            "[DET-DIRECT] Found: {} ({:.0}%) chapter_only={} auto_q={} snip={:?} text={:?}{suffix}",
+            result.verse_ref,
+            result.confidence * 100.0,
+            result.is_chapter_only,
+            result.auto_queued,
+            result.transcript_snippet,
+            truncate_safe(transcript, 80),
+        );
+    } else {
+        log::info!(
+            "[DET-DIRECT] Found: {} ({:.0}%) chapter_only={} auto_q={} snip={:?}{suffix}",
+            result.verse_ref,
+            result.confidence * 100.0,
+            result.is_chapter_only,
+            result.auto_queued,
+            result.transcript_snippet,
+        );
+    }
+}
+
 /// Drop references already emitted inside `DIRECT_REPEAT_SUPPRESSION`.
 ///
 /// A poisoned lock must not silence detection, so recover the guard rather than
@@ -282,6 +318,15 @@ fn suppress_repeat_direct_emissions(
     recent.suppress_repeats(results, DIRECT_REPEAT_SUPPRESSION, std::time::Instant::now());
 }
 
+/// Run direct (regex/pattern) detection only. Instant, no ONNX.
+/// Uses SEPARATE Mutex<DirectDetector> and Mutex<DetectionMerger> so it
+/// never blocks on the semantic worker, and cooldown state persists across calls.
+/// Returns direct references that are strong enough to hand reading mode to.
+#[expect(
+    clippy::similar_names,
+    clippy::too_many_lines,
+    reason = "direct detection orchestration is intentionally kept together"
+)]
 pub(crate) fn run_direct_detection(
     app: &AppHandle,
     seq: u64,
@@ -338,6 +383,9 @@ pub(crate) fn run_direct_detection(
         }
     };
     let merged = merger.merge(direct_results, vec![]);
+    // Captured before the guard drops: re-awarding auto-queue below must stay
+    // inside the operator's configured policy.
+    let auto_queue_threshold = merger.auto_queue_threshold();
     drop(merger);
     let mut reading_candidates = direct_reading_candidates(&merged);
     if merged.is_empty() {
@@ -388,11 +436,7 @@ pub(crate) fn run_direct_detection(
         let mut results = filter_live_direct_results_to_reading_scope(app, results);
         suppress_repeat_direct_emissions(&RECENT_DIRECT, &mut results);
         for r in &results {
-            log::info!(
-                "[DET-DIRECT] Found: {} ({:.0}%) (no DB)",
-                r.verse_ref,
-                r.confidence * 100.0
-            );
+            log_direct_found(r, transcript, "(no DB)");
         }
         let _ = app.emit("verse_detections", &results);
         return reading_candidates;
@@ -406,6 +450,7 @@ pub(crate) fn run_direct_detection(
         .iter()
         .map(|m| crate::commands::detection::to_result(&app_state, m))
         .collect();
+    rebalance_auto_queue_for_digit_growth(&mut results, auto_queue_threshold);
     let egw_start = results.len();
     results.extend(crate::commands::detection::detect_egw_references(
         &app_state, transcript,
@@ -422,11 +467,7 @@ pub(crate) fn run_direct_detection(
     suppress_repeat_direct_emissions(&RECENT_DIRECT, &mut results);
 
     for r in &results {
-        log::info!(
-            "[DET-DIRECT] Found: {} ({:.0}%)",
-            r.verse_ref,
-            r.confidence * 100.0
-        );
+        log_direct_found(r, transcript, "");
     }
 
     // Final stale check before emission
@@ -521,15 +562,66 @@ pub(crate) fn run_semantic_detection(
         return;
     }
 
-    if !is_bible_detection_enabled(app) {
-        let results = detect_live_egw_quotes(app, egw_cue_at_ms, egw_transcript, stt_confidence);
-        if results.is_empty() || seq < latest_seq.load(Ordering::Acquire) {
+    // EGW quote matching is BM25 + shared-run (milliseconds). Bible hybrid is
+    // ONNX (~400–1500ms) on the same latest-wins worker. Live 2026-08-04 21:21:
+    // under a live EGW cue the hybrid finished with quotes=1 but seq was already
+    // stale, so emission was dropped for ~7s (no Found) while the operator waited.
+    // Resolve quotes first; when attribution is live, skip hybrid entirely so the
+    // worker stays free for the next partial and ready quotes emit immediately.
+    let t0 = std::time::Instant::now();
+    let (mut egw_quotes, cue_active) =
+        detect_live_egw_quotes(app, egw_cue_at_ms, egw_transcript, stt_confidence);
+    let cue_live = cue_active
+        || crate::commands::detection::egw_cue_is_currently_live(egw_cue_at_ms);
+    if cue_live {
+        pause_stale_reading_scope(app);
+        log::info!(
+            "[DET-EGW-QUOTE] cue_active={cue_active} cue_live=true quotes={} path=pre_hybrid",
+            egw_quotes.len()
+        );
+    }
+
+    if !is_bible_detection_enabled(app) || cue_live {
+        if egw_quotes.is_empty() {
+            log::info!(
+                "[DET-TRACE] seq={seq} decision={} emitted=0 elapsed={:?}",
+                if cue_live {
+                    "egw_cue_fast_none"
+                } else {
+                    "bible_mode_off_none"
+                },
+                t0.elapsed()
+            );
             return;
         }
-        let _ = app.emit("verse_detections", &results);
+        if seq < latest_seq.load(Ordering::Acquire) {
+            log::info!(
+                "[DET-SEMANTIC] Skipping emission for stale seq={seq} (egw_ready={})",
+                egw_quotes.len()
+            );
+            return;
+        }
+        for r in &egw_quotes {
+            log::info!(
+                "[DET-SEMANTIC] Found: {} ({:.0}% {}) auto_q={}",
+                r.verse_ref,
+                r.confidence * 100.0,
+                r.source,
+                r.auto_queued
+            );
+        }
+        let _ = app.emit("verse_detections", &egw_quotes);
         log::info!(
-            "[DET-TRACE] seq={seq} decision=bible_mode_off emitted_egw={}",
-            results.len()
+            "[DET-TRACE] seq={seq} decision={} emitted={} top={} ({:.0}%) elapsed={:?}",
+            if cue_live {
+                "egw_cue_fast"
+            } else {
+                "bible_mode_off"
+            },
+            egw_quotes.len(),
+            egw_quotes.first().map_or("-", |r| r.verse_ref.as_str()),
+            egw_quotes.first().map_or(0.0, |r| r.confidence) * 100.0,
+            t0.elapsed()
         );
         return;
     }
@@ -551,7 +643,6 @@ pub(crate) fn run_semantic_detection(
     // raw transcript: scaffolding strip removes reference framing only.
     let book_hint = spoken_book_hint(transcript);
 
-    let t0 = std::time::Instant::now();
     if transcript_logging_enabled() {
         log::info!("[DET-SEMANTIC] Running on: {:?}", truncate_safe(&query, 80));
     } else {
@@ -646,14 +737,20 @@ pub(crate) fn run_semantic_detection(
         }
     }
 
-    let mut egw_quotes =
-        detect_live_egw_quotes(app, egw_cue_at_ms, egw_transcript, stt_confidence);
+    // Reuse pre-hybrid EGW quotes (already scored). Without a live cue this is
+    // the fire-band path; drop scripture-echo paragraphs against Bible hits.
     crate::commands::detection::drop_egw_quotes_echoing_scripture(
         &mut egw_quotes,
         &results,
         egw_transcript,
+        false,
     );
-    results.extend(egw_quotes);
+    // Prefer EGW first in the emit list so DET-TRACE top and any consumers that
+    // take results[0] do not surface a weaker Bible hit over a stronger quote.
+    if !egw_quotes.is_empty() {
+        egw_quotes.append(&mut results);
+        results = egw_quotes;
+    }
 
     if !is_bible_detection_enabled(app) {
         retain_results_allowed_by_bible_mode(&mut results, false);
@@ -670,7 +767,10 @@ pub(crate) fn run_semantic_detection(
 
     // Final stale check before emission
     if seq < latest_seq.load(Ordering::Acquire) {
-        log::debug!("[DET-SEMANTIC] Skipping emission for stale seq={seq}");
+        log::info!(
+            "[DET-SEMANTIC] Skipping emission for stale seq={seq} results={}",
+            results.len()
+        );
         return;
     }
 

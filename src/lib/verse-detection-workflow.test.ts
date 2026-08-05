@@ -1,14 +1,26 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import {
   aiSuggestionSettledForTests,
+  dropDigitPrefixLosers,
   handleReadingAdvance,
   handleVerseDetections,
   pendingSemanticConfirmationCountForTests,
+  refineSemanticAutoLiveWinner,
   resetDetectionArbitrationForTests,
   resetSemanticConfirmationForTests,
+  resetStableDirectCitationForTests,
   scheduleVerseDetections,
 } from "./verse-detection-workflow"
+import {
+  DIGIT_GROWTH_HOLD_MS,
+  resetDigitGrowthHoldForTests,
+} from "./presentation-workflow"
 import { useBibleStore } from "@/stores/bible-store"
+
+/** Flush single-digit auto-live holds under fake timers. */
+async function flushDigitGrowthHold() {
+  await vi.advanceTimersByTimeAsync(DIGIT_GROWTH_HOLD_MS)
+}
 import { useBroadcastStore } from "@/stores/broadcast-store"
 import { useDetectionStore } from "@/stores/detection-store"
 import { useEgwSlideStore } from "@/stores/egw-slide-store"
@@ -113,6 +125,8 @@ describe("verse detection workflow", () => {
     scheduleRankingMock.mockResolvedValue(null)
     resetDetectionArbitrationForTests()
     resetSemanticConfirmationForTests()
+    resetStableDirectCitationForTests()
+    resetDigitGrowthHoldForTests()
 
     useBibleStore.setState({
       translations: [],
@@ -155,6 +169,8 @@ describe("verse detection workflow", () => {
 
   afterEach(() => {
     resetDetectionArbitrationForTests()
+    resetStableDirectCitationForTests()
+    resetDigitGrowthHoldForTests()
     vi.unstubAllGlobals()
     vi.useRealTimers()
   })
@@ -892,6 +908,191 @@ describe("verse detection workflow", () => {
     expect(useBroadcastStore.getState().liveItem).toBeNull()
   })
 
+  it("keeps live John 3:16 when semantic ranks adjacent 3:15 higher", () => {
+    const john315 = makeDetection({
+      verse_ref: "John 3:15",
+      book_name: "John",
+      book_number: 43,
+      chapter: 3,
+      verse: 15,
+      confidence: 0.98,
+      source: "semantic",
+      auto_queued: false,
+    })
+    const john316 = makeDetection({
+      verse_ref: "John 3:16",
+      book_name: "John",
+      book_number: 43,
+      chapter: 3,
+      verse: 16,
+      confidence: 0.92,
+      source: "semantic",
+      auto_queued: false,
+    })
+    const winner = refineSemanticAutoLiveWinner(john315, [john315, john316], {
+      book_number: 43,
+      chapter: 3,
+      verse: 16,
+    })
+    expect(winner?.verse_ref).toBe("John 3:16")
+  })
+
+  it("blocks adjacent semantic steal when live verse is missing from candidates", () => {
+    const john315 = makeDetection({
+      verse_ref: "John 3:15",
+      book_name: "John",
+      book_number: 43,
+      chapter: 3,
+      verse: 15,
+      confidence: 0.98,
+      source: "semantic",
+      auto_queued: false,
+    })
+    const winner = refineSemanticAutoLiveWinner(john315, [john315], {
+      book_number: 43,
+      chapter: 3,
+      verse: 16,
+    })
+    expect(winner).toBeNull()
+  })
+
+  it("auto-lives EGW fire-band hits on first sighting without double confirmation", async () => {
+    useBroadcastStore.setState({
+      isLive: false,
+      readingModeAutoLive: true,
+      liveItem: null,
+    })
+    const egw = makeDetection({
+      content_type: "egw",
+      verse_ref: "Patriarchs and Prophets p.322 par.1",
+      book_name: "Patriarchs and Prophets",
+      book_number: 1,
+      chapter: 322,
+      verse: 1,
+      confidence: 0.92,
+      source: "semantic",
+      auto_queued: true,
+      egw_paragraph: {
+        id: 1,
+        book_number: 1,
+        book_title: "Patriarchs and Prophets",
+        chapter: 1,
+        chapter_title: "Why Was Sin Permitted?",
+        paragraph: 1,
+        page: 322,
+        page_paragraph: 1,
+        text: "Adam and Eve at their creation had a knowledge of the law of God.",
+      },
+    })
+    await handleVerseDetections([egw])
+    expect(useBroadcastStore.getState().isLive).toBe(true)
+    expect(useBroadcastStore.getState().liveItem?.kind).toBe("egw")
+  })
+
+  it("prefers competitive EGW over Bible semantic noise", () => {
+    const jeremiah = makeDetection({
+      verse_ref: "Jeremiah 17:1",
+      book_name: "Jeremiah",
+      book_number: 24,
+      chapter: 17,
+      verse: 1,
+      confidence: 0.87,
+      source: "semantic",
+      auto_queued: false,
+    })
+    const egw = makeDetection({
+      content_type: "egw",
+      verse_ref: "Patriarchs and Prophets p.322 par.1",
+      book_name: "Patriarchs and Prophets",
+      book_number: 1,
+      chapter: 322,
+      verse: 1,
+      confidence: 0.92,
+      source: "semantic",
+      auto_queued: false,
+      egw_paragraph: {
+        id: 1,
+        book_number: 1,
+        book_title: "Patriarchs and Prophets",
+        chapter: 1,
+        chapter_title: "Why Was Sin Permitted?",
+        paragraph: 1,
+        page: 322,
+        page_paragraph: 1,
+        text: "Adam and Eve at their creation had a knowledge of the law of God.",
+      },
+    })
+    const winner = refineSemanticAutoLiveWinner(jeremiah, [jeremiah, egw], null)
+    expect(winner?.content_type).toBe("egw")
+  })
+
+  it("drops digit-prefix intermediate citations when the full form is present", () => {
+    const kept = dropDigitPrefixLosers([
+      makeDetection({
+        verse_ref: "Matthew 6:3",
+        book_name: "Matthew",
+        book_number: 40,
+        chapter: 6,
+        verse: 3,
+        confidence: 1,
+      }),
+      makeDetection({
+        verse_ref: "Matthew 6:33",
+        book_name: "Matthew",
+        book_number: 40,
+        chapter: 6,
+        verse: 33,
+        confidence: 1,
+      }),
+      makeDetection({
+        verse_ref: "Luke 12:31",
+        book_name: "Luke",
+        book_number: 42,
+        chapter: 12,
+        verse: 31,
+        source: "semantic",
+        confidence: 0.75,
+      }),
+    ])
+    expect(kept.map((d) => d.verse_ref)).toEqual([
+      "Matthew 6:33",
+      "Luke 12:31",
+    ])
+  })
+
+  it("prefers the digit-stable form when both 6:3 and 6:33 arrive in one batch", async () => {
+    await handleVerseDetections([
+      makeDetection({
+        verse_ref: "Matthew 6:3",
+        book_name: "Matthew",
+        book_number: 40,
+        chapter: 6,
+        verse: 3,
+        confidence: 1,
+        auto_queued: true,
+      }),
+      makeDetection({
+        verse_ref: "Matthew 6:33",
+        book_name: "Matthew",
+        book_number: 40,
+        chapter: 6,
+        verse: 33,
+        confidence: 1,
+        auto_queued: false,
+      }),
+    ])
+
+    expect(useDetectionStore.getState().detections.map((d) => d.verse_ref)).toEqual([
+      "Matthew 6:33",
+    ])
+    expect(useBibleStore.getState().selectedVerse).toMatchObject({
+      book_name: "Matthew",
+      chapter: 6,
+      verse: 33,
+    })
+    expect(useBroadcastStore.getState().liveItem?.reference).toContain("Matthew 6:33")
+  })
+
   it("previews from incoming direct detection event", async () => {
     const detection = makeDetection({
       verse_ref: "Romans 5:8",
@@ -900,6 +1101,7 @@ describe("verse detection workflow", () => {
       verse: 8,
     })
     await handleVerseDetections([detection])
+    await flushDigitGrowthHold()
 
     expect(useBibleStore.getState().selectedVerse).toMatchObject({
       book_number: 45,
@@ -924,6 +1126,7 @@ describe("verse detection workflow", () => {
       confidence: 0.95,
     })
     await handleVerseDetections([detection1, detection2])
+    await flushDigitGrowthHold()
 
     expect(useBibleStore.getState().selectedVerse).toMatchObject({
       book_number: 45,
@@ -1139,6 +1342,7 @@ describe("verse detection workflow", () => {
       confidence: 0.9,
     })
     await handleVerseDetections([detection1, detection2])
+    await flushDigitGrowthHold()
 
     expect(useBibleStore.getState().selectedVerse).toMatchObject({
       book_number: 45,

@@ -3,6 +3,7 @@
     reason = "Tauri command extractors require pass-by-value"
 )]
 
+mod audio_fanout;
 mod detection;
 mod detection_jobs;
 mod detection_logic;
@@ -15,7 +16,7 @@ mod voice;
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::Notify;
 
@@ -45,12 +46,9 @@ use self::voice::{check_stt_voice_command, check_translation_command};
 use crate::commands::transcript_router::{
     TranscriptEventKind, TranscriptRouteInput, TranscriptRouter,
 };
-use crate::events::{
-    AudioLevelPayload, TranscriptPayload, EVENT_AUDIO_LEVEL, EVENT_AUDIO_SOURCE_LOST,
-    EVENT_AUDIO_SOURCE_RECOVERED, EVENT_TRANSCRIPT_FINAL, EVENT_TRANSCRIPT_PARTIAL,
-};
+use crate::events::{TranscriptPayload, EVENT_TRANSCRIPT_FINAL, EVENT_TRANSCRIPT_PARTIAL};
 use crate::state::AppState;
-use rhema_audio::{set_gain, AudioConfig, AudioFrame};
+use rhema_audio::set_gain;
 use rhema_detection::DirectDetector;
 use rhema_stt::TranscriptEvent;
 /// Start the audio-capture-to-transcription pipeline: mic capture, STT provider,
@@ -128,167 +126,15 @@ pub async fn start_transcription(
     let gain_val = gain.unwrap_or(1.0).clamp(0.0, 2.0);
     let gain_handle = live_input_gain();
     set_gain(&gain_handle, gain_val);
-    let fan_active = stt_active.clone();
-    let fan_app = app.clone();
-
-    std::thread::Builder::new()
-        .name("audio-fanout".into())
-        .spawn(move || {
-            // Watchdog flag — set by cpal's stream-error callback when the OS
-            // device vanishes. The outer loop polls this (and frame silence)
-            // to detect loss and rebuild the capture once the device returns.
-            let device_lost = Arc::new(std::sync::atomic::AtomicBool::new(false));
-            let mut frame_count: u64 = 0;
-            let mut announced_lost = false;
-
-            // Outer loop: rebuild `AudioCapture` whenever the device is lost
-            // and reappears. Exits only when `fan_active` is cleared by
-            // `stop_transcription`.
-            'outer: loop {
-                if !fan_active.load(Ordering::SeqCst) || !fan_session.is_current() {
-                    break 'outer;
-                }
-
-                let config = AudioConfig {
-                    device_id: device_id.clone(),
-                    sample_rate: 16_000,
-                    gain: rhema_audio::read_gain(&gain_handle),
-                };
-
-                let (audio_tx, audio_rx) = crossbeam_channel::bounded::<AudioFrame>(128);
-                device_lost.store(false, Ordering::SeqCst);
-
-                let capture = match rhema_audio::capture::start(
-                    config,
-                    audio_tx,
-                    device_lost.clone(),
-                    gain_handle.clone(),
-                ) {
-                    Ok(c) => {
-                        if announced_lost {
-                            log::info!("[AUDIO] Source recovered — capture rebuilt");
-                            let _ = fan_app.emit(EVENT_AUDIO_SOURCE_RECOVERED, ());
-                            announced_lost = false;
-                        }
-                        c
-                    }
-                    Err(e) => {
-                        if !announced_lost {
-                            log::warn!("[AUDIO] Source unavailable: {e} — waiting for reconnect");
-                            let _ = fan_app.emit(EVENT_AUDIO_SOURCE_LOST, ());
-                            announced_lost = true;
-                            // Drop level meter to zero so UI reflects the gap.
-                            let _ = fan_app.emit(
-                                EVENT_AUDIO_LEVEL,
-                                AudioLevelPayload {
-                                    rms: 0.0,
-                                    peak: 0.0,
-                                },
-                            );
-                        }
-                        if !fan_session.sleep_interruptible(
-                            Duration::from_millis(750),
-                            Duration::from_millis(50),
-                        ) {
-                            break 'outer;
-                        }
-                        continue 'outer;
-                    }
-                };
-
-                log::info!("Audio capture started on fanout thread");
-
-                let mut last_frame_at = Instant::now();
-
-                // Inner loop: pump frames until loss is detected or stop is requested.
-                loop {
-                    if !fan_active.load(Ordering::SeqCst) || !fan_session.is_current() {
-                        capture.stop();
-                        break 'outer;
-                    }
-
-                    // Loss signal #1: cpal's err_fn fired.
-                    // Loss signal #2: no frames for >2s (some platforms silently
-                    // stop delivering rather than calling err_fn).
-                    if device_lost.load(Ordering::SeqCst)
-                        || last_frame_at.elapsed() > Duration::from_secs(2)
-                    {
-                        log::warn!(
-                            "[AUDIO] Source lost (err_flag={}, silent_for={:?}) — dropping capture",
-                            device_lost.load(Ordering::SeqCst),
-                            last_frame_at.elapsed()
-                        );
-                        if !announced_lost {
-                            let _ = fan_app.emit(EVENT_AUDIO_SOURCE_LOST, ());
-                            let _ = fan_app.emit(
-                                EVENT_AUDIO_LEVEL,
-                                AudioLevelPayload {
-                                    rms: 0.0,
-                                    peak: 0.0,
-                                },
-                            );
-                            announced_lost = true;
-                        }
-                        break; // drop `capture`, outer loop rebuilds
-                    }
-
-                    match audio_rx.recv_timeout(Duration::from_millis(100)) {
-                        Ok(frame) => {
-                            last_frame_at = Instant::now();
-                            frame_count += 1;
-
-                            // (a) Compute audio levels at ~15 Hz
-                            //     At 16 kHz with ~1024-sample frames, every 4th frame is ~15 Hz.
-                            if frame_count % 4 == 0 {
-                                let level = rhema_audio::meter::compute_level(&frame.samples);
-                                let _ = fan_app.emit(
-                                    EVENT_AUDIO_LEVEL,
-                                    AudioLevelPayload {
-                                        rms: level.rms,
-                                        peak: level.peak,
-                                    },
-                                );
-                            }
-
-                            // (b) Forward all audio to STT provider. A short timeout avoids
-                            // silently dropping speech during transient provider backpressure.
-                            match audio_send_tx
-                                .send_timeout(frame.samples, Duration::from_millis(20))
-                            {
-                                Ok(()) => {}
-                                Err(crossbeam_channel::SendTimeoutError::Timeout(_)) => {
-                                    log::warn!("[AUDIO] Dropped STT frame: provider queue full");
-                                }
-                                Err(crossbeam_channel::SendTimeoutError::Disconnected(_)) => {
-                                    log::info!(
-                                        "[AUDIO] Provider channel disconnected; stopping fanout"
-                                    );
-                                    break 'outer;
-                                }
-                            }
-                        }
-                        Err(crossbeam_channel::RecvTimeoutError::Timeout) => {}
-                        Err(crossbeam_channel::RecvTimeoutError::Disconnected) => {
-                            // Capture's sender was dropped — fall through to rebuild.
-                            break;
-                        }
-                    }
-                }
-
-                // Dropping `capture` stops the cpal stream.
-                capture.stop();
-            }
-
-            log::info!(
-                "[AUDIO] Capture stopped on fanout thread (session_retired={})",
-                !fan_session.is_current()
-            );
-        })
-        .map_err(|e| {
-            stt_active.store(false, Ordering::SeqCst);
-            audio_active.store(false, Ordering::SeqCst);
-            format!("Failed to spawn audio fanout thread: {e}")
-        })?;
+    audio_fanout::spawn(
+        app.clone(),
+        fan_session,
+        device_id,
+        gain_handle,
+        audio_send_tx,
+        stt_active.clone(),
+        audio_active.clone(),
+    )?;
 
     // Spawn STT provider and transcript event workers on the tokio runtime.
     let (event_tx, mut event_rx) = tokio::sync::mpsc::channel::<TranscriptEvent>(128);

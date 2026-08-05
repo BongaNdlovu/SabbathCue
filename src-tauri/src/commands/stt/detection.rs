@@ -82,16 +82,22 @@ pub(crate) const LIVE_DETECTION_WINDOW_WORDS: usize = 12;
 /// detections by reference so these collapse to one row, but each re-emission
 /// refreshes its `received_at`, keeping a superseded reference as "recent" as
 /// the verse the speaker actually reached.
-pub(crate) const DIRECT_REPEAT_SUPPRESSION: Duration = Duration::from_millis(3000);
+pub(crate) const DIRECT_REPEAT_SUPPRESSION: Duration = Duration::from_secs(3);
 
 /// Suppress re-emission of references already sent very recently.
 ///
 /// Keyed on the resolved reference rather than the transcript, so a refined
 /// reference (`John 3:16` after `John 3:1`) is always a distinct key and is
 /// never suppressed by its own prefix.
+///
+/// `is_chapter_only` is part of the key: a chapter-only placeholder that
+/// defaults to verse 1 (`Matthew 1:1` at 92%) must not suppress the later full
+/// citation of the same verse (`Matthew 1:1` at 100%). Frontend preview and
+/// auto-live ignore chapter-only hits, so suppressing the upgrade left verse 1
+/// citations with no preview/live path.
 #[derive(Default)]
 pub(crate) struct RecentDirectEmissions {
-    seen: std::collections::HashMap<(String, i32, i32, i32), std::time::Instant>,
+    seen: std::collections::HashMap<(String, i32, i32, i32, bool), std::time::Instant>,
 }
 
 impl RecentDirectEmissions {
@@ -110,6 +116,7 @@ impl RecentDirectEmissions {
                 result.book_number,
                 result.chapter,
                 result.verse,
+                result.is_chapter_only,
             );
             match self.seen.get(&key) {
                 Some(seen_at) if now.duration_since(*seen_at) < window => {
@@ -142,6 +149,72 @@ pub(crate) const LIVE_EGW_QUOTE_WINDOW_WORDS: usize = 40;
 
 /// Clear the rolling detection window after this much silence between finals.
 pub(crate) const WINDOW_RESET_GAP: Duration = Duration::from_secs(8);
+
+/// Move auto-queue off provisional single-digit citations onto the digit-stable
+/// one in the same batch.
+///
+/// STT partials emit `Matthew 6:3` before `6:33` finishes arriving, so a
+/// single-digit full citation must never auto-fire. If stripping it left the
+/// batch with no auto-queue at all, hand the flag to the strongest multi-digit
+/// citation — live 2026-08-04 left `John 3:16` at `auto_q=false` after `3:1`
+/// consumed the merger's single slot. The re-award still has to clear the
+/// operator's threshold, so a hit the merger would have refused cannot inherit
+/// it (Manual mode sets the threshold to infinity and blocks this entirely).
+pub(crate) fn rebalance_auto_queue_for_digit_growth(
+    results: &mut [crate::commands::detection::DetectionResult],
+    auto_queue_threshold: f64,
+) {
+    let mut stripped_auto = false;
+    for result in results.iter_mut() {
+        if result.content_type == "bible"
+            && !result.is_chapter_only
+            && (1..=9).contains(&result.verse)
+            && result.auto_queued
+        {
+            result.auto_queued = false;
+            stripped_auto = true;
+        }
+    }
+
+    if !stripped_auto || results.iter().any(|result| result.auto_queued) {
+        return;
+    }
+
+    if let Some(best) = results
+        .iter_mut()
+        .filter(|result| {
+            result.content_type == "bible"
+                && !result.is_chapter_only
+                && result.verse >= 10
+                && result.source == "direct"
+                && result.confidence >= auto_queue_threshold
+        })
+        .max_by(|a, b| {
+            a.confidence
+                .partial_cmp(&b.confidence)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.verse.cmp(&b.verse))
+        })
+    {
+        best.auto_queued = true;
+    }
+}
+
+/// Extend EGW attribution while a reading block keeps matching.
+///
+/// Call this only with quotes that survived dampening and best-quote selection.
+/// Refreshing on a raw BM25 match let a quote that was then discarded hold
+/// Bible semantic detection off for the rest of the cue TTL.
+pub(crate) fn refresh_egw_cue_for_surviving_quote(
+    egw_cue_at_ms: &AtomicU64,
+    now_ms: u64,
+    cue_active: bool,
+    surviving: &[crate::commands::detection::DetectionResult],
+) {
+    if cue_active && !surviving.is_empty() {
+        egw_cue_at_ms.store(now_ms, Ordering::Relaxed);
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -423,10 +496,46 @@ mod tests {
 
     #[test]
     fn different_book_restarts_only_when_explicit() {
-        let high = reading_candidate(43, 1, 1, 1.0, false);
+        let high = reading_candidate(43, 3, 16, 1.0, false);
         assert!(should_restart_reading(true, 39, 3, Some(16), &high));
-        let low = reading_candidate(43, 1, 1, 0.70, false);
+        let low = reading_candidate(43, 3, 16, 0.70, false);
         assert!(!should_restart_reading(true, 39, 3, Some(16), &low));
+    }
+
+    #[test]
+    fn single_digit_full_citation_does_not_reanchor_during_digit_growth() {
+        // Live: Matthew 6:1 (chapter-only) then provisional Matthew 6:3 before 6:33.
+        let provisional = reading_candidate(40, 6, 3, 1.0, false);
+        assert!(!should_restart_reading(
+            true,
+            40,
+            6,
+            Some(1),
+            &provisional
+        ));
+        let stable = reading_candidate(40, 6, 33, 1.0, false);
+        assert!(should_restart_reading(true, 40, 6, Some(1), &stable));
+    }
+
+    #[test]
+    fn inactive_mode_does_not_start_on_single_digit_full_citation() {
+        let provisional = reading_candidate(40, 6, 3, 1.0, false);
+        assert!(!should_restart_reading(false, 0, 0, None, &provisional));
+        let chapter_only = reading_candidate(40, 6, 1, 0.92, true);
+        assert!(should_restart_reading(false, 0, 0, None, &chapter_only));
+        let stable = reading_candidate(40, 6, 33, 1.0, false);
+        assert!(should_restart_reading(false, 0, 0, None, &stable));
+    }
+
+    #[test]
+    fn digit_prefix_loser_is_dropped_from_reading_candidates() {
+        let merged = vec![
+            make_merged_direct("Matthew", 40, 6, 3, 1.0, false),
+            make_merged_direct("Matthew", 40, 6, 33, 1.0, false),
+        ];
+        let candidates = direct_reading_candidates(&merged);
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].verse_ref.verse_start, 33);
     }
 
     #[test]
@@ -579,7 +688,13 @@ mod tests {
 
     use crate::commands::detection::DetectionResult;
 
-    fn direct_result(reference: &str, book: i32, chapter: i32, verse: i32) -> DetectionResult {
+    fn direct_result(
+        reference: &str,
+        book: i32,
+        chapter: i32,
+        verse: i32,
+        is_chapter_only: bool,
+    ) -> DetectionResult {
         DetectionResult {
             content_type: "bible".to_string(),
             verse_ref: reference.to_string(),
@@ -588,12 +703,12 @@ mod tests {
             book_number: book,
             chapter,
             verse,
-            confidence: 1.0,
-            rank_score: 1.0,
+            confidence: if is_chapter_only { 0.92 } else { 1.0 },
+            rank_score: if is_chapter_only { 0.92 } else { 1.0 },
             source: "direct".to_string(),
             auto_queued: false,
             transcript_snippet: String::new(),
-            is_chapter_only: false,
+            is_chapter_only,
             egw_paragraph: None,
             match_char_start: None,
         }
@@ -606,11 +721,11 @@ mod tests {
         let mut recent = RecentDirectEmissions::default();
         let start = std::time::Instant::now();
 
-        let mut first = vec![direct_result("John 3:1", 43, 3, 1)];
+        let mut first = vec![direct_result("John 3:1", 43, 3, 1, false)];
         recent.suppress_repeats(&mut first, DIRECT_REPEAT_SUPPRESSION, start);
         assert_eq!(first.len(), 1, "the first emission must go through");
 
-        let mut repeat = vec![direct_result("John 3:1", 43, 3, 1)];
+        let mut repeat = vec![direct_result("John 3:1", 43, 3, 1, false)];
         recent.suppress_repeats(
             &mut repeat,
             DIRECT_REPEAT_SUPPRESSION,
@@ -626,10 +741,10 @@ mod tests {
         let mut recent = RecentDirectEmissions::default();
         let start = std::time::Instant::now();
 
-        let mut first = vec![direct_result("John 3:1", 43, 3, 1)];
+        let mut first = vec![direct_result("John 3:1", 43, 3, 1, true)];
         recent.suppress_repeats(&mut first, DIRECT_REPEAT_SUPPRESSION, start);
 
-        let mut refined = vec![direct_result("John 3:16", 43, 3, 16)];
+        let mut refined = vec![direct_result("John 3:16", 43, 3, 16, false)];
         recent.suppress_repeats(
             &mut refined,
             DIRECT_REPEAT_SUPPRESSION,
@@ -640,15 +755,41 @@ mod tests {
     }
 
     #[test]
+    fn full_verse_one_is_not_suppressed_by_prior_chapter_only_placeholder() {
+        // Live 2026-08-04: "Matthew chapter 1" emitted chapter-only Matthew 1:1
+        // @ 92%, then "Matthew chapter 1 verse 1" was suppressed as a repeat of
+        // the same book/chapter/verse key — so preview/auto-live never ran
+        // (both require !is_chapter_only).
+        let mut recent = RecentDirectEmissions::default();
+        let start = std::time::Instant::now();
+
+        let mut chapter_only = vec![direct_result("Matthew 1:1", 40, 1, 1, true)];
+        recent.suppress_repeats(&mut chapter_only, DIRECT_REPEAT_SUPPRESSION, start);
+        assert_eq!(chapter_only.len(), 1);
+
+        let mut full = vec![direct_result("Matthew 1:1", 40, 1, 1, false)];
+        recent.suppress_repeats(
+            &mut full,
+            DIRECT_REPEAT_SUPPRESSION,
+            start + Duration::from_millis(200),
+        );
+        assert_eq!(
+            full.len(),
+            1,
+            "full Matthew 1:1 must upgrade past chapter-only placeholder"
+        );
+    }
+
+    #[test]
     fn reference_re_emits_once_the_window_has_passed() {
         // A verse genuinely read again later must surface again.
         let mut recent = RecentDirectEmissions::default();
         let start = std::time::Instant::now();
 
-        let mut first = vec![direct_result("Psalms 23:1", 19, 23, 1)];
+        let mut first = vec![direct_result("Psalms 23:1", 19, 23, 1, false)];
         recent.suppress_repeats(&mut first, DIRECT_REPEAT_SUPPRESSION, start);
 
-        let mut later = vec![direct_result("Psalms 23:1", 19, 23, 1)];
+        let mut later = vec![direct_result("Psalms 23:1", 19, 23, 1, false)];
         recent.suppress_repeats(
             &mut later,
             DIRECT_REPEAT_SUPPRESSION,
@@ -1108,5 +1249,141 @@ mod tests {
             Some((7, "The Lord is my shepherd".to_string()))
         );
         assert!(buffer.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod auto_queue_digit_growth_tests {
+    use super::rebalance_auto_queue_for_digit_growth;
+    use crate::commands::detection::DetectionResult;
+
+    fn bible_hit(verse: i32, confidence: f64, auto_queued: bool) -> DetectionResult {
+        DetectionResult {
+            content_type: "bible".to_string(),
+            verse_ref: format!("John 3:{verse}"),
+            verse_text: String::new(),
+            book_name: "John".to_string(),
+            book_number: 43,
+            chapter: 3,
+            verse,
+            confidence,
+            rank_score: confidence,
+            source: "direct".to_string(),
+            auto_queued,
+            transcript_snippet: String::new(),
+            is_chapter_only: false,
+            egw_paragraph: None,
+            match_char_start: None,
+        }
+    }
+
+    #[test]
+    fn single_digit_citation_loses_auto_queue() {
+        // "John 3 verse 1..." while "sixteen" is still arriving.
+        let mut results = vec![bible_hit(3, 1.0, true)];
+        rebalance_auto_queue_for_digit_growth(&mut results, 0.98);
+        assert!(
+            !results[0].auto_queued,
+            "a provisional single-digit citation must not auto-fire"
+        );
+    }
+
+    #[test]
+    fn auto_queue_moves_to_the_digit_stable_citation() {
+        // Live 2026-08-04: 3:1 consumed the merger's single auto-queue slot and
+        // left the verse actually being read at auto_q=false.
+        let mut results = vec![bible_hit(1, 1.0, true), bible_hit(16, 1.0, false)];
+        rebalance_auto_queue_for_digit_growth(&mut results, 0.98);
+
+        assert!(!results[0].auto_queued, "John 3:1 must lose auto-queue");
+        assert!(results[1].auto_queued, "John 3:16 must inherit auto-queue");
+    }
+
+    #[test]
+    fn re_award_respects_the_operator_threshold() {
+        // 3:16 sits below the configured auto-queue threshold, so the merger
+        // would never have auto-queued it — the strip must not hand it the flag.
+        let mut results = vec![bible_hit(1, 1.0, true), bible_hit(16, 0.80, false)];
+        rebalance_auto_queue_for_digit_growth(&mut results, 0.98);
+
+        assert!(!results[0].auto_queued);
+        assert!(
+            !results[1].auto_queued,
+            "a sub-threshold hit must not inherit auto-queue"
+        );
+    }
+
+    #[test]
+    fn manual_mode_awards_nothing() {
+        // Manual mode sets the threshold to infinity, so nothing arrives
+        // auto-queued and there is nothing to re-award.
+        let mut results = vec![bible_hit(1, 1.0, false), bible_hit(16, 1.0, false)];
+        rebalance_auto_queue_for_digit_growth(&mut results, f64::INFINITY);
+
+        assert!(results.iter().all(|result| !result.auto_queued));
+    }
+
+    #[test]
+    fn an_untouched_auto_queue_elsewhere_blocks_re_award() {
+        // 3:33 already holds the slot; stripping 3:1 must not add a second.
+        let mut results = vec![bible_hit(1, 1.0, true), bible_hit(33, 1.0, true)];
+        rebalance_auto_queue_for_digit_growth(&mut results, 0.98);
+
+        assert!(!results[0].auto_queued);
+        assert!(results[1].auto_queued);
+        assert_eq!(
+            results.iter().filter(|result| result.auto_queued).count(),
+            1
+        );
+    }
+}
+
+#[cfg(test)]
+mod egw_cue_refresh_tests {
+    use super::refresh_egw_cue_for_surviving_quote;
+    use crate::commands::detection::DetectionResult;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    fn egw_quote() -> DetectionResult {
+        DetectionResult {
+            content_type: "egw".to_string(),
+            verse_ref: "Patriarchs and Prophets p.322 par.1".to_string(),
+            verse_text: String::new(),
+            book_name: "Patriarchs and Prophets".to_string(),
+            book_number: 1,
+            chapter: 322,
+            verse: 1,
+            confidence: 0.92,
+            rank_score: 0.92,
+            source: "semantic".to_string(),
+            auto_queued: false,
+            transcript_snippet: String::new(),
+            is_chapter_only: false,
+            egw_paragraph: None,
+            match_char_start: None,
+        }
+    }
+
+    #[test]
+    fn a_surviving_quote_extends_the_cue() {
+        let cue = AtomicU64::new(1_000);
+        refresh_egw_cue_for_surviving_quote(&cue, 9_000, true, &[egw_quote()]);
+        assert_eq!(cue.load(Ordering::Relaxed), 9_000);
+    }
+
+    #[test]
+    fn a_discarded_quote_does_not_extend_the_cue() {
+        // dampen_egw_for_low_stt_confidence / retain_best_egw_quote ran and left
+        // nothing; Bible semantic detection must be allowed to re-arm on time.
+        let cue = AtomicU64::new(1_000);
+        refresh_egw_cue_for_surviving_quote(&cue, 9_000, true, &[]);
+        assert_eq!(cue.load(Ordering::Relaxed), 1_000);
+    }
+
+    #[test]
+    fn no_cue_means_no_refresh() {
+        let cue = AtomicU64::new(0);
+        refresh_egw_cue_for_surviving_quote(&cue, 9_000, false, &[egw_quote()]);
+        assert_eq!(cue.load(Ordering::Relaxed), 0);
     }
 }

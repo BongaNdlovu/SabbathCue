@@ -57,6 +57,10 @@ pub(crate) fn replace_semantic_job(
     }
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "latest-wins slot handles plus the job payload; grouping them would only rename the same fields"
+)]
 pub(crate) fn enqueue_final_semantic_job(
     job_slot: &Arc<Mutex<Option<SemanticJob>>>,
     notify: &Arc<Notify>,
@@ -113,6 +117,10 @@ pub(crate) fn enqueue_final_semantic_job(
     notify.notify_one();
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "latest-wins slot handles plus the job payload; grouping them would only rename the same fields"
+)]
 pub(crate) fn enqueue_partial_semantic_job(
     job_slot: &Arc<Mutex<Option<SemanticJob>>>,
     notify: &Arc<Notify>,

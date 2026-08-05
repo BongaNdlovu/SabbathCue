@@ -501,6 +501,67 @@ describe("detection store", () => {
     expect(merged.verse_text).toBe("Incoming semantic text")
   })
 
+  it("digit-growth intermediate leaves the panel when the full verse follows immediately", () => {
+    const store = useDetectionStore.getState()
+
+    // STT partials emit "Matthew 6:3" before "…thirty three" completes it.
+    store.addDetections([
+      makeDetection({
+        verse_ref: "Matthew 6:3",
+        book_name: "Matthew",
+        book_number: 40,
+        chapter: 6,
+        verse: 3,
+      }),
+    ])
+
+    now += 300
+    store.addDetections([
+      makeDetection({
+        verse_ref: "Matthew 6:33",
+        book_name: "Matthew",
+        book_number: 40,
+        chapter: 6,
+        verse: 33,
+      }),
+    ])
+
+    const refs = useDetectionStore.getState().detections.map((d) => d.verse_ref)
+    expect(refs).toEqual(["Matthew 6:33"])
+  })
+
+  it("a verse read earlier survives a later citation whose number extends its digits", () => {
+    const store = useDetectionStore.getState()
+
+    // John 3:1 is genuinely read, not an STT fragment.
+    store.addDetections([
+      makeDetection({
+        verse_ref: "John 3:1",
+        book_name: "John",
+        book_number: 43,
+        chapter: 3,
+        verse: 1,
+      }),
+    ])
+
+    // Well past the digit-growth burst, the speaker moves to John 3:16. "1" is
+    // a digit prefix of "16", but these are two separate readings.
+    now += 5_000
+    store.addDetections([
+      makeDetection({
+        verse_ref: "John 3:16",
+        book_name: "John",
+        book_number: 43,
+        chapter: 3,
+        verse: 16,
+      }),
+    ])
+
+    const refs = useDetectionStore.getState().detections.map((d) => d.verse_ref)
+    expect(refs).toContain("John 3:1")
+    expect(refs).toContain("John 3:16")
+  })
+
   it("chapter-only placeholder yields to an explicit verse of the same chapter", () => {
     const store = useDetectionStore.getState()
 

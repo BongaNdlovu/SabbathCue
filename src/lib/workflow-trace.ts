@@ -28,6 +28,7 @@ export type WorkflowTraceStage =
   | "preview.state"
   | "live.auto_commit"
   | "live.commit"
+  | "live.digit_growth_hold"
   | "live.state"
 
 export interface WorkflowTraceEntry {

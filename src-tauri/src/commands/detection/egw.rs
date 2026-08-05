@@ -233,12 +233,20 @@ fn best_egw_alias_match<'a>(
 ///
 /// "white" alone is excluded on purpose: white robes, white as snow and white
 /// horses are common sermon imagery, and a bare colour word is not attribution.
-const EGW_CUE_PHRASES: [&str; 5] = [
+const EGW_CUE_PHRASES: [&str; 12] = [
     "ellen white",
     "ellen g white",
+    "ellen g writes",
+    "ellen writes",
     "sister white",
     "spirit of prophecy",
+    // Soniox/Deepgram mishears of "Ellen G. White" / "Ellen White writes"
+    "lng writes",
+    "lng white",
+    "ln g white",
+    "l n g white",
     "statement by illinois",
+    "statement from ellen",
 ];
 
 /// True when the window attributes its content to Ellen G. White, either by
@@ -266,6 +274,36 @@ const EGW_CUE_TTL_MS: u64 = 90_000;
 
 fn cue_is_live(now_ms: u64, cue_at_ms: u64) -> bool {
     cue_at_ms > 0 && now_ms.saturating_sub(cue_at_ms) <= EGW_CUE_TTL_MS
+}
+
+/// Whether a previously spoken EGW attribution is still in force.
+pub(crate) fn egw_cue_is_currently_live(cue_at_ms: &AtomicU64) -> bool {
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |elapsed| u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX));
+    cue_is_live(now_ms, cue_at_ms.load(Ordering::Relaxed))
+}
+
+/// Keep only the strongest EGW hit for live emission.
+///
+/// BM25 nominates several paragraphs; shared-run scoring can pass more than one
+/// (e.g. PP p.325 at 88% and Desire of Ages p.327 at 75%). Emitting both lets
+/// weaker wrong-book hits thrash the preview. Sort by confidence then rank.
+pub(crate) fn retain_best_egw_quote(results: &mut Vec<DetectionResult>) {
+    if results.len() <= 1 {
+        return;
+    }
+    results.sort_by(|a, b| {
+        b.confidence
+            .partial_cmp(&a.confidence)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| {
+                b.rank_score
+                    .partial_cmp(&a.rank_score)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+    });
+    results.truncate(1);
 }
 
 /// Record a cue if this window carries one, and report whether attribution is
@@ -327,12 +365,21 @@ pub(crate) fn dampen_egw_for_low_stt_confidence(
 /// Bible verse matches the transcript at least as well as the paragraph does,
 /// the speaker is reading scripture and the paragraph is an echo. A genuine
 /// Ellen White quote outruns every verse in the window, so it survives.
+///
+/// When an EGW attribution cue is live ("Ellen White", "LNG Writes", …), do
+/// **not** drop paragraphs: residual scripture from the prior verse in the
+/// rolling window would otherwise suppress the real EGW quote for many seconds
+/// (live 2026-08-04: Adam/Eve law quote delayed until John 3 reading released).
 pub(crate) fn drop_egw_quotes_echoing_scripture(
     egw_results: &mut Vec<DetectionResult>,
     bible_results: &[DetectionResult],
     spoken: &str,
+    cue_active: bool,
 ) {
     if egw_results.is_empty() {
+        return;
+    }
+    if cue_active {
         return;
     }
     let best_verse_run = bible_results
@@ -360,7 +407,9 @@ pub(crate) fn drop_egw_quotes_echoing_scripture(
 /// Minimum spoken words before a quote search is worth running.
 const EGW_QUOTE_MIN_WORDS: usize = 5;
 /// BM25 nominates this many candidates; run-length verification decides.
-const EGW_QUOTE_CANDIDATES: usize = 1;
+/// Raised from 1 after live 2026-08-04: a single BM25 nominee often missed the
+/// spoken paragraph while residual John 3:16 text still dominated retrieval.
+const EGW_QUOTE_CANDIDATES: usize = 5;
 
 /// Detect an EGW paragraph being read aloud in the transcript window.
 ///
@@ -474,17 +523,25 @@ pub(crate) fn apply_egw_auto_queue(
     results: &mut [DetectionResult],
     merger: &mut rhema_detection::DetectionMerger,
 ) {
-    // Direct references always enter the configured policy. Semantic quotes
-    // enter only after run length prequalifies them; the merger can still revoke
-    // unattended presentation for Manual mode, threshold, or cooldown.
+    // Semantic quotes are prequalified by shared-run length (run ≥ 8 + cue).
+    // Apply only the configured auto-queue threshold / Manual mode — do NOT
+    // push them through merger cooldown. Live 2026-08-04 21:30: continuous
+    // partials for the same PP p.322 hit scored auto_q=true on 8 of 88 Found
+    // lines; the 2.5s cooldown stripped the rest and starved unattended queue.
+    let threshold = merger.auto_queue_threshold();
+    for result in results.iter_mut() {
+        if result.content_type == "egw" && result.source == "semantic" && result.auto_queued {
+            result.auto_queued = result.confidence >= threshold;
+        }
+    }
+
+    // Direct page/paragraph references still use the full merger policy
+    // (threshold + cooldown) so rapid page flips do not flood auto-queue.
     let eligible_indices: Vec<usize> = results
         .iter()
         .enumerate()
         .filter_map(|(index, result)| {
-            (result.content_type == "egw"
-                && (result.source == "direct"
-                    || (result.source == "semantic" && result.auto_queued)))
-                .then_some(index)
+            (result.content_type == "egw" && result.source == "direct").then_some(index)
         })
         .collect();
 
@@ -603,11 +660,29 @@ mod low_stt_dampening_tests {
         )];
         let bible = vec![bible_hit_with_text("John 3:16", spoken)];
 
-        drop_egw_quotes_echoing_scripture(&mut egw, &bible, spoken);
+        drop_egw_quotes_echoing_scripture(&mut egw, &bible, spoken, false);
 
         assert!(
             egw.is_empty(),
             "a paragraph explained by the spoken verse must not reach the operator"
+        );
+    }
+
+    #[test]
+    fn scripture_echo_skips_drop_when_egw_cue_is_active() {
+        let spoken = "For God so loved the world that he gave his only begotten Son";
+        let mut egw = vec![egw_hit_with_text(
+            "The Desire of Ages",
+            "For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life.",
+        )];
+        let bible = vec![bible_hit_with_text("John 3:16", spoken)];
+
+        drop_egw_quotes_echoing_scripture(&mut egw, &bible, spoken, true);
+
+        assert_eq!(
+            egw.len(),
+            1,
+            "with an EGW cue, residual scripture in the window must not suppress EGW"
         );
     }
 
@@ -625,7 +700,7 @@ mod low_stt_dampening_tests {
             "Paul, an apostle of Jesus Christ by the commandment of God our Saviour, and Lord Jesus Christ, which is our hope;",
         )];
 
-        drop_egw_quotes_echoing_scripture(&mut egw, &bible, spoken);
+        drop_egw_quotes_echoing_scripture(&mut egw, &bible, spoken, false);
 
         assert_eq!(
             egw.len(),
@@ -745,6 +820,40 @@ mod auto_queue_policy_tests {
         apply_egw_auto_queue(&mut results, &mut merger);
 
         assert!(results[0].auto_queued);
+    }
+}
+
+#[cfg(test)]
+mod retain_best_egw_quote_tests {
+    use super::{egw_to_result, retain_best_egw_quote};
+    use crate::commands::detection::DetectionResult;
+    use rhema_bible::EgwParagraph;
+
+    fn hit(page: i32, conf: f64) -> DetectionResult {
+        let paragraph = EgwParagraph {
+            id: i64::from(page),
+            book_number: 1,
+            book_title: "Patriarchs and Prophets".into(),
+            chapter: 1,
+            chapter_title: String::new(),
+            paragraph: 1,
+            page,
+            page_paragraph: 1,
+            text: "sample".into(),
+        };
+        let mut result = egw_to_result(paragraph, conf, "spoken");
+        result.source = "semantic".into();
+        result.rank_score = conf;
+        result
+    }
+
+    #[test]
+    fn keeps_only_the_highest_confidence_quote() {
+        let mut results = vec![hit(327, 0.75), hit(325, 0.88), hit(322, 0.80)];
+        retain_best_egw_quote(&mut results);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].chapter, 325); // page stored as chapter for EGW
+        assert!((results[0].confidence - 0.88).abs() < f64::EPSILON);
     }
 }
 

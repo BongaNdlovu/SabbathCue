@@ -150,8 +150,24 @@ pub(crate) fn is_direct_reading_handoff(detection: &rhema_detection::Detection) 
     detection.confidence >= 0.90 || detection.is_chapter_only
 }
 
+/// STT partials often emit the first digit of a multi-digit verse ("verse 3"
+/// before "verse 33"). Those single-digit full citations are provisional.
+pub(crate) fn verse_digits_could_grow(verse: i32) -> bool {
+    (1..=9).contains(&verse)
+}
+
+/// True when `longer` is `shorter` with extra trailing digits (3→33, 1→15).
+pub(crate) fn is_digit_prefix_extension(shorter: i32, longer: i32) -> bool {
+    if shorter <= 0 || longer <= shorter {
+        return false;
+    }
+    let short_text = shorter.to_string();
+    let long_text = longer.to_string();
+    long_text.starts_with(&short_text) && long_text.len() > short_text.len()
+}
+
 pub(crate) fn direct_reading_candidates(merged: &[MergedDetection]) -> Vec<DirectReadingCandidate> {
-    merged
+    let candidates: Vec<DirectReadingCandidate> = merged
         .iter()
         .filter(|merged| is_direct_reading_handoff(&merged.detection))
         .map(|merged| DirectReadingCandidate {
@@ -159,6 +175,24 @@ pub(crate) fn direct_reading_candidates(merged: &[MergedDetection]) -> Vec<Direc
             confidence: merged.detection.confidence,
             is_chapter_only: merged.detection.is_chapter_only,
         })
+        .collect();
+
+    // Prefer the digit-stable form when the same batch contains 6:3 and 6:33.
+    candidates
+        .iter()
+        .filter(|candidate| {
+            if candidate.is_chapter_only {
+                return true;
+            }
+            let verse = candidate.verse_ref.verse_start;
+            !candidates.iter().any(|other| {
+                !other.is_chapter_only
+                    && other.verse_ref.book_number == candidate.verse_ref.book_number
+                    && other.verse_ref.chapter == candidate.verse_ref.chapter
+                    && is_digit_prefix_extension(verse, other.verse_ref.verse_start)
+            })
+        })
+        .cloned()
         .collect()
 }
 
@@ -166,22 +200,45 @@ pub(crate) fn choose_reading_candidate(
     candidates: &[DirectReadingCandidate],
     active_scope: Option<(i32, i32)>,
 ) -> Option<DirectReadingCandidate> {
+    // Prefer non-growable full citations over provisional single-digit ones.
+    let rank = |candidate: &DirectReadingCandidate| -> (u8, i32) {
+        let provisional = u8::from(
+            !candidate.is_chapter_only && verse_digits_could_grow(candidate.verse_ref.verse_start),
+        );
+        // Lower provisional rank wins; then higher verse number.
+        (provisional, -candidate.verse_ref.verse_start)
+    };
+
+    let pick_best = |pool: &[DirectReadingCandidate]| -> Option<DirectReadingCandidate> {
+        pool.iter()
+            .min_by_key(|candidate| rank(candidate))
+            .cloned()
+    };
+
     if let Some((book_number, chapter)) = active_scope {
-        if let Some(candidate) = candidates.iter().find(|candidate| {
-            candidate.verse_ref.book_number == book_number && candidate.verse_ref.chapter == chapter
-        }) {
-            return Some(candidate.clone());
+        let same_chapter: Vec<_> = candidates
+            .iter()
+            .filter(|candidate| {
+                candidate.verse_ref.book_number == book_number
+                    && candidate.verse_ref.chapter == chapter
+            })
+            .cloned()
+            .collect();
+        if let Some(candidate) = pick_best(&same_chapter) {
+            return Some(candidate);
         }
 
-        if let Some(candidate) = candidates
+        let same_book: Vec<_> = candidates
             .iter()
-            .find(|candidate| candidate.verse_ref.book_number == book_number)
-        {
-            return Some(candidate.clone());
+            .filter(|candidate| candidate.verse_ref.book_number == book_number)
+            .cloned()
+            .collect();
+        if let Some(candidate) = pick_best(&same_book) {
+            return Some(candidate);
         }
     }
 
-    candidates.first().cloned()
+    pick_best(candidates)
 }
 
 /// Decide whether a fresh direct detection should (re)start reading mode.
@@ -193,6 +250,10 @@ pub(crate) fn choose_reading_candidate(
 /// the speaker announces "verses 16-18", and stray word-overlap can then
 /// false-advance to a nearby low verse. Chapter-only hits never re-anchor, so
 /// this cannot thrash the cursor back to verse 1.
+///
+/// Single-digit full citations are also withheld from re-anchor/start races:
+/// STT often emits Matthew 6:3 before Matthew 6:33. Multi-digit (stable) hits
+/// still re-anchor immediately.
 pub(crate) fn should_restart_reading(
     active: bool,
     current_book: i32,
@@ -203,26 +264,42 @@ pub(crate) fn should_restart_reading(
     let recent = &candidate.verse_ref;
 
     if !active {
-        // Not active (fresh or paused) — any explicit reference (re)starts.
+        // Fresh/paused: chapter-only may load context. Growable full verses
+        // (1-9) wait for a stable multi-digit form when possible.
+        if !candidate.is_chapter_only && verse_digits_could_grow(recent.verse_start) {
+            return false;
+        }
         return true;
     }
 
     if current_book == recent.book_number && current_chapter == recent.chapter {
+        if candidate.is_chapter_only {
+            return false;
+        }
+        // Never re-anchor onto a provisional single-digit full citation.
+        if verse_digits_could_grow(recent.verse_start) {
+            return false;
+        }
         // Re-anchor only to a specific verse ahead of where we are. Stale STT
         // windows can replay the original lower verse after reading mode moves on.
-        return !candidate.is_chapter_only
-            && match current_verse {
-                Some(current) => recent.verse_start > current,
-                None => true,
-            };
+        return match current_verse {
+            Some(current) => recent.verse_start > current,
+            None => true,
+        };
     }
 
     if current_book != recent.book_number {
+        if !candidate.is_chapter_only && verse_digits_could_grow(recent.verse_start) {
+            return false;
+        }
         // Different book — only an explicit, high-confidence reference restarts.
         return candidate.confidence >= 0.90 || candidate.is_chapter_only;
     }
 
-    // Same book, different chapter — natural progression.
+    // Same book, different chapter — natural progression, but not for growable.
+    if !candidate.is_chapter_only && verse_digits_could_grow(recent.verse_start) {
+        return false;
+    }
     true
 }
 

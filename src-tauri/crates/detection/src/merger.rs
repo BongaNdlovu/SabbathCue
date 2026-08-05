@@ -140,6 +140,10 @@ impl DetectionMerger {
             // they would jump the queue/reading to the wrong verse. They still
             // surface as an operator hint and are refined once the real verse
             // arrives.
+            //
+            // Single-digit *Bible* full citations are stripped of auto_q later
+            // in the live direct path (content_type == "bible") so EGW page
+            // paragraphs that reuse this merge helper keep working.
             let eligible = detection.confidence >= self.auto_queue_threshold
                 && cooldown_ok
                 && matches!(detection.source, DetectionSource::DirectReference)

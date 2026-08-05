@@ -23,8 +23,8 @@ mod settings;
 
 pub(crate) use egw::{
     apply_egw_auto_queue, dampen_egw_for_low_stt_confidence, detect_egw_quotes,
-    drop_egw_quotes_echoing_scripture,
-    detect_egw_references, note_and_check_egw_cue,
+    drop_egw_quotes_echoing_scripture, detect_egw_references, egw_cue_is_currently_live,
+    note_and_check_egw_cue, retain_best_egw_quote,
 };
 pub use result::{to_result, DetectionResult};
 use semantic_search::{run_semantic_search, SemanticSearchResult};
@@ -923,12 +923,17 @@ mod tests {
     }
 
     #[test]
-    fn detect_egw_quotes_returns_at_most_one_paragraph() {
+    fn detect_egw_quotes_narrows_to_one_paragraph_for_live_emission() {
         let fixture = fixture_state(1);
         // Wording drawn from two different fixture paragraphs at once.
         let spoken = "the shepherd does not remain in the fold waiting for the wandering sheep and there is joy among the angels of heaven whenever a single wandering soul turns";
 
-        assert!(detect_egw_quotes(&fixture.state, spoken, true).len() <= 1);
+        // BM25 nominates several candidates so the spoken paragraph is not
+        // missed; the live path narrows them to one operator-facing winner.
+        let mut results = detect_egw_quotes(&fixture.state, spoken, true);
+        retain_best_egw_quote(&mut results);
+
+        assert!(results.len() <= 1);
     }
 
     #[test]

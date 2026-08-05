@@ -474,7 +474,7 @@ mod manifest_tests {
 
     #[test]
     fn reads_record_count() {
-        assert_eq!(manifest_record_count(MANIFEST), Ok(155345));
+        assert_eq!(manifest_record_count(MANIFEST), Ok(155_345));
     }
 
     #[test]
@@ -482,7 +482,7 @@ mod manifest_tests {
         // The shipped manifest carried EF BB BF and disabled vector search for
         // an entire service; the file itself was correct.
         let with_bom = format!("\u{feff}{MANIFEST}");
-        assert_eq!(manifest_record_count(&with_bom), Ok(155345));
+        assert_eq!(manifest_record_count(&with_bom), Ok(155_345));
     }
 
     #[test]

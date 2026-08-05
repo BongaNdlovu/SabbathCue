@@ -216,6 +216,134 @@ describe("presentation workflow", () => {
     expect(useBibleStore.getState().selectedVerse).toEqual(sampleVerse)
   })
 
+  it("holds single-digit auto-live until STT digit growth can finish", async () => {
+    vi.useFakeTimers()
+    const { useBibleStore } = await import("@/stores/bible-store")
+    const { useBroadcastStore } = await import("@/stores/broadcast-store")
+    const {
+      DIGIT_GROWTH_HOLD_MS,
+      isDigitPrefixExtension,
+      previewVerseAndMaybeAutoLive,
+      resetDigitGrowthHoldForTests,
+      verseDigitsCouldGrow,
+    } = await import("./presentation-workflow")
+
+    expect(verseDigitsCouldGrow(3)).toBe(true)
+    expect(verseDigitsCouldGrow(33)).toBe(false)
+    expect(isDigitPrefixExtension(3, 33)).toBe(true)
+    expect(isDigitPrefixExtension(1, 15)).toBe(true)
+    expect(isDigitPrefixExtension(3, 4)).toBe(false)
+
+    useBibleStore.setState({
+      selectedVerse: null,
+      translations: [
+        {
+          id: 1,
+          abbreviation: "KJV",
+          title: "King James Version",
+          language: "en",
+          is_copyrighted: false,
+          is_downloaded: true,
+        },
+      ],
+      activeTranslationId: 1,
+    })
+    useBroadcastStore.setState({
+      isLive: false,
+      readingModeAutoLive: true,
+      liveItem: null,
+      previewItem: null,
+    })
+
+    const partial: Verse = {
+      ...sampleVerse,
+      book_number: 40,
+      book_name: "Matthew",
+      book_abbreviation: "Matt",
+      chapter: 6,
+      verse: 3,
+      text: "But when thou doest alms,",
+    }
+    const full: Verse = {
+      ...partial,
+      verse: 33,
+      text: "But seek ye first the kingdom of God,",
+    }
+
+    previewVerseAndMaybeAutoLive(partial, { autoLive: true })
+    expect(useBroadcastStore.getState().isLive).toBe(false)
+    expect(useBibleStore.getState().selectedVerse).toBeNull()
+
+    previewVerseAndMaybeAutoLive(full, { autoLive: true })
+    expect(useBroadcastStore.getState().isLive).toBe(true)
+    expect(useBibleStore.getState().selectedVerse).toMatchObject({
+      book_name: "Matthew",
+      chapter: 6,
+      verse: 33,
+    })
+    expectBroadcastOutputsFor("Matthew 6:33 (KJV)")
+
+    // A lone single-digit citation still commits after the hold.
+    emitToMock.mockClear()
+    useBroadcastStore.setState({
+      isLive: false,
+      liveItem: null,
+      previewItem: null,
+    })
+    useBibleStore.setState({ selectedVerse: null })
+    previewVerseAndMaybeAutoLive(partial, { autoLive: true })
+    expect(useBroadcastStore.getState().isLive).toBe(false)
+    await vi.advanceTimersByTimeAsync(DIGIT_GROWTH_HOLD_MS)
+    expect(useBroadcastStore.getState().isLive).toBe(true)
+    expect(useBibleStore.getState().selectedVerse).toMatchObject({
+      chapter: 6,
+      verse: 3,
+    })
+
+    resetDigitGrowthHoldForTests()
+    vi.useRealTimers()
+  })
+
+  it("records a workflow trace entry when a single-digit verse is held", async () => {
+    vi.useFakeTimers()
+    const { useBroadcastStore } = await import("@/stores/broadcast-store")
+    const { clearWorkflowTrace, getWorkflowTrace } = await import(
+      "./workflow-trace"
+    )
+    const { previewVerseAndMaybeAutoLive, resetDigitGrowthHoldForTests } =
+      await import("./presentation-workflow")
+
+    useBroadcastStore.setState({
+      isLive: false,
+      readingModeAutoLive: true,
+      liveItem: null,
+      previewItem: null,
+    })
+    clearWorkflowTrace()
+
+    previewVerseAndMaybeAutoLive(
+      {
+        ...sampleVerse,
+        book_number: 40,
+        book_name: "Matthew",
+        book_abbreviation: "Matt",
+        chapter: 6,
+        verse: 3,
+      },
+      { autoLive: true }
+    )
+
+    // The stage string must exist in WorkflowTraceStage or the build breaks;
+    // this pins the operator-visible trace the hold is supposed to leave.
+    expect(getWorkflowTrace()).toContainEqual(
+      expect.objectContaining({ stage: "live.digit_growth_hold" })
+    )
+
+    resetDigitGrowthHoldForTests()
+    clearWorkflowTrace()
+    vi.useRealTimers()
+  })
+
   it("commitVerseToLive can refresh the live item without changing live visibility", async () => {
     const { useBroadcastStore } = await import("@/stores/broadcast-store")
     const { commitVerseToLive } = await import("./presentation-workflow")

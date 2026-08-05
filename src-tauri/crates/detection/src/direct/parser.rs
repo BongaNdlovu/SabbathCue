@@ -796,7 +796,16 @@ pub fn parse_spoken_number(word: &str) -> Option<i32> {
 ///
 /// The `is_book_only` flag indicates the incomplete ref has a defaulted chapter (1).
 /// When true, a bare number at start is interpreted as chapter, not verse.
-pub fn try_extract_continuation(text: &str, is_book_only: bool) -> Option<Continuation> {
+///
+/// `allow_bare_verse` is true only when the prior fragment already said "verse"
+/// without a number ("John verse" … "five"). After an explicit chapter hold
+/// ("Matthew chapter 1"), bare digits must not refine the verse — require the
+/// "verse" keyword (Pattern 2).
+pub fn try_extract_continuation(
+    text: &str,
+    is_book_only: bool,
+    allow_bare_verse: bool,
+) -> Option<Continuation> {
     let lower = text.to_lowercase();
     let trimmed = lower.trim();
     let tokens = tokenize(trimmed);
@@ -846,8 +855,11 @@ pub fn try_extract_continuation(text: &str, is_book_only: bool) -> Option<Contin
                 // After book-only (e.g., "Acts"), bare "3" = chapter
                 return Some(Continuation::ChapterOnly(num));
             }
-            // After book+chapter (e.g., "Acts 3"), bare "22" = verse
-            return Some(Continuation::VerseOnly(num, None));
+            if allow_bare_verse {
+                // Prior fragment said "verse" without a number.
+                return Some(Continuation::VerseOnly(num, None));
+            }
+            // Explicit chapter already held — bare STT digits must not refine.
         }
     }
 
@@ -1345,11 +1357,11 @@ mod tests {
     #[test]
     fn test_continuation_chapter_and_verse() {
         assert_eq!(
-            try_extract_continuation("chapter 3 verse 22", false),
+            try_extract_continuation("chapter 3 verse 22", false, false),
             Some(Continuation::ChapterAndVerse(3, 22, None))
         );
         assert_eq!(
-            try_extract_continuation("chapter three and I'm reading from verse twenty two", false),
+            try_extract_continuation("chapter three and I'm reading from verse twenty two", false, false),
             Some(Continuation::ChapterAndVerse(3, 22, None))
         );
     }
@@ -1357,11 +1369,11 @@ mod tests {
     #[test]
     fn test_continuation_chapter_only() {
         assert_eq!(
-            try_extract_continuation("chapter three, and I'm reading from verse", false),
+            try_extract_continuation("chapter three, and I'm reading from verse", false, false),
             Some(Continuation::ChapterOnly(3))
         );
         assert_eq!(
-            try_extract_continuation("chapter 5", false),
+            try_extract_continuation("chapter 5", false, false),
             Some(Continuation::ChapterOnly(5))
         );
     }
@@ -1369,11 +1381,11 @@ mod tests {
     #[test]
     fn test_continuation_verse_anywhere() {
         assert_eq!(
-            try_extract_continuation("and I'm reading from verse 22", false),
+            try_extract_continuation("and I'm reading from verse 22", false, false),
             Some(Continuation::VerseOnly(22, None))
         );
         assert_eq!(
-            try_extract_continuation("verse sixteen", false),
+            try_extract_continuation("verse sixteen", false, false),
             Some(Continuation::VerseOnly(16, None))
         );
     }
@@ -1382,38 +1394,49 @@ mod tests {
     fn test_continuation_bare_number_book_only() {
         // After book-only detection, bare number = chapter
         assert_eq!(
-            try_extract_continuation("3", true),
+            try_extract_continuation("3", true, false),
             Some(Continuation::ChapterOnly(3))
         );
         assert_eq!(
-            try_extract_continuation("three", true),
+            try_extract_continuation("three", true, false),
             Some(Continuation::ChapterOnly(3))
         );
     }
 
     #[test]
-    fn test_continuation_bare_number_with_chapter() {
-        // After book+chapter detection, bare number = verse
+    fn test_continuation_bare_number_with_chapter_requires_verse_keyword() {
+        // After book+chapter, bare digits alone must not complete a verse —
+        // STT noise after chapter-only defaults was refining Matthew 1 → 1:2.
+        assert_eq!(try_extract_continuation("22", false, false), None);
         assert_eq!(
-            try_extract_continuation("22", false),
+            try_extract_continuation("22. Acts three for Moses", false, false),
+            None
+        );
+        assert_eq!(
+            try_extract_continuation("verse 22", false, false),
             Some(Continuation::VerseOnly(22, None))
         );
         assert_eq!(
-            try_extract_continuation("22. Acts three for Moses", false),
+            try_extract_continuation("verse 22. Acts three for Moses", false, false),
             Some(Continuation::VerseOnly(22, None))
+        );
+        // Prior fragment said "verse" without a number ("John verse" ... "five").
+        assert_eq!(
+            try_extract_continuation("five", false, true),
+            Some(Continuation::VerseOnly(5, None))
         );
     }
 
     #[test]
     fn test_continuation_dangling_number_verse_waits_for_number() {
-        assert_eq!(try_extract_continuation("7 verse", false), None);
-        assert_eq!(try_extract_continuation("seven verse", false), None);
+        assert_eq!(try_extract_continuation("7 verse", false, false), None);
+        assert_eq!(try_extract_continuation("seven verse", false, false), None);
     }
 
     #[test]
     fn test_continuation_dangling_number_verse_after_book_only_sets_chapter() {
         assert_eq!(
-            try_extract_continuation("3 verse", true),
+            try_extract_continuation("3 verse", true, false),
             Some(Continuation::ChapterOnly(3))
         );
     }
@@ -1421,7 +1444,7 @@ mod tests {
     #[test]
     fn test_continuation_number_verse_number_after_book_only_sets_both() {
         assert_eq!(
-            try_extract_continuation("4 verse 6", true),
+            try_extract_continuation("4 verse 6", true, false),
             Some(Continuation::ChapterAndVerse(4, 6, None))
         );
     }
@@ -1429,7 +1452,7 @@ mod tests {
     #[test]
     fn test_continuation_number_verse_number_uses_following_verse() {
         assert_eq!(
-            try_extract_continuation("7 verse 9", false),
+            try_extract_continuation("7 verse 9", false, false),
             Some(Continuation::VerseOnly(9, None))
         );
     }
@@ -1437,7 +1460,7 @@ mod tests {
     #[test]
     fn transcript_continuation_correction_prefers_corrected_verse() {
         assert_eq!(
-            try_extract_continuation("then verse 21, sorry 22", false),
+            try_extract_continuation("then verse 21, sorry 22", false, false),
             Some(Continuation::VerseOnly(22, None))
         );
     }
@@ -1445,16 +1468,16 @@ mod tests {
     #[test]
     fn transcript_continuation_damaged_colon_es_range_is_preserved() {
         assert_eq!(
-            try_extract_continuation("chapter 21:es 4-9", true),
+            try_extract_continuation("chapter 21:es 4-9", true, false),
             Some(Continuation::ChapterAndVerse(21, 4, Some(9)))
         );
     }
 
     #[test]
     fn test_continuation_no_match() {
-        assert_eq!(try_extract_continuation("the weather is nice", false), None);
+        assert_eq!(try_extract_continuation("the weather is nice", false, false), None);
         assert_eq!(
-            try_extract_continuation("something unrelated here", false),
+            try_extract_continuation("something unrelated here", false, false),
             None
         );
     }
@@ -1491,5 +1514,48 @@ mod tests {
         assert_eq!(parse_spoken_number("drie"), Some(3));
         assert_eq!(parse_spoken_number("sestien"), Some(16));
         assert_eq!(parse_spoken_number("twintig"), Some(20));
+    }
+
+    // The accented es/fr/pt arms below had no coverage until 2026-08-05, when a
+    // UTF-8 -> cp1252 -> UTF-8 save silently rewrote every one of them
+    // ("capítulo" -> "capÃ­tulo"). Each arm has an unaccented sibling that kept
+    // working, so the whole suite stayed green while accented STT output could
+    // no longer match. These tests fail loudly if the encoding is damaged again.
+
+    #[test]
+    fn accented_number_words_parse() {
+        assert_eq!(parse_spoken_number("zéro"), Some(0));
+        assert_eq!(parse_spoken_number("três"), Some(3));
+        assert_eq!(parse_spoken_number("dieciséis"), Some(16));
+    }
+
+    #[test]
+    fn spanish_accented_chapter_and_verse_keywords_parse() {
+        let bm = make_book_match("Juan", 43, 4);
+        let result = parse_reference("Juan capítulo 3 versículo 16", &bm).unwrap();
+        assert_eq!(result.chapter, 3);
+        assert_eq!(result.verse_start, 16);
+    }
+
+    #[test]
+    fn accented_keyword_literals_are_reachable_after_lowercasing() {
+        // Every word is lowercased before it reaches the keyword tables, so a
+        // literal containing an uppercase char can never match. The mojibake
+        // form introduced U+00C3 ('Ã'), which is exactly this failure.
+        for literal in [
+            "capítulo",
+            "versículo",
+            "à",
+            "até",
+            "zéro",
+            "três",
+            "dieciséis",
+        ] {
+            assert_eq!(
+                literal,
+                literal.to_lowercase(),
+                "{literal} is unreachable: it survives to_lowercase() unchanged only if already lowercase"
+            );
+        }
     }
 }

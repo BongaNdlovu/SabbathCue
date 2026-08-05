@@ -351,6 +351,77 @@ function removeSupersededChapterOnlyPlaceholders(
   )
 }
 
+/** True when `longer` is `shorter` with extra trailing digits (3→33, 1→15). */
+function isDigitPrefixExtension(shorter: number, longer: number): boolean {
+  if (shorter <= 0 || longer <= shorter) return false
+  const shortText = String(shorter)
+  const longText = String(longer)
+  return longText.startsWith(shortText) && longText.length > shortText.length
+}
+
+/**
+ * How close two citations must land to count as one STT digit-growth burst
+ * rather than two verses the speaker actually read.
+ *
+ * Covers the 900ms auto-live hold plus emit latency. Without this bound the
+ * rule matched on digits alone, so a legitimately read John 3:1 left the panel
+ * the moment John 3:16 arrived, and Psalm 119:1 vanished on 119:105.
+ */
+const DIGIT_GROWTH_WINDOW_MS = 1_500
+
+/** Both entries belong to the same digit-growth burst. */
+function withinDigitGrowthWindow(
+  candidate: DetectionResultWithMeta,
+  other: DetectionResultWithMeta
+): boolean {
+  const candidateAt = candidate.received_at
+  const otherAt = other.received_at
+  // Without timestamps we cannot prove they are one burst, so keep both.
+  if (candidateAt === undefined || otherAt === undefined) return false
+  return Math.abs(otherAt - candidateAt) <= DIGIT_GROWTH_WINDOW_MS
+}
+
+/**
+ * Drop intermediate STT digit-growth losers kept in the recent list.
+ * When Matthew 6:33 arrives moments after 6:3, the short form must leave the
+ * panel — but only while both are part of the same burst.
+ */
+function removeDigitPrefixLosers(
+  detections: DetectionResultWithMeta[]
+): DetectionResultWithMeta[] {
+  return detections.filter((candidate) => {
+    if (
+      candidate.content_type === "egw" ||
+      candidate.is_chapter_only ||
+      candidate.book_number <= 0 ||
+      candidate.chapter <= 0 ||
+      candidate.verse <= 0
+    ) {
+      return true
+    }
+    return !detections.some(
+      (other) =>
+        other !== candidate &&
+        other.content_type !== "egw" &&
+        !other.is_chapter_only &&
+        other.book_number === candidate.book_number &&
+        other.chapter === candidate.chapter &&
+        isDigitPrefixExtension(candidate.verse, other.verse) &&
+        withinDigitGrowthWindow(candidate, other)
+    )
+  })
+}
+
+function finalizeDetectionList(
+  detections: DetectionResultWithMeta[]
+): DetectionResultWithMeta[] {
+  return capForDisplay(
+    removeDigitPrefixLosers(
+      removeSupersededChapterOnlyPlaceholders(detections)
+    )
+  )
+}
+
 export const useDetectionStore = create<DetectionState>((set) => ({
   detections: [],
   aiSuggestedKey: null,
@@ -372,9 +443,7 @@ export const useDetectionStore = create<DetectionState>((set) => ({
         const newDetections = [...state.detections]
         newDetections[existingIndex] = updated
         return {
-          detections: capForDisplay(
-            removeSupersededChapterOnlyPlaceholders(newDetections)
-          ),
+          detections: finalizeDetectionList(newDetections),
         }
       }
 
@@ -385,9 +454,7 @@ export const useDetectionStore = create<DetectionState>((set) => ({
       }
       const newDetections = [withMeta, ...state.detections]
       return {
-        detections: capForDisplay(
-          removeSupersededChapterOnlyPlaceholders(newDetections)
-        ),
+        detections: finalizeDetectionList(newDetections),
       }
     }),
   addDetections: (incoming) =>
@@ -433,9 +500,7 @@ export const useDetectionStore = create<DetectionState>((set) => ({
       }))
 
       return {
-        detections: capForDisplay(
-          removeSupersededChapterOnlyPlaceholders(withMeta)
-        ),
+        detections: finalizeDetectionList(withMeta),
       }
     }),
   setDetections: (detections) =>
@@ -445,9 +510,7 @@ export const useDetectionStore = create<DetectionState>((set) => ({
         withReceivedAt(detection, now)
       )
       return {
-        detections: capForDisplay(
-          removeSupersededChapterOnlyPlaceholders(withMeta)
-        ),
+        detections: finalizeDetectionList(withMeta),
       }
     }),
   removeDetection: (key) =>

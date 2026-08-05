@@ -7,14 +7,23 @@ const V10_RECOMMENDED_ADDITIONS = [
   'preserve-caught-error',
 ] as const
 
-describe('ESLint migration configuration', () => {
-  it('preserves the v9 recommended baseline for rules added in v10', async () => {
-    const eslint = new ESLint()
-    const config = await eslint.calculateConfigForFile('src/main.tsx')
+// Resolving the flat config takes ~8s on its own, which leaves almost no room
+// under the 10s global testTimeout — the test timed out intermittently when the
+// full suite ran its files in parallel. Give this one case its own budget.
+const CONFIG_RESOLVE_TIMEOUT_MS = 30_000
 
-    expect(config).not.toBeUndefined()
-    for (const rule of V10_RECOMMENDED_ADDITIONS) {
-      expect(config?.rules?.[rule]?.[0], rule).toBe(0)
-    }
-  })
+describe('ESLint migration configuration', () => {
+  it(
+    'preserves the v9 recommended baseline for rules added in v10',
+    async () => {
+      const eslint = new ESLint()
+      const config = await eslint.calculateConfigForFile('src/main.tsx')
+
+      expect(config).not.toBeUndefined()
+      for (const rule of V10_RECOMMENDED_ADDITIONS) {
+        expect(config?.rules?.[rule]?.[0], rule).toBe(0)
+      }
+    },
+    CONFIG_RESOLVE_TIMEOUT_MS
+  )
 })
