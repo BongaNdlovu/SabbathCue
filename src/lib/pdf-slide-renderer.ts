@@ -190,6 +190,6 @@ export async function renderPdfToSlides(
   try {
     return await renderDocument(doc, scale, maxSlides)
   } finally {
-    await doc.destroy()
+    await doc.loadingTask.destroy()
   }
 }

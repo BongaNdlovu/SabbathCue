@@ -5,6 +5,7 @@ import { useBroadcastOutputIssueStore } from "@/stores/broadcast/output-issue-st
 
 export type SttProvider = "deepgram" | "soniox" | "speechmatics" | "vosk"
 export type SttLanguage = "en" | "af" | "es" | "fr" | "pt"
+export type AiRankingProvider = "deepseek" | "cerebras"
 
 const DEFAULT_CONFIDENCE_THRESHOLD = 0.9
 const DEFAULT_SEMANTIC_CONFIDENCE_THRESHOLD = 0.7
@@ -30,7 +31,10 @@ interface SettingsState {
   hasSonioxApiKey: boolean
   hasSpeechmaticsApiKey: boolean
   hasDeepseekApiKey: boolean
+  hasCerebrasApiKey: boolean
   /** Cloud AI candidate ranking for indirect (semantic) references. */
+  aiRankingEnabled: boolean
+  aiRankingProvider: AiRankingProvider
   deepseekRankingEnabled: boolean
   /** Reduce CPU/RAM use on weaker machines (semantic detection runs on
    *  finished sentences only). */
@@ -53,6 +57,9 @@ interface SettingsState {
   setHasSonioxApiKey: (has: boolean) => void
   setHasSpeechmaticsApiKey: (has: boolean) => void
   setHasDeepseekApiKey: (has: boolean) => void
+  setHasCerebrasApiKey: (has: boolean) => void
+  setAiRankingEnabled: (enabled: boolean) => void
+  setAiRankingProvider: (provider: AiRankingProvider) => void
   setDeepseekRankingEnabled: (enabled: boolean) => void
   setLowPowerMode: (enabled: boolean) => void
   setActionNotificationsEnabled: (enabled: boolean) => void
@@ -63,6 +70,9 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   hasSonioxApiKey: false,
   hasSpeechmaticsApiKey: false,
   hasDeepseekApiKey: false,
+  hasCerebrasApiKey: false,
+  aiRankingEnabled: false,
+  aiRankingProvider: "deepseek",
   deepseekRankingEnabled: false,
   audioDeviceId: null,
   gain: 1.0,
@@ -83,8 +93,21 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   setHasSpeechmaticsApiKey: (hasSpeechmaticsApiKey) =>
     set({ hasSpeechmaticsApiKey }),
   setHasDeepseekApiKey: (hasDeepseekApiKey) => set({ hasDeepseekApiKey }),
+  setHasCerebrasApiKey: (hasCerebrasApiKey) => set({ hasCerebrasApiKey }),
+  setAiRankingEnabled: (aiRankingEnabled) =>
+    set({ aiRankingEnabled, deepseekRankingEnabled: aiRankingEnabled }),
+  setAiRankingProvider: (aiRankingProvider) =>
+    set((state) =>
+      state.aiRankingProvider === aiRankingProvider
+        ? { aiRankingProvider }
+        : {
+            aiRankingProvider,
+            aiRankingEnabled: false,
+            deepseekRankingEnabled: false,
+          }
+    ),
   setDeepseekRankingEnabled: (deepseekRankingEnabled) =>
-    set({ deepseekRankingEnabled }),
+    set({ deepseekRankingEnabled, aiRankingEnabled: deepseekRankingEnabled }),
   setAudioDeviceId: (audioDeviceId) => set({ audioDeviceId }),
   setGain: (gain) => set({ gain }),
   setAutoMode: (autoMode) => set({ autoMode }),
@@ -121,7 +144,8 @@ const PERSISTED_KEYS = [
   "sttLanguage",
   "lowPowerMode",
   "actionNotificationsEnabled",
-  "deepseekRankingEnabled",
+  "aiRankingEnabled",
+  "aiRankingProvider",
 ] as const satisfies readonly (keyof SettingsState)[]
 
 function parseSttProvider(value: unknown): SttProvider {
@@ -142,6 +166,13 @@ function parseSttLanguage(value: unknown): SttLanguage {
   if (value === "es" || value === "fr" || value === "pt") return value
   if (value === "af") return "af"
   return "en"
+}
+
+function parseAiRankingProvider(value: unknown): AiRankingProvider {
+  if (value === "cerebras" || value === "deepseek") {
+    return value
+  }
+  return "deepseek"
 }
 
 function parseConfidenceThreshold(value: unknown): unknown {
@@ -195,6 +226,8 @@ export function hydrateSettings(): Promise<void> {
             patch.sttProvider = parseSttProvider(value)
           } else if (key === "sttLanguage") {
             patch.sttLanguage = parseSttLanguage(value)
+          } else if (key === "aiRankingProvider") {
+            patch.aiRankingProvider = parseAiRankingProvider(value)
           } else if (key === "confidenceThreshold") {
             ;(patch as Record<string, unknown>)[key] =
               parseConfidenceThreshold(value)
@@ -204,21 +237,38 @@ export function hydrateSettings(): Promise<void> {
         }
       }
 
+      // Safe migration for legacy deepseekRankingEnabled setting
+      if (patch.aiRankingEnabled === undefined) {
+        const legacyRanking = await store.get("deepseekRankingEnabled")
+        if (legacyRanking !== undefined && legacyRanking !== null) {
+          patch.aiRankingEnabled = Boolean(legacyRanking)
+        }
+      }
+      if (patch.aiRankingProvider === undefined) {
+        patch.aiRankingProvider = "deepseek"
+      }
+      if (patch.aiRankingEnabled !== undefined) {
+        patch.deepseekRankingEnabled = patch.aiRankingEnabled
+      }
+
       // Resolve keyring-backed secret presence and write only boolean flags.
       // Best-effort and independent: if a command isn't available (web/dev), keep the default.
-      const [deepgram, soniox, speechmatics, deepseek] = await Promise.all([
-        invokeTauri<boolean>("has_deepgram_api_key").catch(() => undefined),
-        invokeTauri<boolean>("has_soniox_api_key").catch(() => undefined),
-        invokeTauri<boolean>("has_speechmatics_api_key").catch(
-          () => undefined
-        ),
-        invokeTauri<boolean>("has_deepseek_api_key").catch(() => undefined),
-      ])
+      const [deepgram, soniox, speechmatics, deepseek, cerebras] =
+        await Promise.all([
+          invokeTauri<boolean>("has_deepgram_api_key").catch(() => undefined),
+          invokeTauri<boolean>("has_soniox_api_key").catch(() => undefined),
+          invokeTauri<boolean>("has_speechmatics_api_key").catch(
+            () => undefined
+          ),
+          invokeTauri<boolean>("has_deepseek_api_key").catch(() => undefined),
+          invokeTauri<boolean>("has_cerebras_api_key").catch(() => undefined),
+        ])
       if (deepgram !== undefined) patch.hasDeepgramApiKey = deepgram
       if (soniox !== undefined) patch.hasSonioxApiKey = soniox
       if (speechmatics !== undefined)
         patch.hasSpeechmaticsApiKey = speechmatics
       if (deepseek !== undefined) patch.hasDeepseekApiKey = deepseek
+      if (cerebras !== undefined) patch.hasCerebrasApiKey = cerebras
 
       if (Object.keys(patch).length > 0) {
         useSettingsStore.setState(patch)

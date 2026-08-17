@@ -1528,6 +1528,38 @@ describe("verse detection workflow", () => {
       expect(useDetectionStore.getState().aiSuggestedKey).toBe("44:16:25")
     })
 
+    it("passes the Paul-and-Silas candidate batch to the configured Cerebras gate", async () => {
+      useSettingsStore.setState({
+        aiRankingEnabled: true,
+        aiRankingProvider: "cerebras",
+        hasDeepseekApiKey: false,
+        hasCerebrasApiKey: true,
+      })
+      const paulAndSilas = makeSemantic()
+      scheduleRankingMock.mockResolvedValue(paulAndSilas)
+
+      await handleVerseDetections([
+        paulAndSilas,
+        makeSemantic({ verse_ref: "Acts 12:5", chapter: 12, verse: 5 }),
+      ])
+      await aiSuggestionSettledForTests()
+
+      expect(scheduleRankingMock).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({
+            verse_ref: "Acts 16:25",
+            verse_text: "And at midnight Paul and Silas prayed",
+            transcript_snippet: "the passage where paul and silas sang in prison",
+          }),
+        ]),
+        expect.objectContaining({
+          aiRankingEnabled: true,
+          aiRankingProvider: "cerebras",
+          hasCerebrasApiKey: true,
+        })
+      )
+    })
+
     it("clears the marker when ranking abstains", async () => {
       useDetectionStore.getState().markAiSuggested("44:16:25")
       scheduleRankingMock.mockResolvedValue(null)

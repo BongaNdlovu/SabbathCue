@@ -79,13 +79,13 @@ All third-party credentials follow the same pattern, with no exceptions:
    settings, so a tampered settings file cannot fake credential presence.
 5. Keys can be removed from the same settings screen at any time.
 
-This applies to the Deepgram, Soniox, Speechmatics, and DeepSeek keys, and
-to the locally generated remote-control bearer token.
+This applies to the Deepgram, Soniox, Speechmatics, DeepSeek, and Cerebras keys,
+and to the locally generated remote-control bearer token.
 
 ### Third-party API access
 
-Outbound calls to STT providers and to the optional AI ranking provider are
-issued from the Rust backend, not from browser-side JavaScript. Because
+Outbound calls to STT providers and to the optional AI ranking providers (DeepSeek, Cerebras)
+are issued from the Rust backend, not from browser-side JavaScript. Because
 neither provider's host appears in `connect-src`, a content-injection bug in
 the WebView could not reach them directly, and stored credentials are never
 present in the WebView to be read in the first place.
@@ -94,13 +94,13 @@ The optional AI candidate ranking feature applies further containment:
 
 | Control                | Implementation                                                                                                 |
 | ---------------------- | -------------------------------------------------------------------------------------------------------------- |
-| Disabled by default    | Toggle defaults off and cannot be enabled without a stored key                                                 |
-| Bounded payload        | One transcript phrase capped at 500 characters, plus at most 5 candidate summaries                             |
-| Bounded response       | The model returns a single character; it cannot emit scripture or arbitrary text                               |
-| Output validated       | Any value outside the supplied candidate set is treated as an abstention                                       |
+| Disabled by default    | Toggle defaults off and cannot be enabled without a stored key for the active provider                         |
+| Bounded payload        | One transcript phrase capped at 500 characters, plus at most 8 candidate packs (reference + bounded verse text) |
+| Bounded response       | DeepSeek emits a single character; Cerebras uses strict JSON Schema; neither can emit raw scripture text       |
+| Output validated       | Any value outside the supplied candidate set or with uncertain confidence is treated as an abstention          |
 | No autonomous action   | Results are advisory only and never change what is sent to the projector                                       |
-| Prompt-injection guard | Transcript is passed as quoted data and the system prompt instructs the model to ignore instructions inside it |
-| Bounded failure        | Hard 1800 ms deadline, no retries, and a circuit breaker after 3 consecutive failures                          |
+| Prompt-injection guard | Transcript is passed as quoted data and developer/system instructions require ignoring instructions inside it  |
+| Bounded failure        | Hard 1800 ms deadline, no retries, and an isolated circuit breaker after 3 consecutive failures per provider   |
 
 Because the model is constrained to choosing among references SabbathCue
 already found locally, and the displayed text is always read from the local

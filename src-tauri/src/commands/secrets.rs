@@ -330,6 +330,77 @@ pub fn get_deepseek_api_key_or_empty_with_store(
     }
 }
 
+pub fn normalize_cerebras_api_key(api_key: &str) -> String {
+    let trimmed = api_key
+        .trim()
+        .trim_matches(|c| matches!(c, '"' | '\'' | '`'));
+    trimmed
+        .strip_prefix("Bearer ")
+        .unwrap_or(trimmed)
+        .trim()
+        .to_string()
+}
+
+#[command]
+pub fn has_cerebras_api_key() -> Result<bool, String> {
+    has_cerebras_api_key_with_store(&DEFAULT_STORE)
+}
+
+pub fn has_cerebras_api_key_with_store(store: &dyn KeychainStore) -> Result<bool, String> {
+    match store.get_password("cerebras_api_key") {
+        Ok(value) => Ok(!value.trim().is_empty()),
+        Err(keyring::Error::NoEntry) => Ok(false),
+        Err(error) => Err(format!(
+            "Could not read Cerebras API key from OS keychain: {error}"
+        )),
+    }
+}
+
+#[command]
+pub fn set_cerebras_api_key(api_key: &str) -> Result<(), String> {
+    set_cerebras_api_key_with_store(&DEFAULT_STORE, api_key)
+}
+
+pub fn set_cerebras_api_key_with_store(
+    store: &dyn KeychainStore,
+    api_key: &str,
+) -> Result<(), String> {
+    let normalized = normalize_cerebras_api_key(api_key);
+    if normalized.is_empty() {
+        return Err("API key cannot be empty".into());
+    }
+    store
+        .set_password("cerebras_api_key", &normalized)
+        .map_err(|error| {
+            log::error!("[KEYCHAIN] Failed to store Cerebras API key: {error}");
+            format!("Could not store Cerebras API key in OS keychain: {error}")
+        })
+}
+
+#[command]
+pub fn clear_cerebras_api_key() -> Result<(), String> {
+    DEFAULT_STORE
+        .delete_password("cerebras_api_key")
+        .map_err(|error| format!("Could not remove Cerebras API key from OS keychain: {error}"))
+}
+
+pub fn get_cerebras_api_key_or_empty() -> Result<String, String> {
+    get_cerebras_api_key_or_empty_with_store(&DEFAULT_STORE)
+}
+
+pub fn get_cerebras_api_key_or_empty_with_store(
+    store: &dyn KeychainStore,
+) -> Result<String, String> {
+    match store.get_password("cerebras_api_key") {
+        Ok(value) => Ok(normalize_cerebras_api_key(&value)),
+        Err(keyring::Error::NoEntry) => Ok(String::new()),
+        Err(error) => Err(format!(
+            "Could not read Cerebras API key from OS keychain: {error}"
+        )),
+    }
+}
+
+
 #[command]
 pub async fn validate_deepgram_api_key() -> Result<(), String> {
     let key = get_deepgram_api_key_or_empty()?;
@@ -844,6 +915,44 @@ mod tests {
             get_deepseek_api_key_or_empty_with_store(&store).unwrap(),
             ""
         );
+    }
+
+    #[test]
+    fn cerebras_key_round_trips_through_secure_store() {
+        let store = MockKeychainStore::new();
+        set_cerebras_api_key_with_store(&store, "  Bearer csk-test-123  ").unwrap();
+
+        assert!(has_cerebras_api_key_with_store(&store).unwrap());
+        assert_eq!(
+            get_cerebras_api_key_or_empty_with_store(&store).unwrap(),
+            "csk-test-123"
+        );
+    }
+
+    #[test]
+    fn cerebras_key_rejects_empty_values() {
+        let store = MockKeychainStore::new();
+        assert_eq!(
+            set_cerebras_api_key_with_store(&store, "   "),
+            Err("API key cannot be empty".into())
+        );
+        assert!(!has_cerebras_api_key_with_store(&store).unwrap());
+    }
+
+    #[test]
+    fn cerebras_key_or_empty_returns_empty_when_missing() {
+        let store = MockKeychainStore::new();
+        assert_eq!(
+            get_cerebras_api_key_or_empty_with_store(&store).unwrap(),
+            ""
+        );
+    }
+
+    #[test]
+    fn normalizes_cerebras_key_wrappers() {
+        assert_eq!(normalize_cerebras_api_key(" csk-123 "), "csk-123");
+        assert_eq!(normalize_cerebras_api_key("Bearer csk-123"), "csk-123");
+        assert_eq!(normalize_cerebras_api_key("\"csk-123\""), "csk-123");
     }
 
     #[cfg(target_os = "windows")]

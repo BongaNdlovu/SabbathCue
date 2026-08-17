@@ -607,7 +607,7 @@ async function extractPages(
   layout: ParagraphLayoutOptions | undefined,
   pageSource: PageSource
 ): Promise<ExtractedPage[]> {
-  const loadingTask = getDocument(pdfPath)
+  const loadingTask = getDocument({ url: pdfPath })
   const pdf = await loadingTask.promise
   const pages: ExtractedPage[] = []
 

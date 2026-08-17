@@ -407,21 +407,84 @@ describe("settings store", () => {
     expect(mockGet).not.toHaveBeenCalledWith("hasDeepseekApiKey")
   })
 
-  it("deepseek ranking defaults off with no key configured", async () => {
+  it("hydrates Cerebras key presence from the keychain, not from disk", async () => {
+    mockGet.mockResolvedValue(null)
+    mockInvoke.mockImplementation(async (command: string) => {
+      if (command === "has_cerebras_api_key") return true
+      throw new Error("unavailable")
+    })
+
+    const { hydrateSettings, useSettingsStore } =
+      await import("./settings-store")
+    await hydrateSettings()
+
+    expect(useSettingsStore.getState().hasCerebrasApiKey).toBe(true)
+    expect(mockGet).not.toHaveBeenCalledWith("hasCerebrasApiKey")
+  })
+
+  it("ai ranking defaults off with no key configured and DeepSeek as default provider", async () => {
     mockGet.mockResolvedValue(null)
 
     const { useSettingsStore } = await import("./settings-store")
     const state = useSettingsStore.getState()
 
-    expect(state.deepseekRankingEnabled).toBe(false)
+    expect(state.aiRankingEnabled).toBe(false)
+    expect(state.aiRankingProvider).toBe("deepseek")
     expect(state.hasDeepseekApiKey).toBe(false)
+    expect(state.hasCerebrasApiKey).toBe(false)
   })
 
-  it("deepseek ranking toggle setter updates state", async () => {
+  it("migrates legacy deepseekRankingEnabled setting to aiRankingEnabled", async () => {
+    mockGet.mockImplementation(async (key: string) => {
+      if (key === "deepseekRankingEnabled") return true
+      return null
+    })
+
+    const { hydrateSettings, useSettingsStore } =
+      await import("./settings-store")
+    await hydrateSettings()
+
+    const state = useSettingsStore.getState()
+    expect(state.aiRankingEnabled).toBe(true)
+    expect(state.aiRankingProvider).toBe("deepseek")
+  })
+
+  it("hydrates persisted aiRankingProvider and aiRankingEnabled", async () => {
+    mockGet.mockImplementation(async (key: string) => {
+      if (key === "aiRankingEnabled") return true
+      if (key === "aiRankingProvider") return "cerebras"
+      return null
+    })
+
+    const { hydrateSettings, useSettingsStore } =
+      await import("./settings-store")
+    await hydrateSettings()
+
+    const state = useSettingsStore.getState()
+    expect(state.aiRankingEnabled).toBe(true)
+    expect(state.aiRankingProvider).toBe("cerebras")
+  })
+
+  it("ai ranking toggle setter updates state", async () => {
     const { useSettingsStore } = await import("./settings-store")
 
-    useSettingsStore.getState().setDeepseekRankingEnabled(true)
+    useSettingsStore.getState().setAiRankingEnabled(true)
 
+    expect(useSettingsStore.getState().aiRankingEnabled).toBe(true)
     expect(useSettingsStore.getState().deepseekRankingEnabled).toBe(true)
+  })
+
+  it("ai ranking provider setter updates state and persists", async () => {
+    mockGet.mockResolvedValue(null)
+
+    const { hydrateSettings, useSettingsStore } =
+      await import("./settings-store")
+    await hydrateSettings()
+
+    useSettingsStore.getState().setAiRankingProvider("cerebras")
+    await flushSave()
+
+    expect(useSettingsStore.getState().aiRankingProvider).toBe("cerebras")
+    expect(mockSet).toHaveBeenCalledWith("aiRankingProvider", "cerebras")
   })
 })
