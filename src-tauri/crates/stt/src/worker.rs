@@ -209,12 +209,24 @@ pub(crate) fn write_worker_temp_file(
     Ok(WorkerTempFile { path })
 }
 
+fn resolve_worker_path(worker_path: &Path) -> PathBuf {
+    std::fs::canonicalize(worker_path).map_or_else(
+        |_| worker_path.to_path_buf(),
+        |path| simplify_model_path(&path),
+    )
+}
+
 pub(crate) fn worker_command(worker_path: &Path) -> Command {
-    let mut command = if worker_is_executable(worker_path) {
-        Command::new(worker_path)
+    // PyInstaller 6.22.1+ onefile bootloaders compare the parent and child
+    // executable paths. A path that still contains `..` (as built from
+    // CARGO_MANIFEST_DIR / dev_root) fails that check and the worker exits
+    // before emitting ready.
+    let worker_path = resolve_worker_path(worker_path);
+    let mut command = if worker_is_executable(&worker_path) {
+        Command::new(&worker_path)
     } else {
         let mut command = Command::new(python_executable());
-        command.arg(worker_path);
+        command.arg(&worker_path);
         command
     };
     suppress_console_window(&mut command);
@@ -382,6 +394,15 @@ pub(crate) fn check_ready(
         }
     }
 
+    let stderr = if ready {
+        String::new()
+    } else {
+        child.stderr.take().map_or_else(String::new, |stderr| {
+            let mut bytes = Vec::new();
+            let _ = BufReader::new(stderr).read_to_end(&mut bytes);
+            first_nonempty_lines(&bytes, 6)
+        })
+    };
     terminate_child(label, &mut child);
     let _ = reader.join();
     if ready {
@@ -393,7 +414,8 @@ pub(crate) fn check_ready(
         Ok(())
     } else {
         Err(SttError::ConnectionFailed(format!(
-            "{label} worker exited without reporting ready"
+            "{label} worker exited without reporting ready.{}",
+            stderr_suffix(&stderr)
         )))
     }
 }
@@ -582,6 +604,37 @@ pub(crate) fn collect_command_args(command: &Command) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn worker_command_resolves_parent_dir_segments_in_exe_path() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let nested = temp.path().join("nested");
+        std::fs::create_dir_all(&nested).expect("nested dir");
+        let exe = nested.join("worker.exe");
+        std::fs::write(&exe, b"stub").expect("stub exe");
+
+        let dotted = temp
+            .path()
+            .join("nested")
+            .join("..")
+            .join("nested")
+            .join("worker.exe");
+        let command = worker_command(&dotted);
+        let program = command.get_program().to_string_lossy();
+
+        assert!(
+            !program.as_ref().contains(".."),
+            "worker exe path must not contain '..' (PyInstaller 6.22.1+ parent check), got {program}"
+        );
+        assert!(
+            program.ends_with("worker.exe"),
+            "resolved program must still be the worker exe, got {program}"
+        );
+        assert!(
+            !program.contains(r"\\?\"),
+            "resolved program must not keep the Windows extended-length prefix, got {program}"
+        );
+    }
 
     #[test]
     fn worker_command_runs_exe_directly_and_py_through_python() {
