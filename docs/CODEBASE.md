@@ -316,7 +316,35 @@ The standalone labeled harness fails on either required misses or false fires
   -> src-tauri/crates/detection/src/bin/egw_accuracy.rs:49
 ```
 
+### Flow: AI candidate ranking (DeepSeek and Cerebras)
+
+```text
+Settings store tracks aiRankingEnabled, aiRankingProvider, and keychain-backed presence flags
+  -> src/stores/settings-store.ts:8
+  -> src/stores/settings-store.ts:60
+Settings UI presents provider radio options, credential fields, test-key verification, and privacy notes
+  -> src/components/settings/sections/AiRankingSection.tsx:135
+Detection workflow builds typed candidate packs (reference + verseText + confidence) and evaluates the ranking gate
+  -> src/lib/deepseek-ranker.ts:168
+  -> src/lib/verse-detection-workflow.ts:666
+Ranking scheduler debounces 400ms stability window and partitions circuit breaker and cache by provider
+  -> src/lib/deepseek-ranker.ts:250
+  -> src/lib/deepseek-ranker.ts:285
+Native command validates request bounds (<=500 chars, 1-8 candidates) and retrieves keychain key
+  -> src-tauri/src/commands/deepseek.rs:260
+  -> src-tauri/src/commands/deepseek.rs:300
+Cerebras dispatches non-streaming gpt-oss-120b request with low reasoning effort and strict JSON schema
+  -> src-tauri/src/commands/deepseek.rs:135
+  -> src-tauri/src/commands/deepseek.rs:280
+DeepSeek streams single-character response with reasoning disabled
+  -> src-tauri/src/commands/deepseek.rs:100
+  -> src-tauri/src/commands/deepseek.rs:340
+Ranker result marks an advisory suggestion badge and never modifies live projection or unconfirmed items
+  -> src/lib/verse-detection-workflow.ts:675
+```
+
 ### Flow: collected detections
+
 
 ```text
 Detection panel builds shared actions
@@ -716,7 +744,8 @@ External services:
 | Soniox API key                                                       | Cloud STT auth                                                             | only for Soniox                       | absent                                        | src/stores/settings-store.ts:190                                                            |
 | Speechmatics API key                                                 | Cloud STT auth                                                             | only for Speechmatics                 | absent                                        | src/stores/settings-store.ts:198                                                            |
 | DeepSeek API key                                                     | AI candidate ranking auth; keychain-only, never persisted to settings      | only for AI ranking                   | absent                                        | src/stores/settings-store.ts:35                                                             |
-| `deepseekRankingEnabled`                                             | Enables cloud AI ranking of ambiguous semantic candidates                  | no                                    | false (off)                                   | src/stores/settings-store.ts:70                                                             |
+| `aiRankingEnabled`                                                   | Enables cloud AI ranking of ambiguous semantic candidates                  | no                                    | false (off)                                   | src/stores/settings-store.ts:36                                                             |
+| `aiRankingProvider`                                                  | Selects the configured DeepSeek or Cerebras ranking provider; changing it requires a fresh opt-in | no                          | `deepseek`                                    | src/stores/settings-store.ts:37                                                             |
 | Vosk model/worker resources                                          | Local STT runtime                                                          | required for local STT                | downloaded/bundled by scripts                 | src-tauri/tauri.conf.json:42, src-tauri/tauri.conf.json:44                                  |
 | `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`                        | Supabase account/auth client                                               | required for account-enabled builds   | absent                                        | src/lib/supabase/client.ts:6                                                                |
 | `VITE_ACTIVATION_LEASE_PUBLIC_KEY`                                   | Verify server-signed offline leases                                        | required for offline access           | absent                                        | src/lib/verification/activation-lease.ts:94                                                 |

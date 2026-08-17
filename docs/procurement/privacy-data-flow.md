@@ -9,12 +9,13 @@
 | -------------------- | ----------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------ |
 | Audio input          | RAM only                                                    | None in local Vosk mode / cloud STT provider when selected             | Not intentionally written to disk by the app                             |
 | Transcripts          | RAM and UI state during the active session                  | None in local Vosk mode / cloud STT response stream                    | Cleared through transcript/session controls or app close                 |
-| Transcript snippets  | RAM only                                                    | A single phrase (max 500 characters) to DeepSeek when AI ranking is on | Off by default; never the rolling transcript. See "AI candidate ranking" |
+| Transcript snippets  | RAM only                                                    | A single phrase (max 500 characters) to DeepSeek or Cerebras when AI ranking is on | Off by default; never the rolling transcript. See "AI candidate ranking" |
 | Bible database       | Bundled `rhema.db` resource, or development `data/rhema.db` | None during normal app operation                                       | Built during setup/release from source data                              |
 | Deepgram API key     | OS keychain                                                 | Sent to Deepgram only when Deepgram mode is used                       | Never intentionally stored in plaintext app settings                     |
 | Soniox API key       | OS keychain                                                 | Sent to Soniox only when Soniox mode is used                           | Never intentionally stored in plaintext app settings                     |
 | Speechmatics API key | OS keychain                                                 | Sent to Speechmatics only when Speechmatics mode is used               | Never intentionally stored in plaintext app settings                     |
-| DeepSeek API key     | OS keychain                                                 | Sent to DeepSeek only when AI candidate ranking is enabled             | Read only by the Rust backend; never exposed to the WebView              |
+| DeepSeek API key     | OS keychain                                                 | Sent to DeepSeek only when DeepSeek ranking is selected and enabled    | Read only by the Rust backend; never exposed to the WebView              |
+| Cerebras API key     | OS keychain                                                 | Sent to Cerebras only when Cerebras ranking is selected and enabled    | Read only by the Rust backend; never exposed to the WebView              |
 | HTTP bearer token    | OS keychain                                                 | Sent by local clients in the `Authorization` header over loopback HTTP | Generated locally; used to authenticate remote-control requests          |
 | Service plans        | Local app data/settings storage                             | None                                                                   | User-created local files/data                                            |
 | Settings             | Local app data/settings storage                             | None                                                                   | Includes non-secret preferences and feature toggles                      |
@@ -48,16 +49,16 @@ An optional feature that helps disambiguate _indirect_ spoken references
 (for example, "the passage where Paul and Silas sang in prison") when local
 detection surfaces several plausible passages.
 
-- Short transcript phrase + shortlisted references -> DeepSeek
-  (`https://api.deepseek.com/chat/completions`) -> single-letter choice -> UI badge
-- Key validation only: `GET https://api.deepseek.com/models`
+- Short transcript phrase + candidate packs -> DeepSeek (`https://api.deepseek.com/chat/completions`) or Cerebras (`https://api.cerebras.ai/v1/chat/completions`) -> candidate selection or abstention -> UI badge
+- Key validation only:
+  - DeepSeek: `GET https://api.deepseek.com/models`
+  - Cerebras: `GET https://api.cerebras.ai/v1/models`
 
 #### What is transmitted
 
 - One transcript phrase, hard-truncated to 500 characters
-- Up to 5 candidate references already found locally, each an 80-character
-  summary (reference plus the opening of the verse text)
-- The operator's DeepSeek API key as a bearer token
+- Up to 8 candidate packs already found locally, each containing the reference, bounded verse text (max 500 chars), and local confidence score
+- The operator's provider API key as a bearer token
 
 #### What is never transmitted
 
@@ -69,29 +70,25 @@ detection surfaces several plausible passages.
 #### Trigger conditions
 
 A request is made only when _all_ of the following
-hold: the feature toggle is on, a key is configured, the current detection
-batch contains two or more ambiguous semantic candidates, and no explicit
-reference already passed the operator's confidence threshold. Ordinary
-spoken references such as "John chapter three verse sixteen" are resolved
-entirely locally and produce no outbound traffic.
+hold: the feature toggle is on, a key is configured for the active provider,
+the current detection batch contains two or more ambiguous semantic candidates,
+and no explicit reference already passed the operator's confidence threshold.
+Ordinary spoken references such as "John chapter three verse sixteen" are
+resolved entirely locally and produce no outbound traffic.
 
-**Response handling.** The model returns a single character identifying one
-of the supplied candidates, or an abstention. It cannot return scripture
-text, and the displayed verse is always read from the local Bible database.
-The result is advisory: it marks a suggestion badge in the operator's panel
-and never changes what is sent to the projector.
+**Response handling.** The model returns a choice identifying one of the supplied
+candidates, or an abstention. It cannot inject unvetted text, and the displayed verse
+is always read from the local Bible database. The result is advisory: it marks a
+suggestion badge in the operator's panel and never changes what is sent to the projector.
 
-**Data handling by the provider.** DeepSeek's published privacy policy
-states that submitted input may be used to provide and improve its
-services, that its services are not intended for sensitive personal data
-(a category that expressly includes information revealing religious
-beliefs), and that data may be processed and stored in the People's
-Republic of China. Because sermon speech can incidentally contain personal
-information, this feature ships **disabled by default** and is limited to a
-single short phrase per request. Organisations with data-residency
-obligations, or any policy against transferring congregational content
-abroad, should leave AI candidate ranking switched off; all detection
-features continue to operate without it.
+**Data handling by the providers.**
+- **DeepSeek:** Published policies allow submitted input to be used for service improvement, and data may be processed in the People's Republic of China.
+- **Cerebras:** Operates in US/international cloud infrastructure; handles JSON Schema completions under its standard enterprise and cloud terms.
+
+Because sermon speech can incidentally contain personal information, this feature ships
+**disabled by default** and is strictly bounded. Organisations with specific compliance
+or data-residency obligations can choose their preferred provider or leave AI candidate
+ranking switched off; all detection features continue to operate without it.
 
 ### Setup-time downloads
 

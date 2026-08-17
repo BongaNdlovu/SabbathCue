@@ -46,7 +46,7 @@ Local builds create an unsigned NSIS installer; official release CI uses
   - Quotation matching against known verse text
   - Reading mode — locks to book/chapter as soon as it's mentioned, with voice navigation ("next chapter", "chapter 5")
   - Sermon context tracking and sentence buffering
-- **AI candidate ranking (optional, off by default)** — when an indirect reference ("the passage where Paul and Silas sang in prison") leaves several plausible matches, DeepSeek picks the closest one from candidates already found locally. It returns a single choice, never scripture text, and only marks a suggestion badge — it never changes what is projected. Requires your own API key; see [AI candidate ranking](#ai-candidate-ranking-optional)
+- **AI candidate ranking (optional, off by default)** — when an indirect reference ("the passage where Paul and Silas sang in prison") leaves several plausible matches, the selected DeepSeek or Cerebras provider ranks candidates already found locally. It returns a constrained selection or abstention and only marks a suggestion badge — it never changes what is projected. Requires your own API key; see [AI candidate ranking](#ai-candidate-ranking-optional)
 - **SQLite Bible database** with FTS5 full-text search (BM25 ranking by default)
 - **Public-release translations** — KJV, WEB, SpaRV (Spanish), FreJND (French), and PorBLivre (Portuguese) ship in the free public installer. NIV, ESV, NASB, NKJV, NLT, and AMP are supported only for licensed/private builds or user-provided data.
 - **Cross-reference lookup** (340k+ refs from openbible.info; the bundled file ships with 344,800 entries)
@@ -74,7 +74,7 @@ Local builds create an unsigned NSIS installer; official release CI uses
 | **Database**  | SQLite via rusqlite (bundled) with FTS5                           |
 | **Broadcast** | NDI 6 SDK via dynamic loading (libloading FFI)                    |
 | **STT**       | Local Vosk worker; Deepgram/Soniox/Speechmatics streaming APIs    |
-| **Cloud AI**  | DeepSeek candidate ranking (optional, off by default)             |
+| **Cloud AI**  | DeepSeek and Cerebras GPT-OSS-120B candidate ranking (optional, off by default) |
 
 ### Rust Crates
 
@@ -196,24 +196,30 @@ no network call. Ranking only engages when an _indirect_ reference leaves
 two or more plausible local candidates and no explicit reference has already
 cleared your confidence threshold.
 
-1. Create an account at [platform.deepseek.com](https://platform.deepseek.com) and generate an API key.
-2. Paste it under **Settings → AI Ranking**, save, then select **Test key**.
-3. Switch on **AI candidate ranking**. The toggle stays disabled until a key is stored.
+Choose between two supported providers under **Settings → AI Ranking**:
 
-**What is sent:** one transcript phrase (max 500 characters) and up to five
-candidate references SabbathCue already found locally. Never the rolling
-transcript, never audio. The model replies with a single character choosing
-one candidate, so it cannot return scripture text; the verse shown is always
-read from the local Bible database. The result is advisory — it marks a
-suggestion badge and never changes what is projected.
+1. **DeepSeek** (`deepseek-v4-flash` streaming ranking with reasoning disabled)
+   - Create an account at [platform.deepseek.com](https://platform.deepseek.com) and generate an API key.
+   - Paste it under **Settings → AI Ranking**, save, then select **Test key**.
+2. **Cerebras** (`gpt-oss-120b` fast structured JSON Schema ranking on Cerebras wafer-scale engine)
+   - Create an account at [cloud.cerebras.ai](https://cloud.cerebras.ai) and generate an API key.
+   - Paste it under **Settings → AI Ranking**, save, then select **Test key**.
+
+3. Switch on **AI candidate ranking**. The toggle stays disabled until a key is stored for the active provider.
+
+**What is sent:** one transcript phrase (max 500 characters) and up to eight
+candidate packs (reference, verse text, and local confidence score) that SabbathCue
+already found locally. Never the rolling transcript, never audio. The model replies
+with a candidate letter selection or abstention, so it cannot introduce arbitrary text;
+the verse shown is always read from the local Bible database. The result is advisory —
+it marks a suggestion badge and never changes what is projected automatically.
 
 **Before enabling:** review [docs/procurement/privacy-data-flow.md](docs/procurement/privacy-data-flow.md).
-DeepSeek's policy allows submitted input to be used for service improvement
-and permits processing in the People's Republic of China, which may not suit
-every organisation. Removing the key automatically switches the toggle off.
+Keys are stored in the OS keychain and never in localStorage or disk settings. Removing
+an active key automatically switches the ranking toggle off.
 
-**Cost:** pay-as-you-go; requests are small (a few hundred input tokens and
-at most 4 output tokens each). Current rates at [platform.deepseek.com](https://platform.deepseek.com).
+**Cost:** pay-as-you-go; requests are small (a few hundred input tokens and minimal
+output tokens). Check current rates at the respective provider consoles.
 
 #### Account verification (Supabase)
 

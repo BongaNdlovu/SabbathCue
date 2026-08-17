@@ -665,9 +665,12 @@ async function maybeMarkAiSuggestion(
   try {
     const settings = useSettingsStore.getState()
     const winner = await scheduleRanking(detections, {
-      deepseekRankingEnabled: settings.deepseekRankingEnabled,
+      aiRankingEnabled: settings.aiRankingEnabled,
+      aiRankingProvider: settings.aiRankingProvider,
       hasDeepseekApiKey: settings.hasDeepseekApiKey,
+      hasCerebrasApiKey: settings.hasCerebrasApiKey,
       confidenceThreshold: settings.confidenceThreshold,
+      deepseekRankingEnabled: settings.aiRankingEnabled,
     })
     // A newer batch owns the badge now; a stale flight must not overwrite it
     // (e.g. after a strong direct hit made the newer batch clear the badge).

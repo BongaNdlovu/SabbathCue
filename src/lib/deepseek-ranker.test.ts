@@ -16,6 +16,7 @@ import {
   scheduleRanking,
   shouldRankDetections,
   preferSpokenBook,
+  type RankingGate,
 } from "./deepseek-ranker"
 import type { DetectionResult } from "@/types"
 
@@ -38,9 +39,19 @@ function semantic(overrides: Partial<DetectionResult> = {}): DetectionResult {
   }
 }
 
-const gate = {
-  deepseekRankingEnabled: true,
+const gate: RankingGate = {
+  aiRankingEnabled: true,
+  aiRankingProvider: "deepseek",
   hasDeepseekApiKey: true,
+  hasCerebrasApiKey: false,
+  confidenceThreshold: 0.9,
+}
+
+const cerebrasGate: RankingGate = {
+  aiRankingEnabled: true,
+  aiRankingProvider: "cerebras",
+  hasDeepseekApiKey: false,
+  hasCerebrasApiKey: true,
   confidenceThreshold: 0.9,
 }
 
@@ -50,27 +61,27 @@ beforeEach(() => {
 })
 
 describe("buildRankingCandidates", () => {
-  it("keeps only resolvable semantic detections, deduped, capped at 8, compact summaries", () => {
+  it("keeps only resolvable semantic detections, deduped, capped at 8, with reference and verseText", () => {
     const detections = [
       semantic({ verse_text: "x".repeat(300) }),
       semantic(), // duplicate — same book:chapter:verse
       semantic({ source: "direct" }),
       semantic({ book_number: 0 }),
       semantic({ is_chapter_only: true }),
-      semantic({ verse: 26 }),
-      semantic({ verse: 27 }),
-      semantic({ verse: 28 }),
-      semantic({ verse: 29 }),
-      semantic({ verse: 30 }),
-      semantic({ verse: 31 }),
-      semantic({ verse: 32 }),
-      semantic({ verse: 33 }),
+      semantic({ verse: 26, verse_ref: "Acts 16:26" }),
+      semantic({ verse: 27, verse_ref: "Acts 16:27" }),
+      semantic({ verse: 28, verse_ref: "Acts 16:28" }),
+      semantic({ verse: 29, verse_ref: "Acts 16:29" }),
+      semantic({ verse: 30, verse_ref: "Acts 16:30" }),
+      semantic({ verse: 31, verse_ref: "Acts 16:31" }),
+      semantic({ verse: 32, verse_ref: "Acts 16:32" }),
+      semantic({ verse: 33, verse_ref: "Acts 16:33" }),
     ]
     const candidates = buildRankingCandidates(detections)
     expect(candidates.length).toBe(8)
     expect(candidates[0].id).toBe("44:16:25")
-    expect(candidates[0].summary.length).toBeLessThanOrEqual(240)
-    expect(candidates[0].summary).toContain("Acts 16:25")
+    expect(candidates[0].reference).toBe("Acts 16:25")
+    expect(candidates[0].verseText).toBe("x".repeat(300))
     expect(candidates[0].confidence).toBe(0.78)
   })
 
@@ -83,6 +94,7 @@ describe("buildRankingCandidates", () => {
         verse: 14,
         confidence: 0.7,
         verse_ref: "Esther 4:14",
+        verse_text: "for such a time as this",
         book_name: "Esther",
       }),
       semantic({
@@ -92,12 +104,15 @@ describe("buildRankingCandidates", () => {
         verse: 13,
         confidence: 0.7,
         verse_ref: "Amos 5:13",
+        verse_text: "it is an evil time",
         book_name: "Amos",
       }),
     ]
     const candidates = buildRankingCandidates(detections, "such a time as this")
     expect(candidates).toHaveLength(2)
     expect(candidates[0].confidence).toBe(0.7)
+    expect(candidates[0].reference).toBe("Esther 4:14")
+    expect(candidates[0].verseText).toBe("for such a time as this")
   })
 
   it("keeps EGW statements out of Bible candidate ranking", () => {
@@ -117,10 +132,10 @@ describe("buildRankingCandidates", () => {
 describe("shouldRankDetections", () => {
   const two = [semantic(), semantic({ verse: 26 })]
 
-  it("requires toggle, key, no strong direct hit, and 2+ semantic candidates", () => {
+  it("requires toggle, key, no strong direct hit, and 2+ semantic candidates for DeepSeek", () => {
     expect(shouldRankDetections(two, gate)).toBe(true)
     expect(
-      shouldRankDetections(two, { ...gate, deepseekRankingEnabled: false })
+      shouldRankDetections(two, { ...gate, aiRankingEnabled: false })
     ).toBe(false)
     expect(
       shouldRankDetections(two, { ...gate, hasDeepseekApiKey: false })
@@ -131,6 +146,16 @@ describe("shouldRankDetections", () => {
       semantic({ source: "direct", confidence: 0.95 }),
     ]
     expect(shouldRankDetections(withDirect, gate)).toBe(false)
+  })
+
+  it("requires toggle, key, no strong direct hit, and 2+ semantic candidates for Cerebras", () => {
+    expect(shouldRankDetections(two, cerebrasGate)).toBe(true)
+    expect(
+      shouldRankDetections(two, { ...cerebrasGate, aiRankingEnabled: false })
+    ).toBe(false)
+    expect(
+      shouldRankDetections(two, { ...cerebrasGate, hasCerebrasApiKey: false })
+    ).toBe(false)
   })
 })
 
@@ -226,6 +251,15 @@ describe("ranking result cache", () => {
     expect(first?.verse).toBe(26)
     expect(second?.verse).toBe(26)
     expect(invokeTauri).toHaveBeenCalledTimes(1)
+  })
+
+  it("partitions cache between providers", async () => {
+    invokeTauri.mockResolvedValue("44:16:26")
+
+    await rankSemanticDetections(two, gate)
+    await rankSemanticDetections(two, cerebrasGate)
+
+    expect(invokeTauri).toHaveBeenCalledTimes(2)
   })
 
   it("caches abstentions too", async () => {
@@ -438,7 +472,7 @@ describe("pickRankingTranscript", () => {
 describe("rankSemanticDetections", () => {
   const two = [semantic(), semantic({ verse: 26 })]
 
-  it("returns the detection whose id Rust selected", async () => {
+  it("returns the detection whose id Rust selected for DeepSeek", async () => {
     invokeTauri.mockResolvedValue("44:16:26")
     const winner = await rankSemanticDetections(two, gate)
     expect(winner?.verse).toBe(26)
@@ -447,6 +481,21 @@ describe("rankSemanticDetections", () => {
       expect.objectContaining({
         transcript: expect.any(String),
         candidates: expect.any(Array),
+        provider: "deepseek",
+      })
+    )
+  })
+
+  it("returns the detection whose id Rust selected for Cerebras", async () => {
+    invokeTauri.mockResolvedValue("44:16:26")
+    const winner = await rankSemanticDetections(two, cerebrasGate)
+    expect(winner?.verse).toBe(26)
+    expect(invokeTauri).toHaveBeenCalledWith(
+      "rank_detection_candidates",
+      expect.objectContaining({
+        transcript: expect.any(String),
+        candidates: expect.any(Array),
+        provider: "cerebras",
       })
     )
   })
@@ -486,6 +535,24 @@ describe("rankSemanticDetections", () => {
     invokeTauri.mockClear()
     await rankSemanticDetections(two, gate)
     expect(invokeTauri).not.toHaveBeenCalled()
+  })
+
+  it("isolates circuit breakers between providers", async () => {
+    invokeTauri.mockRejectedValue(new Error("DeepSeek server down"))
+    await rankSemanticDetections(two, gate)
+    await rankSemanticDetections(two, gate)
+    await rankSemanticDetections(two, gate)
+
+    // DeepSeek is now circuit-broken
+    invokeTauri.mockClear()
+    await rankSemanticDetections(two, gate)
+    expect(invokeTauri).not.toHaveBeenCalled()
+
+    // Cerebras should NOT be circuit-broken
+    invokeTauri.mockResolvedValue("44:16:26")
+    const cerebrasWinner = await rankSemanticDetections(two, cerebrasGate)
+    expect(cerebrasWinner?.verse).toBe(26)
+    expect(invokeTauri).toHaveBeenCalledTimes(1)
   })
 
   it("a success resets the failure count", async () => {

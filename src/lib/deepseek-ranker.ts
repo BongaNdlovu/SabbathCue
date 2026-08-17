@@ -1,10 +1,10 @@
 import { invokeTauri } from "@/lib/tauri-runtime"
 import type { DetectionResult } from "@/types"
 import type { RankingCandidate } from "@/types/ai-ranking"
+import type { AiRankingProvider } from "@/stores/settings-store"
 
 const MAX_CANDIDATES = 8
 const MAX_TRANSCRIPT_CHARS = 500
-const SUMMARY_TEXT_CHARS = 240
 const CIRCUIT_BREAKER_FAILURES = 3
 const DIRECT_SUPPRESSION_MS = 4000
 const DECISIVE_SEMANTIC_CONFIDENCE = 0.9
@@ -13,9 +13,13 @@ const STABILITY_WINDOW_MS = 400
 const RANKING_CACHE_MAX = 16
 
 export interface RankingGate {
-  deepseekRankingEnabled: boolean
-  hasDeepseekApiKey: boolean
+  aiRankingEnabled?: boolean
+  aiRankingProvider?: AiRankingProvider
+  hasDeepseekApiKey?: boolean
+  hasCerebrasApiKey?: boolean
   confidenceThreshold: number
+  /** Legacy alias for aiRankingEnabled */
+  deepseekRankingEnabled?: boolean
 }
 
 type ScheduledRanking = {
@@ -26,7 +30,7 @@ type ScheduledRanking = {
 }
 
 let inFlight = false
-let consecutiveFailures = 0
+const consecutiveFailures = new Map<AiRankingProvider, number>()
 let lastStrongDirectAt = 0
 const rankingCache = new Map<string, string | null>()
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
@@ -34,6 +38,18 @@ let pendingDebounced: ScheduledRanking | null = null
 let pendingAfterFlight: ScheduledRanking | null = null
 let activeScheduled: ScheduledRanking | null = null
 let scheduleGeneration = 0
+
+function getFailures(provider: AiRankingProvider): number {
+  return consecutiveFailures.get(provider) ?? 0
+}
+
+function recordSuccess(provider: AiRankingProvider): void {
+  consecutiveFailures.set(provider, 0)
+}
+
+function recordFailure(provider: AiRankingProvider): void {
+  consecutiveFailures.set(provider, getFailures(provider) + 1)
+}
 
 function resolveScheduled(
   entry: ScheduledRanking,
@@ -96,7 +112,7 @@ function runScheduledRanking(entry: ScheduledRanking): void {
 
 export function resetRankerForTests(): void {
   inFlight = false
-  consecutiveFailures = 0
+  consecutiveFailures.clear()
   lastStrongDirectAt = 0
   rankingCache.clear()
   scheduleGeneration += 1
@@ -169,10 +185,8 @@ export function buildRankingCandidates(
   return preferSpokenBook(rankableSemantic(detections), transcript).map(
     (detection) => ({
       id: detectionCandidateId(detection),
-      summary: `${detection.verse_ref} — ${detection.verse_text}`.slice(
-        0,
-        SUMMARY_TEXT_CHARS
-      ),
+      reference: detection.verse_ref,
+      verseText: detection.verse_text,
       confidence: detection.confidence,
     })
   )
@@ -207,7 +221,15 @@ export function shouldRankDetections(
   detections: DetectionResult[],
   gate: RankingGate
 ): boolean {
-  if (!gate.deepseekRankingEnabled || !gate.hasDeepseekApiKey) return false
+  const isEnabled = gate.aiRankingEnabled ?? gate.deepseekRankingEnabled ?? false
+  if (!isEnabled) return false
+  const provider = gate.aiRankingProvider ?? "deepseek"
+  const hasKey =
+    provider === "deepseek"
+      ? Boolean(gate.hasDeepseekApiKey)
+      : Boolean(gate.hasCerebrasApiKey)
+  if (!hasKey) return false
+
   const strongDirect = detections.some(
     (detection) =>
       detection.source === "direct" &&
@@ -239,9 +261,13 @@ export function pickRankingTranscript(detections: DetectionResult[]): string {
   return longest.slice(0, MAX_TRANSCRIPT_CHARS)
 }
 
-function cacheKey(transcript: string, candidates: RankingCandidate[]): string {
+function cacheKey(
+  provider: AiRankingProvider,
+  transcript: string,
+  candidates: RankingCandidate[]
+): string {
   const ids = [...candidates.map((candidate) => candidate.id)].sort()
-  return JSON.stringify([transcript, ids])
+  return JSON.stringify([provider, transcript, ids])
 }
 
 function rememberRanking(key: string, selectedId: string | null): void {
@@ -285,22 +311,16 @@ export async function rankSemanticDetections(
   gate: RankingGate
 ): Promise<DetectionResult | null> {
   noteBatchForGating(detections, gate)
-  if (inFlight || consecutiveFailures >= CIRCUIT_BREAKER_FAILURES) return null
+  const provider = gate.aiRankingProvider ?? "deepseek"
+  if (inFlight || getFailures(provider) >= CIRCUIT_BREAKER_FAILURES) return null
   if (!shouldRankDetections(detections, gate)) return null
 
   const transcript = pickRankingTranscript(detections)
   if (!transcript) return null
 
+  const candidates = buildRankingCandidates(detections, transcript)
+  const key = cacheKey(provider, transcript, candidates)
   const semantic = preferSpokenBook(rankableSemantic(detections), transcript)
-  const candidates = semantic.map((detection) => ({
-    id: detectionCandidateId(detection),
-    summary: `${detection.verse_ref} — ${detection.verse_text}`.slice(
-      0,
-      SUMMARY_TEXT_CHARS
-    ),
-    confidence: detection.confidence,
-  }))
-  const key = cacheKey(transcript, candidates)
   const resolveFromId = (id: string | null) =>
     id ? (semantic.find((d) => detectionCandidateId(d) === id) ?? null) : null
 
@@ -312,13 +332,13 @@ export async function rankSemanticDetections(
   try {
     const selectedId = await invokeTauri<string | null>(
       "rank_detection_candidates",
-      { transcript, candidates }
+      { transcript, candidates, provider }
     )
-    consecutiveFailures = 0
+    recordSuccess(provider)
     rememberRanking(key, selectedId ?? null)
     return resolveFromId(selectedId ?? null)
   } catch {
-    consecutiveFailures += 1
+    recordFailure(provider)
     return null
   } finally {
     inFlight = false
