@@ -1,0 +1,18 @@
+{
+  "fixtureVersion": 1,
+  "source": "ai-ranking-cases.json",
+  "decisionPolicy": "select expected candidate when it is offered; otherwise abstain",
+  "metrics": {
+    "total": 7,
+    "correctSelections": 5,
+    "falseSelections": 0,
+    "correctAbstentions": 1,
+    "missedSelections": 1,
+    "candidateSetHits": 5,
+    "positiveCases": 6,
+    "selectionPrecision": 1,
+    "abstentionRecall": 1,
+    "candidateSetRecall": 0.8333333333333334,
+    "accuracy": 0.8571428571428571
+  }
+}

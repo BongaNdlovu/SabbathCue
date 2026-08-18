@@ -15,7 +15,7 @@ fn recall_db() -> BibleDb {
     )
     .unwrap();
 
-    let verses: [(i64, i32, &str, i32, i32, &str); 12] = [
+    let verses: [(i64, i32, &str, i32, i32, &str); 13] = [
         (1, 17, "Esther", 4, 14, "For if thou altogether holdest thy peace at this time, then shall there enlargement and deliverance arise to the Jews from another place; but thou and thy father's house shall be destroyed: and who knoweth whether thou art come to the kingdom for such a time as this?"),
         (2, 30, "Amos", 5, 13, "Therefore the prudent shall keep silence in that time; for it is an evil time."),
         (3, 39, "Malachi", 1, 1, "The burden of the word of the LORD to Israel by Malachi."),
@@ -28,6 +28,7 @@ fn recall_db() -> BibleDb {
         (10, 66, "Revelation", 13, 8, "And all that dwell upon the earth shall worship him, whose names are not written in the book of life of the Lamb slain from the foundation of the world."),
         (11, 40, "Matthew", 3, 13, "Then cometh Jesus from Galilee to Jordan unto John, to be baptized of him."),
         (12, 43, "John", 3, 3, "Jesus answered and said unto him, Verily, verily, I say unto thee, Except a man be born again, he cannot see the kingdom of God."),
+        (13, 43, "John", 11, 43, "And when he thus had spoken, he cried with a loud voice, Lazarus, come forth."),
     ];
     for (id, book_number, book_name, chapter, verse, text) in verses {
         conn.execute(
@@ -83,6 +84,18 @@ fn modern_storm_and_boat_request_recalls_the_kjv_calm() {
 fn prison_scene_request_recalls_paul_and_silas_praying() {
     let db = recall_db();
     assert_recalls(&db, "Paul and Silas in prison", "Acts", 16, 25);
+}
+
+#[test]
+fn lazarus_command_request_recalls_the_resurrection_scene() {
+    let db = recall_db();
+    assert_recalls(
+        &db,
+        "Then Jesus with a loud voice said Lazarus come out",
+        "John",
+        11,
+        43,
+    );
 }
 
 #[test]

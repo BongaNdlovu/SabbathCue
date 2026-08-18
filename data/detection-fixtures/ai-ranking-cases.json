@@ -1,0 +1,72 @@
+[
+  {
+    "id": "acts-16-paul-silas-prison",
+    "category": "people-event",
+    "transcript": "Paul and Silas singing in prison",
+    "candidates": [
+      { "id": "44:16:25", "reference": "Acts 16:25", "verseText": "And at midnight Paul and Silas prayed, and sang praises unto God", "confidence": 0.78 },
+      { "id": "44:12:5", "reference": "Acts 12:5", "verseText": "Peter therefore was kept in prison: but prayer was made without ceasing", "confidence": 0.77 }
+    ],
+    "expectedId": "44:16:25"
+  },
+  {
+    "id": "acts-12-peter-prison",
+    "category": "people-event",
+    "transcript": "Peter being in prison",
+    "candidates": [
+      { "id": "44:12:5", "reference": "Acts 12:5", "verseText": "Peter therefore was kept in prison: but prayer was made without ceasing", "confidence": 0.76 },
+      { "id": "44:16:25", "reference": "Acts 16:25", "verseText": "And at midnight Paul and Silas prayed, and sang praises unto God", "confidence": 0.75 }
+    ],
+    "expectedId": "44:12:5"
+  },
+  {
+    "id": "john-6-jesus-walking-water",
+    "category": "people-event",
+    "transcript": "Jesus walking on water",
+    "candidates": [
+      { "id": "43:6:19", "reference": "John 6:19", "verseText": "And when they had rowed about five and twenty or thirty furlongs, they see Jesus walking on the sea", "confidence": 0.77 },
+      { "id": "40:14:25", "reference": "Matthew 14:25", "verseText": "And in the fourth watch of the night Jesus went unto them, walking on the sea", "confidence": 0.76 }
+    ],
+    "expectedId": "43:6:19"
+  },
+  {
+    "id": "genesis-2-8-explicit",
+    "category": "explicit-reference",
+    "transcript": "Genesis 2 verse 8",
+    "candidates": [
+      { "id": "1:2:8", "reference": "Genesis 2:8", "verseText": "And the LORD God planted a garden eastward in Eden", "confidence": 0.99 },
+      { "id": "1:2:7", "reference": "Genesis 2:7", "verseText": "And the LORD God formed man of the dust of the ground", "confidence": 0.98 }
+    ],
+    "expectedId": "1:2:8"
+  },
+  {
+    "id": "ambiguous-prison-request",
+    "category": "ambiguous",
+    "transcript": "a verse about prison",
+    "candidates": [
+      { "id": "44:12:5", "reference": "Acts 12:5", "verseText": "Peter therefore was kept in prison: but prayer was made without ceasing", "confidence": 0.74 },
+      { "id": "44:16:25", "reference": "Acts 16:25", "verseText": "And at midnight Paul and Silas prayed, and sang praises unto God", "confidence": 0.74 }
+    ],
+    "expectedId": null
+  },
+  {
+    "id": "retrieval-miss",
+    "category": "retrieval-miss",
+    "transcript": "Lazarus come out",
+    "candidates": [
+      { "id": "43:11:25", "reference": "John 11:25", "verseText": "I am the resurrection, and the life", "confidence": 0.63 },
+      { "id": "43:11:26", "reference": "John 11:26", "verseText": "Whosoever liveth and believeth in me shall never die", "confidence": 0.62 }
+    ],
+    "expectedId": "43:11:43"
+  },
+  {
+    "id": "conversational-framing",
+    "category": "noise",
+    "transcript": "let us go back to the verse which talks about Paul and Silas singing in prison",
+    "candidates": [
+      { "id": "44:16:25", "reference": "Acts 16:25", "verseText": "And at midnight Paul and Silas prayed, and sang praises unto God", "confidence": 0.79 },
+      { "id": "44:12:5", "reference": "Acts 12:5", "verseText": "Peter therefore was kept in prison: but prayer was made without ceasing", "confidence": 0.76 }
+    ],
+    "expectedId": "44:16:25"
+  }
+]

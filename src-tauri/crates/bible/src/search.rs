@@ -86,6 +86,42 @@ pub(crate) fn query_terms(input: &str) -> impl Iterator<Item = &str> {
         .filter(|term| !term.is_empty())
 }
 
+/// Remove spoken navigation scaffolding before building FTS queries. These
+/// phrases are instructions to the application, not evidence from the
+/// requested passage (for example, "let's go to the verse that talks about").
+/// Keep this deliberately prefix-oriented: words such as `let`, `show`, and
+/// `read` can be meaningful when they occur in an actual quoted verse.
+const CONVERSATIONAL_PREFIXES: &[&str] = &[
+    "let's go back to the verse which talks about",
+    "lets go back to the verse which talks about",
+    "let us go back to the verse which talks about",
+    "let's go to the verse that talks about",
+    "lets go to the verse that talks about",
+    "let us go to the verse that talks about",
+    "the verse where it talks about",
+    "the verse that talks about",
+    "the verse which talks about",
+    "verse where it talks about",
+    "verse that talks about",
+];
+
+fn strip_conversational_preamble(input: &str) -> String {
+    let lower = input.to_ascii_lowercase();
+
+    CONVERSATIONAL_PREFIXES
+        .iter()
+        .filter_map(|prefix| lower.find(prefix).map(|start| start + prefix.len()))
+        .min()
+        .map_or_else(
+            || input.to_string(),
+            |end| {
+                input[end..]
+                    .trim_start_matches(|c: char| c.is_ascii_punctuation() || c.is_whitespace())
+                    .to_string()
+            },
+        )
+}
+
 /// Exact phrase match — wraps entire input in double quotes.
 /// `"Follow peace with all men"` matches only verses containing that exact sequence.
 pub(crate) fn build_phrase_query(input: &str) -> String {
@@ -186,8 +222,9 @@ pub(crate) fn build_phrase_spans(input: &str) -> Vec<String> {
 /// `"be doers of the word"` → `doers word` (finds James 1:22).
 /// Capped at 12 terms to prevent expensive queries on long text.
 pub(crate) fn build_and_query(input: &str) -> String {
+    let input = strip_conversational_preamble(input);
     let mut seen = HashSet::new();
-    let tokens: Vec<String> = query_terms(input)
+    let tokens: Vec<String> = query_terms(&input)
         .filter(|w| w.len() >= 2 && !is_stop_word(w) && !is_reference_noise_token(w))
         .filter(|w| seen.insert(w.to_lowercase()))
         .take(12)
@@ -204,9 +241,10 @@ pub(crate) fn build_and_query(input: &str) -> String {
 /// KJV name aliases are appended to modern spoken names. Capped at 12 terms
 /// to prevent expensive queries while leaving room for a few expansions.
 pub(crate) fn build_or_query(input: &str) -> String {
+    let input = strip_conversational_preamble(input);
     let mut seen: HashSet<String> = HashSet::new();
     let mut candidates = Vec::new();
-    for (position, word) in query_terms(input).enumerate() {
+    for (position, word) in query_terms(&input).enumerate() {
         if word.len() < 3 || is_stop_word(word) || is_reference_noise_token(word) {
             continue;
         }
@@ -248,7 +286,15 @@ pub(crate) fn build_or_query(input: &str) -> String {
 fn spoken_kjv_variants(word: &str) -> &'static [&'static str] {
     match word.to_ascii_lowercase().as_str() {
         "boat" | "boats" => &["ship"],
-        "prison" => &["prisoner", "prisoners"],
+        "prison" | "prisons" => &[
+            "prison",
+            "prisoner",
+            "prisoners",
+            "stocks",
+            "inner prison",
+            "dungeon",
+        ],
+        "sing" | "singing" | "sang" => &["sang", "sing", "praises", "singing"],
         "storm" | "storms" => &["wind", "sea", "calm", "tempest"],
         "baptist" | "baptizing" | "baptizes" | "baptize" | "baptism" => {
             &["baptized", "baptize", "baptizing", "baptism"]
@@ -371,8 +417,22 @@ fn build_short_clause_and_queries(input: &str) -> Vec<String> {
 /// anchor verse enters the candidate pool even when surrounding names or
 /// commentary dilute BM25 ranking.
 fn build_topic_phrase_queries(input: &str) -> Vec<String> {
-    let lower = input.to_ascii_lowercase();
+    let normalized = strip_conversational_preamble(input);
+    let lower = normalized.to_ascii_lowercase();
     let mut queries = Vec::new();
+    if lower.contains("peter") && (lower.contains("prison") || lower.contains("jail")) {
+        queries.push("Peter prison".to_string());
+    }
+    if (lower.contains("paul") || lower.contains("silas"))
+        && (lower.contains("prison") || lower.contains("sing"))
+    {
+        queries.push("Paul Silas".to_string());
+    }
+    if lower.contains("lazarus")
+        && (lower.contains("come out") || lower.contains("come forth"))
+    {
+        queries.push("Lazarus".to_string());
+    }
     if lower.contains("born again") {
         queries.push("\"born again\"".to_string());
     }
@@ -605,7 +665,9 @@ mod tests {
              INSERT INTO verses VALUES
                (1, 1, 5, 'Deuteronomy', 'Deut', 16, 18, 'Judges and officers shalt thou make thee in all thy gates.'),
                (2, 2, 5, 'Deuteronomium', 'Deut', 16, 18, 'Regters en opsigters moet jy vir jou aanstel in al jou poorte.'),
-               (3, 1, 40, 'Matthew', 'Matt', 24, 37, 'But as the days of Noe were, so shall also the coming of the Son of man be.');
+               (3, 1, 40, 'Matthew', 'Matt', 24, 37, 'But as the days of Noe were, so shall also the coming of the Son of man be.'),
+               (4, 1, 44, 'Acts', 'Acts', 12, 5, 'Peter therefore was kept in prison: but prayer was made without ceasing of the church unto God for him.'),
+               (5, 1, 44, 'Acts', 'Acts', 16, 25, 'And at midnight Paul and Silas prayed, and sang praises unto God: and the prisoners heard them.');
              INSERT INTO verses_fts(rowid, text) SELECT id, text FROM verses;",
         )
         .unwrap();
@@ -1021,6 +1083,37 @@ mod tests {
     }
 
     #[test]
+    fn topic_anchors_recover_indirect_prison_requests() {
+        let db = fixture_db();
+
+        let peter = db
+            .search_verses_bm25(
+                "Uh, let's go to the verse that talks about Peter being in prison",
+                10,
+            )
+            .unwrap();
+        assert!(
+            peter.iter().any(|result| {
+                result.book_number == 44 && result.chapter == 12 && result.verse == 5
+            }),
+            "Peter prison anchor must retrieve Acts 12:5"
+        );
+
+        let paul = db
+            .search_verses_bm25(
+                "Let's go back to the verse which talks about Paul and Silas singing in prison",
+                10,
+            )
+            .unwrap();
+        assert!(
+            paul.iter().any(|result| {
+                result.book_number == 44 && result.chapter == 16 && result.verse == 25
+            }),
+            "Paul and Silas anchor must retrieve Acts 16:25"
+        );
+    }
+
+    #[test]
     fn or_query_caps_at_12_terms() {
         let long_input =
             "God love peace faith hope joy spirit truth grace mercy light salvation prayer";
@@ -1094,6 +1187,33 @@ mod tests {
             build_topic_phrase_queries("John the Baptist baptizing Jesus"),
             vec!["baptized Jesus", "\"baptized\""]
         );
+        assert_eq!(
+            build_topic_phrase_queries(
+                "Uh, let's go to the verse that talks about Peter being in prison"
+            ),
+            vec!["Peter prison"]
+        );
+        assert_eq!(
+            build_topic_phrase_queries(
+                "Let's go back to the verse which talks about Paul and Silas singing in prison"
+            ),
+            vec!["Paul Silas"]
+        );
+        assert_eq!(
+            build_topic_phrase_queries("Jesus said Lazarus come out with a loud voice"),
+            vec!["Lazarus"]
+        );
+    }
+
+    #[test]
+    fn conversational_prefix_is_removed_without_global_stop_words() {
+        assert_eq!(
+            build_and_query("Uh, let's go to the verse that talks about Peter being in prison"),
+            "Peter being prison"
+        );
+        // Quoted-scripture vocabulary remains searchable when it is not a
+        // navigation prefix.
+        assert!(build_and_query("let your light so shine").contains("let"));
     }
 
     #[test]

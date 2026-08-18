@@ -168,16 +168,21 @@ pub(crate) fn enqueue_partial_semantic_job(
     notify.notify_one();
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the enqueue path keeps its counters and finality marker explicit"
+)]
 pub(crate) fn enqueue_direct_detection_job(
-    detect_tx: &tokio::sync::mpsc::Sender<(u64, String)>,
+    detect_tx: &tokio::sync::mpsc::Sender<(u64, String, bool)>,
     latest_accepted_seq: &Arc<AtomicU64>,
     sent_counter: &Arc<AtomicU64>,
     dropped_counter: &Arc<AtomicU64>,
     seq: u64,
     text: String,
+    is_final_transcript: bool,
     source: &str,
 ) {
-    match detect_tx.try_send((seq, text)) {
+    match detect_tx.try_send((seq, text, is_final_transcript)) {
         Ok(()) => {
             latest_accepted_seq.store(seq, Ordering::Release);
             let n = sent_counter.fetch_add(1, Ordering::Relaxed) + 1;

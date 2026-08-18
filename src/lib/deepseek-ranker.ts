@@ -1,6 +1,9 @@
 import { invokeTauri } from "@/lib/tauri-runtime"
 import type { DetectionResult } from "@/types"
-import type { RankingCandidate } from "@/types/ai-ranking"
+import type {
+  RankingCandidate,
+  RankingEvidence,
+} from "@/types/ai-ranking"
 import type { AiRankingProvider } from "@/stores/settings-store"
 
 const MAX_CANDIDATES = 8
@@ -11,6 +14,34 @@ const DECISIVE_SEMANTIC_CONFIDENCE = 0.9
 const MIN_AMBIGUITY_MARGIN = 0.15
 const STABILITY_WINDOW_MS = 400
 const RANKING_CACHE_MAX = 16
+const MAX_OVERLAP_TERMS = 6
+const EXACT_PHRASE_WORDS = 4
+const RANKING_STOP_WORDS = new Set([
+  "about",
+  "after",
+  "again",
+  "and",
+  "are",
+  "because",
+  "being",
+  "book",
+  "from",
+  "give",
+  "go",
+  "into",
+  "just",
+  "lets",
+  "like",
+  "that",
+  "the",
+  "then",
+  "there",
+  "this",
+  "verse",
+  "where",
+  "which",
+  "with",
+])
 
 export interface RankingGate {
   aiRankingEnabled?: boolean
@@ -125,6 +156,61 @@ export function detectionCandidateId(detection: DetectionResult): string {
   return `${detection.book_number}:${detection.chapter}:${detection.verse}`
 }
 
+function normalizeRankingText(value: string): string {
+  return value
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ")
+}
+
+function meaningfulTerms(value: string): string[] {
+  const seen = new Set<string>()
+  const terms: string[] = []
+  for (const term of normalizeRankingText(value).split(" ")) {
+    if (term.length < 3 || RANKING_STOP_WORDS.has(term) || seen.has(term)) {
+      continue
+    }
+    seen.add(term)
+    terms.push(term)
+  }
+  return terms
+}
+
+function hasExactPhrase(transcript: string, verseText: string): boolean {
+  const transcriptWords = normalizeRankingText(transcript).split(" ")
+  const normalizedVerse = ` ${normalizeRankingText(verseText)} `
+  for (let index = 0; index <= transcriptWords.length - EXACT_PHRASE_WORDS; index += 1) {
+    const phrase = transcriptWords
+      .slice(index, index + EXACT_PHRASE_WORDS)
+      .join(" ")
+    if (phrase && normalizedVerse.includes(` ${phrase} `)) return true
+  }
+  return false
+}
+
+function buildRankingEvidence(
+  detection: DetectionResult,
+  transcript: string
+): RankingEvidence {
+  const transcriptTerms = meaningfulTerms(transcript)
+  const verseTerms = new Set(meaningfulTerms(detection.verse_text))
+  const overlapTerms = transcriptTerms
+    .filter((term) => verseTerms.has(term))
+    .slice(0, MAX_OVERLAP_TERMS)
+  const normalizedTranscript = ` ${normalizeRankingText(transcript)} `
+  const normalizedBook = normalizeRankingText(detection.book_name)
+  return {
+    rankScore: detection.rank_score ?? detection.confidence,
+    namedBookMatch:
+      normalizedBook.length > 0 && normalizedTranscript.includes(` ${normalizedBook} `),
+    exactPhraseMatch: hasExactPhrase(transcript, detection.verse_text),
+    overlapTerms,
+  }
+}
+
 function rankableSemantic(detections: DetectionResult[]): DetectionResult[] {
   const seen = new Set<string>()
   const out: DetectionResult[] = []
@@ -188,6 +274,7 @@ export function buildRankingCandidates(
       reference: detection.verse_ref,
       verseText: detection.verse_text,
       confidence: detection.confidence,
+      evidence: buildRankingEvidence(detection, transcript),
     })
   )
 }
@@ -249,16 +336,31 @@ export function shouldRankDetections(
 }
 
 export function pickRankingTranscript(detections: DetectionResult[]): string {
-  let longest = ""
+  const counts = new Map<string, { count: number; firstIndex: number }>()
+  let firstIndex = 0
   for (const detection of detections) {
+    if (detection.source !== "semantic") continue
+    const normalized = normalizeRankingText(detection.transcript_snippet)
+    if (!normalized) continue
+    const current = counts.get(normalized)
+    counts.set(normalized, {
+      count: (current?.count ?? 0) + 1,
+      firstIndex: current?.firstIndex ?? firstIndex,
+    })
+    firstIndex += 1
+  }
+  let selected = ""
+  let selectedStats = { count: -1, firstIndex: Number.MAX_SAFE_INTEGER }
+  for (const [transcript, stats] of counts) {
     if (
-      detection.source === "semantic" &&
-      detection.transcript_snippet.length > longest.length
+      stats.count > selectedStats.count ||
+      (stats.count === selectedStats.count && stats.firstIndex < selectedStats.firstIndex)
     ) {
-      longest = detection.transcript_snippet
+      selected = transcript
+      selectedStats = stats
     }
   }
-  return longest.slice(0, MAX_TRANSCRIPT_CHARS)
+  return selected.slice(0, MAX_TRANSCRIPT_CHARS)
 }
 
 function cacheKey(
@@ -266,8 +368,21 @@ function cacheKey(
   transcript: string,
   candidates: RankingCandidate[]
 ): string {
-  const ids = [...candidates.map((candidate) => candidate.id)].sort()
-  return JSON.stringify([provider, transcript, ids])
+  const fingerprint = candidates
+    .map((candidate) => ({
+      id: candidate.id,
+      reference: candidate.reference,
+      verseText: candidate.verseText,
+      confidence: Number(candidate.confidence.toFixed(4)),
+      evidence: {
+        rankScore: Number(candidate.evidence.rankScore.toFixed(4)),
+        namedBookMatch: candidate.evidence.namedBookMatch,
+        exactPhraseMatch: candidate.evidence.exactPhraseMatch,
+        overlapTerms: candidate.evidence.overlapTerms,
+      },
+    }))
+    .sort((a, b) => a.id.localeCompare(b.id))
+  return JSON.stringify([provider, normalizeRankingText(transcript), fingerprint])
 }
 
 function rememberRanking(key: string, selectedId: string | null): void {

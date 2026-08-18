@@ -1604,6 +1604,14 @@ describe("verse detection workflow", () => {
       resolveFirstFlight(winner)
       await handling
 
+      // A ranked partial is only advisory on its first appearance. A second
+      // stable batch is required before it can commit the live preview.
+      scheduleRankingMock.mockResolvedValue(winner)
+      await handleVerseDetections([
+        winner,
+        makeSemantic({ verse_ref: "Acts 12:5", chapter: 12, verse: 5 }),
+      ])
+
       expect(useDetectionStore.getState().aiSuggestedKey).toBe("44:16:25")
       expect(useBibleStore.getState().selectedVerse).toMatchObject({
         book_number: 44,
@@ -1785,6 +1793,15 @@ describe("verse detection workflow", () => {
           verse: 40,
         }),
       ])
+      await handleVerseDetections([
+        winner,
+        makeSemantic({
+          confidence: 0.71,
+          verse_ref: "Acts 15:40",
+          chapter: 15,
+          verse: 40,
+        }),
+      ])
 
       expect(useBibleStore.getState().selectedVerse).toMatchObject({
         book_number: 44,
@@ -1808,6 +1825,17 @@ describe("verse detection workflow", () => {
       })
       scheduleRankingMock.mockResolvedValue(winner)
 
+      await handleVerseDetections([
+        winner,
+        makeSemantic({
+          confidence: 0.71,
+          verse_ref: "Jeremiah 44:22",
+          book_name: "Jeremiah",
+          book_number: 24,
+          chapter: 44,
+          verse: 22,
+        }),
+      ])
       await handleVerseDetections([
         winner,
         makeSemantic({

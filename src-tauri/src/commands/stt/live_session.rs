@@ -303,6 +303,7 @@ fn log_direct_found(
 fn suppress_repeat_direct_emissions(
     slot: &std::sync::OnceLock<Mutex<RecentDirectEmissions>>,
     results: &mut Vec<crate::commands::detection::DetectionResult>,
+    is_final_transcript: bool,
 ) {
     if results.is_empty() {
         return;
@@ -315,7 +316,19 @@ fn suppress_repeat_direct_emissions(
             poisoned.into_inner()
         }
     };
-    recent.suppress_repeats(results, DIRECT_REPEAT_SUPPRESSION, std::time::Instant::now());
+    if is_final_transcript {
+        recent.suppress_repeats_final(
+            results,
+            DIRECT_REPEAT_SUPPRESSION,
+            std::time::Instant::now(),
+        );
+    } else {
+        recent.suppress_repeats(
+            results,
+            DIRECT_REPEAT_SUPPRESSION,
+            std::time::Instant::now(),
+        );
+    }
 }
 
 /// Run direct (regex/pattern) detection only. Instant, no ONNX.
@@ -332,6 +345,7 @@ pub(crate) fn run_direct_detection(
     seq: u64,
     latest_seq: &Arc<AtomicU64>,
     transcript: &str,
+    is_final_transcript: bool,
 ) -> Vec<DirectReadingCandidate> {
     // [DIAG] AppState mutex contention on the direct-detection hot path.
     static LOCK_OK: AtomicU64 = AtomicU64::new(0);
@@ -434,7 +448,7 @@ pub(crate) fn run_direct_detection(
             })
             .collect();
         let mut results = filter_live_direct_results_to_reading_scope(app, results);
-        suppress_repeat_direct_emissions(&RECENT_DIRECT, &mut results);
+        suppress_repeat_direct_emissions(&RECENT_DIRECT, &mut results, is_final_transcript);
         for r in &results {
             log_direct_found(r, transcript, "(no DB)");
         }
@@ -450,7 +464,7 @@ pub(crate) fn run_direct_detection(
         .iter()
         .map(|m| crate::commands::detection::to_result(&app_state, m))
         .collect();
-    rebalance_auto_queue_for_digit_growth(&mut results, auto_queue_threshold);
+    rebalance_auto_queue_for_digit_growth(&mut results, auto_queue_threshold, is_final_transcript);
     let egw_start = results.len();
     results.extend(crate::commands::detection::detect_egw_references(
         &app_state, transcript,
@@ -464,7 +478,7 @@ pub(crate) fn run_direct_detection(
         reading_candidates.clear();
     }
     let mut results = filter_live_direct_results_to_reading_scope(app, results);
-    suppress_repeat_direct_emissions(&RECENT_DIRECT, &mut results);
+    suppress_repeat_direct_emissions(&RECENT_DIRECT, &mut results, is_final_transcript);
 
     for r in &results {
         log_direct_found(r, transcript, "");
