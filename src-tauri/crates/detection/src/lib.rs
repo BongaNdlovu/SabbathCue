@@ -21,6 +21,7 @@ pub mod egw_quote;
 pub mod error;
 pub mod merger;
 pub mod pipeline;
+pub mod presentation;
 pub mod reading_mode;
 pub mod semantic;
 pub mod sentence_buffer;
@@ -36,6 +37,11 @@ pub use direct::detector::{is_voice_command_utterance, DirectDetector};
 pub use error::*;
 pub use merger::{AutoQueueCooldown, DetectionMerger, MergedDetection};
 pub use pipeline::DetectionPipeline;
+pub use presentation::{
+    classify_job, decide_presentation, looks_like_verse_request, DetectionJob, EvidenceLedger,
+    PresentationDecision, PresentationEvidence, PresentationGrant, PresentationPolicy,
+    LEXICAL_QUOTE_MIN_COVERAGE, QUOTATION_MIN_MARGIN,
+};
 pub use reading_mode::{
     is_complete_verse_navigation_command, ChapterChange, ReadingAdvance, ReadingMode,
 };

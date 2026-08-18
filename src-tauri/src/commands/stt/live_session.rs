@@ -22,6 +22,7 @@ use super::detection_logic::{
     READING_SCOPE_RELEASE_STREAK,
 };
 use super::utils::{transcript_logging_enabled, truncate_safe};
+use crate::commands::detection::apply_presentation_grant;
 fn active_reading_bible_scope(app: &AppHandle) -> Option<(i32, i32, String, u64)> {
     let reading_mode_state: State<'_, Mutex<ReadingMode>> = app.state();
     let Ok(reading_mode) = reading_mode_state.lock() else {
@@ -253,6 +254,163 @@ fn detect_live_egw_quotes(
     (results, cue_active)
 }
 
+static LEDGER: std::sync::OnceLock<Mutex<rhema_detection::EvidenceLedger>> =
+    std::sync::OnceLock::new();
+
+pub fn reset_evidence_ledger() {
+    if let Some(ledger) = LEDGER.get() {
+        if let Ok(mut l) = ledger.lock() {
+            l.reset();
+        }
+    }
+}
+
+pub(crate) fn is_automation_live_enabled(app: &AppHandle) -> bool {
+    let state: State<'_, Mutex<AppState>> = app.state();
+    let enabled = match state.lock() {
+        Ok(s) => {
+            s.auto_mode.load(Ordering::Relaxed) && s.live_output_enabled.load(Ordering::Relaxed)
+        }
+        Err(_) => false,
+    };
+    enabled
+}
+
+fn note_independent_finals(
+    verse_key: &str,
+    utterance_id: Option<u64>,
+    is_final: bool,
+) -> u32 {
+    if !is_final {
+        return 0;
+    }
+    let Some(utterance_id) = utterance_id else {
+        return 1;
+    };
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |elapsed| u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX));
+    let ledger = LEDGER.get_or_init(|| Mutex::new(rhema_detection::EvidenceLedger::default()));
+    match ledger.lock() {
+        Ok(mut ledger) => ledger.note_final(verse_key, utterance_id, now_ms),
+        Err(poisoned) => poisoned.into_inner().note_final(verse_key, utterance_id, now_ms),
+    }
+}
+
+fn authorize_emitted_results(
+    results: &mut [crate::commands::detection::DetectionResult],
+    detections: &[rhema_detection::Detection],
+    transcript: &str,
+    is_final_utterance: bool,
+    utterance_id: Option<u64>,
+    automation_live_enabled: bool,
+) {
+    if detections.is_empty() {
+        for result in results.iter_mut() {
+            let grant = rhema_detection::decide_presentation(&rhema_detection::PresentationEvidence {
+                job: if result.source == "direct" {
+                    rhema_detection::DetectionJob::Citation
+                } else if rhema_detection::looks_like_verse_request(transcript) {
+                    rhema_detection::DetectionJob::Request
+                } else {
+                    rhema_detection::DetectionJob::Quotation
+                },
+                source_is_direct: result.source == "direct",
+                is_chapter_only: result.is_chapter_only,
+                is_fuzzy_book: result.is_fuzzy_book,
+                is_complete_citation: result.source == "direct"
+                    && !result.is_chapter_only
+                    && !result.is_fuzzy_book
+                    && result.book_number > 0
+                    && result.chapter > 0
+                    && result.verse > 0,
+                is_final_utterance,
+                has_lexical_quote: result.has_lexical_quote,
+                quote_coverage: 0.0,
+                candidate_margin: 1.0,
+                independent_final_count: note_independent_finals(
+                    &result.verse_ref,
+                    utterance_id,
+                    is_final_utterance,
+                ),
+                automation_live_enabled,
+            });
+            apply_presentation_grant(result, grant, is_final_utterance, utterance_id);
+        }
+        return;
+    }
+
+    let semantic_margin = {
+        let mut semantic: Vec<f64> = detections
+            .iter()
+            .filter(|detection| {
+                matches!(
+                    detection.source,
+                    rhema_detection::DetectionSource::Semantic { .. }
+                )
+            })
+            .map(|detection| detection.confidence)
+            .collect();
+        semantic.sort_by(|a, b| b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal));
+        if semantic.len() >= 2 {
+            semantic[0] - semantic[1]
+        } else {
+            1.0
+        }
+    };
+
+    for result in results.iter_mut() {
+        let matched_detection = detections.iter().find(|d| {
+            d.verse_ref.book_number == result.book_number
+                && d.verse_ref.chapter == result.chapter
+                && d.verse_ref.verse_start == result.verse
+        });
+
+        let (quote_coverage, candidate_margin) = if let Some(d) = matched_detection {
+            (
+                d.quote_coverage,
+                if matches!(d.source, rhema_detection::DetectionSource::Semantic { .. }) {
+                    semantic_margin
+                } else {
+                    1.0
+                },
+            )
+        } else {
+            (0.0, 1.0)
+        };
+
+        let grant = rhema_detection::decide_presentation(&rhema_detection::PresentationEvidence {
+            job: if result.source == "direct" {
+                rhema_detection::DetectionJob::Citation
+            } else if rhema_detection::looks_like_verse_request(transcript) {
+                rhema_detection::DetectionJob::Request
+            } else {
+                rhema_detection::DetectionJob::Quotation
+            },
+            source_is_direct: result.source == "direct",
+            is_chapter_only: result.is_chapter_only,
+            is_fuzzy_book: result.is_fuzzy_book,
+            is_complete_citation: result.source == "direct"
+                && !result.is_chapter_only
+                && !result.is_fuzzy_book
+                && result.book_number > 0
+                && result.chapter > 0
+                && result.verse > 0,
+            is_final_utterance,
+            has_lexical_quote: result.has_lexical_quote,
+            quote_coverage,
+            candidate_margin,
+            independent_final_count: note_independent_finals(
+                &result.verse_ref,
+                utterance_id,
+                is_final_utterance,
+            ),
+            automation_live_enabled,
+        });
+        apply_presentation_grant(result, grant, is_final_utterance, utterance_id);
+    }
+}
+
 fn retain_results_allowed_by_bible_mode(
     results: &mut Vec<crate::commands::detection::DetectionResult>,
     bible_detection_enabled: bool,
@@ -401,7 +559,7 @@ pub(crate) fn run_direct_detection(
     // inside the operator's configured policy.
     let auto_queue_threshold = merger.auto_queue_threshold();
     drop(merger);
-    let mut reading_candidates = direct_reading_candidates(&merged);
+    let mut reading_candidates = direct_reading_candidates(&merged, is_final_transcript);
     if merged.is_empty() {
         emit_egw_direct_detections(app, seq, latest_seq, transcript);
         return reading_candidates;
@@ -442,12 +600,22 @@ pub(crate) fn run_direct_detection(
                     auto_queued: m.auto_queued,
                     transcript_snippet: m.detection.transcript_snippet.clone(),
                     is_chapter_only: m.detection.is_chapter_only,
-                    egw_paragraph: None,
-                    match_char_start: None,
+                    ..crate::commands::detection::DetectionResult::default()
                 }
             })
             .collect();
         let mut results = filter_live_direct_results_to_reading_scope(app, results);
+        authorize_emitted_results(
+            &mut results,
+            &merged
+                .iter()
+                .map(|merged| merged.detection.clone())
+                .collect::<Vec<_>>(),
+            transcript,
+            is_final_transcript,
+            None,
+            is_automation_live_enabled(app),
+        );
         suppress_repeat_direct_emissions(&RECENT_DIRECT, &mut results, is_final_transcript);
         for r in &results {
             log_direct_found(r, transcript, "(no DB)");
@@ -478,6 +646,17 @@ pub(crate) fn run_direct_detection(
         reading_candidates.clear();
     }
     let mut results = filter_live_direct_results_to_reading_scope(app, results);
+    authorize_emitted_results(
+        &mut results,
+        &merged
+            .iter()
+            .map(|merged| merged.detection.clone())
+            .collect::<Vec<_>>(),
+        transcript,
+        is_final_transcript,
+        None,
+        is_automation_live_enabled(app),
+    );
     suppress_repeat_direct_emissions(&RECENT_DIRECT, &mut results, is_final_transcript);
 
     for r in &results {
@@ -520,6 +699,7 @@ pub(crate) fn run_direct_detection(
 /// Uses `spawn_blocking` so mutex locks and DB I/O don't starve the tokio runtime.
 #[expect(
     clippy::too_many_lines,
+    clippy::too_many_arguments,
     reason = "live semantic detection coordinates stale checks, explicit EGW routing, and emission in one pipeline"
 )]
 pub(crate) fn run_semantic_detection(
@@ -530,6 +710,8 @@ pub(crate) fn run_semantic_detection(
     transcript: &str,
     egw_transcript: &str,
     stt_confidence: f64,
+    is_final: bool,
+    utterance_id: u64,
 ) {
     if !is_semantic_detection_enabled(app) {
         log::debug!("[DET-SEMANTIC] Skipping job seq={seq}; semantic detection disabled");
@@ -744,6 +926,17 @@ pub(crate) fn run_semantic_detection(
     let results =
         filter_live_semantic_results_to_reading_scope(app, results, semantic_min_confidence);
     let mut results = finalize_live_semantic_results(results, semantic_min_confidence);
+    authorize_emitted_results(
+        &mut results,
+        &merged
+            .iter()
+            .map(|merged| merged.detection.clone())
+            .collect::<Vec<_>>(),
+        transcript,
+        is_final,
+        Some(utterance_id),
+        is_automation_live_enabled(app),
+    );
     if stt_confidence > 0.0 && stt_confidence < 0.65 {
         for result in &mut results {
             result.rank_score *= 0.85;
@@ -1053,8 +1246,7 @@ mod bible_mode_tests {
             auto_queued: false,
             transcript_snippet: "spoken words".to_string(),
             is_chapter_only: false,
-            egw_paragraph: None,
-            match_char_start: None,
+            ..DetectionResult::default()
         }
     }
 

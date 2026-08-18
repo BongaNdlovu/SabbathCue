@@ -239,6 +239,7 @@ function commitVersePreviewAndMaybeAutoLive(
   options?: {
     navigate?: boolean
     autoLive?: boolean
+    startReading?: boolean
   }
 ): void {
   const broadcast = getBroadcastLiveStore()
@@ -252,6 +253,10 @@ function commitVersePreviewAndMaybeAutoLive(
       verse: traceVerseDetails(verse),
     })
     commitVerseToLive(verse, { makeLive: true })
+  }
+
+  // Reading mode is citation-only. Semantic/request live must not start it.
+  if (options?.startReading) {
     void invokeTauri("set_reading_mode_reference", {
       bookNumber: verse.book_number,
       bookName: verse.book_name,
@@ -270,6 +275,7 @@ function scheduleDigitGrowthHold(
   options?: {
     navigate?: boolean
     autoLive?: boolean
+    startReading?: boolean
   }
 ): void {
   clearPendingDigitGrowthTimer()
@@ -313,6 +319,7 @@ export function previewVerseAndMaybeAutoLive(
   options?: {
     navigate?: boolean
     autoLive?: boolean
+    startReading?: boolean
   }
 ) {
   // Auto-path only: manual present/select is intentional and must stay instant.

@@ -567,6 +567,7 @@ pub(crate) fn apply_egw_auto_queue(
                 transcript_snippet: result.transcript_snippet.clone(),
                 detected_at: 0,
                 is_chapter_only: false,
+                ..rhema_detection::Detection::default()
             }
         })
         .collect();

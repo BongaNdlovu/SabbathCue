@@ -1447,6 +1447,7 @@ mod tests {
             transcript_snippet: "Revelation 12, 7 to 12".to_string(),
             detected_at: 0,
             is_chapter_only: false,
+            ..Detection::default()
         };
 
         assert_eq!(
@@ -1481,6 +1482,7 @@ mod tests {
                 transcript_snippet: "For God so loved the world".to_string(),
                 detected_at: 0,
                 is_chapter_only: false,
+                ..Detection::default()
             },
             auto_queued: false,
         };
@@ -1515,6 +1517,7 @@ mod tests {
                 transcript_snippet: "God shall wipe away all tears".to_string(),
                 detected_at: 0,
                 is_chapter_only: false,
+                ..Detection::default()
             },
             auto_queued: false,
         };
@@ -1552,6 +1555,7 @@ mod tests {
                 transcript_snippet: "Nothing can separate us from God's love".to_string(),
                 detected_at: 0,
                 is_chapter_only: false,
+                ..Detection::default()
             },
             auto_queued: false,
         };

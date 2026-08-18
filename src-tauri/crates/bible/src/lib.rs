@@ -16,6 +16,7 @@ pub mod egw;
 pub mod error;
 pub mod lookup;
 pub mod models;
+pub mod request_retrieval;
 pub mod search;
 
 mod kjv_names;
@@ -23,4 +24,5 @@ mod kjv_names;
 pub use db::*;
 pub use error::*;
 pub use models::*;
+pub use request_retrieval::*;
 pub use search::Bm25Result;

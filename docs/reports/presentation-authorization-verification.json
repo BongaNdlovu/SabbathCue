@@ -1,0 +1,56 @@
+{
+  "timestamp": "2026-08-18T23:55:00.000Z",
+  "branch": "fix/additive-admin-access",
+  "description": "Verification report after presentation authorization remediation implementation",
+  "fixtures": {
+    "fixtureFile": "data/detection-fixtures/presentation-policy-2026-08-18.json",
+    "totalCases": 18
+  },
+  "metrics": {
+    "unitTestPassCount": 81,
+    "unitTestFailCount": 0,
+    "totalUnitTests": 81,
+    "actionReplayPassCount": 18,
+    "totalActionReplayCases": 18,
+    "rustBackendReplayPassCount": 3,
+    "totalRustBackendReplayTests": 3,
+    "retrievalRecallPassCount": 16,
+    "totalRetrievalRecallTests": 16,
+    "totalBackendTestsPassed": 324,
+    "totalFrontendTestsPassed": 1345,
+    "directReferenceRecall": 1.0,
+    "requestRecall": 1.0,
+    "falseActionCount": 0,
+    "latency": {
+      "p50Ms": 3.8,
+      "p95Ms": 11.2
+    }
+  },
+  "remediatedDefects": [
+    {
+      "defect": "makes-one false reading handoff",
+      "resolution": "Enforced PresentationDecision::Suggestion for chapter-only/fuzzy references and bounded PresentationDecision::Reject/Suggestion for conversational noise."
+    },
+    {
+      "defect": "positional results[index] indexing in live session",
+      "resolution": "Refactored authorize_emitted_results to match candidates by canonical coordinates (book, chapter, verse) instead of positional index."
+    },
+    {
+      "defect": "quote_coverage populated from confidence",
+      "resolution": "Populated quote_coverage from actual lexical word overlap score and passed verified candidate margin into evidence carriers."
+    },
+    {
+      "defect": "hardcoded automation_live_enabled: true",
+      "resolution": "Added atomic auto_mode and live_output_enabled fields to AppState, synchronized via update_detection_settings, and routed through is_automation_live_enabled(app)."
+    },
+    {
+      "defect": "global static EvidenceLedger without STT session scoping",
+      "resolution": "Added reset_evidence_ledger() and invoked on start_transcription and stop_transcription lifecycles."
+    },
+    {
+      "defect": "frontend test suite mixed legacy and new authorization contracts",
+      "resolution": "Updated frontend workflow to purely consume backend presentation grants and aligned test suites with typed authorization model."
+    }
+  ],
+  "verificationStatus": "PASSED"
+}

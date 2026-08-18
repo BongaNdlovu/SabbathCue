@@ -1,0 +1,32 @@
+{
+  "timestamp": "2026-08-18T23:30:00.000Z",
+  "commit": "6c8e0b7834dae1f82322be38b42a563d794ba366",
+  "branch": "fix/additive-admin-access",
+  "description": "Baseline before single presentation-authority policy integration",
+  "fixtures": {
+    "fixtureFile": "data/detection-fixtures/presentation-policy-2026-08-18.json",
+    "totalCases": 18
+  },
+  "metrics": {
+    "unitTestPassCount": 51,
+    "unitTestFailCount": 16,
+    "totalUnitTests": 67,
+    "retrievalRecallPassCount": 16,
+    "totalRetrievalRecallTests": 16,
+    "directReferenceRecall": 1.0,
+    "requestRecall": 1.0,
+    "falseActionCount": 1,
+    "latency": {
+      "p50Ms": 4.2,
+      "p95Ms": 14.8
+    }
+  },
+  "knownDefects": [
+    "makes-one false reading handoff",
+    "positional results[index] indexing in live session",
+    "quote_coverage populated from confidence",
+    "hardcoded automation_live_enabled: true",
+    "global static EvidenceLedger without STT session scoping",
+    "frontend test suite mixed legacy and new authorization contracts"
+  ]
+}

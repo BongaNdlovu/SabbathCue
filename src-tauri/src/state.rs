@@ -12,6 +12,8 @@ pub struct AppState {
     pub detection_paused: Arc<AtomicBool>,
     pub bible_detection_enabled: Arc<AtomicBool>,
     pub semantic_detection_enabled: Arc<AtomicBool>,
+    pub auto_mode: Arc<AtomicBool>,
+    pub live_output_enabled: Arc<AtomicBool>,
     stt_task_handles: Vec<tauri::async_runtime::JoinHandle<()>>,
 }
 
@@ -26,6 +28,8 @@ impl AppState {
             detection_paused: Arc::new(AtomicBool::new(false)),
             bible_detection_enabled: Arc::new(AtomicBool::new(true)),
             semantic_detection_enabled: Arc::new(AtomicBool::new(true)),
+            auto_mode: Arc::new(AtomicBool::new(true)),
+            live_output_enabled: Arc::new(AtomicBool::new(false)),
             stt_task_handles: Vec::new(),
         }
     }

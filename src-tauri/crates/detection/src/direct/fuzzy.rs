@@ -49,8 +49,8 @@ fn levenshtein(a: &str, b: &str) -> usize {
 /// the 66 canonical names; keep sorted.
 const FUZZY_NON_BOOK_WORDS: &[&str] = &[
     "ants", "arts", "dude", "duke", "game", "games", "hope", "house", "jade", "jobs", "join",
-    "judge", "judged", "june", "kings", "lake", "like", "marks", "much", "name", "names", "noel",
-    "number", "numbers", "romance", "rude", "same", "title", "truth", "woman",
+    "judge", "judged", "june", "kings", "lake", "like", "makes", "marks", "much", "name", "names",
+    "noel", "number", "numbers", "romance", "rude", "same", "title", "truth", "woman",
 ];
 
 /// Determine the maximum allowed edit distance for a book name.
@@ -231,6 +231,7 @@ mod tests {
             ("the truth will set you free", "Ruth"),
             ("so many kings have ruled", "1 Kings"),
             ("we played a fun game", "James"),
+            ("that makes one wonder", "James"),
             ("she is a wise woman", "Romans"),
             ("there is much to learn", "Micah"),
             ("welcome to the house of the lord", "Hosea"),

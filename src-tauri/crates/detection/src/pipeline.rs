@@ -361,6 +361,10 @@ impl DetectionPipeline {
                             .max(overlap_confidence.unwrap_or(0.0))
                             .max(anchor_rank_score);
                     }
+                    existing.has_lexical_quote |= has_quote_evidence || fts.is_phrase_match;
+                    existing.quote_coverage = existing
+                        .quote_coverage
+                        .max(overlap_confidence.unwrap_or(0.0));
                 }
                 continue;
             }
@@ -388,6 +392,12 @@ impl DetectionPipeline {
                 transcript_snippet: snippet.clone(),
                 detected_at: now,
                 is_chapter_only: false,
+                is_fuzzy_book: false,
+                has_lexical_quote: has_quote_evidence || fts.is_phrase_match,
+                quote_coverage: overlap_confidence.unwrap_or(0.0),
+                candidate_margin: 1.0,
+                utterance_id: None,
+                is_final_utterance: false,
             });
             vector_keys.insert(key);
         }

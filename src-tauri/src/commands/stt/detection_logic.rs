@@ -5,7 +5,9 @@
 //! that the live loop in `detection.rs` calls into. Keeping them separate makes
 //! them trivially unit-testable and shrinks the orchestration surface.
 
-use rhema_detection::{MergedDetection, VerseRef};
+use rhema_detection::{
+    decide_presentation, MergedDetection, PresentationEvidence, PresentationGrant, VerseRef,
+};
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct DirectReadingCandidate {
@@ -146,8 +148,51 @@ pub(crate) fn transcript_defers_to_direct(text: &str) -> bool {
         || rhema_detection::is_voice_command_utterance(text)
 }
 
-pub(crate) fn is_direct_reading_handoff(detection: &rhema_detection::Detection) -> bool {
-    detection.confidence >= 0.90 || detection.is_chapter_only
+pub(crate) fn is_direct_reading_handoff(
+    detection: &rhema_detection::Detection,
+    is_final_utterance: bool,
+) -> bool {
+    citation_grant(detection, is_final_utterance).may_start_reading()
+}
+
+pub(crate) fn citation_grant(
+    detection: &rhema_detection::Detection,
+    is_final_utterance: bool,
+) -> PresentationGrant {
+    grant_for_detection(detection, "", is_final_utterance, 1, false, 1.0)
+}
+
+pub(crate) fn grant_for_detection(
+    detection: &rhema_detection::Detection,
+    transcript: &str,
+    is_final_utterance: bool,
+    independent_final_count: u32,
+    automation_live_enabled: bool,
+    candidate_margin: f64,
+) -> PresentationGrant {
+    let source_is_direct = matches!(
+        detection.source,
+        rhema_detection::DetectionSource::DirectReference
+    );
+    let looks_like_request = rhema_detection::looks_like_verse_request(transcript);
+    let job = rhema_detection::classify_job(
+        source_is_direct,
+        looks_like_request,
+        detection.has_lexical_quote,
+    );
+    decide_presentation(&PresentationEvidence {
+        job,
+        source_is_direct,
+        is_chapter_only: detection.is_chapter_only,
+        is_fuzzy_book: detection.is_fuzzy_book,
+        is_complete_citation: detection.is_complete_citation(),
+        is_final_utterance,
+        has_lexical_quote: detection.has_lexical_quote,
+        quote_coverage: detection.quote_coverage,
+        candidate_margin,
+        independent_final_count,
+        automation_live_enabled,
+    })
 }
 
 /// STT partials often emit the first digit of a multi-digit verse ("verse 3"
@@ -166,10 +211,13 @@ pub(crate) fn is_digit_prefix_extension(shorter: i32, longer: i32) -> bool {
     long_text.starts_with(&short_text) && long_text.len() > short_text.len()
 }
 
-pub(crate) fn direct_reading_candidates(merged: &[MergedDetection]) -> Vec<DirectReadingCandidate> {
+pub(crate) fn direct_reading_candidates(
+    merged: &[MergedDetection],
+    is_final_utterance: bool,
+) -> Vec<DirectReadingCandidate> {
     let candidates: Vec<DirectReadingCandidate> = merged
         .iter()
-        .filter(|merged| is_direct_reading_handoff(&merged.detection))
+        .filter(|merged| is_direct_reading_handoff(&merged.detection, is_final_utterance))
         .map(|merged| DirectReadingCandidate {
             verse_ref: merged.detection.verse_ref.clone(),
             confidence: merged.detection.confidence,
@@ -264,12 +312,16 @@ pub(crate) fn should_restart_reading(
     let recent = &candidate.verse_ref;
 
     if !active {
-        // Fresh/paused: chapter-only may load context. Growable full verses
-        // (1-9) wait for a stable multi-digit form when possible.
-        if !candidate.is_chapter_only && verse_digits_could_grow(recent.verse_start) {
+        // Fresh/paused: only a complete, non-fuzzy citation may start reading
+        // mode. Chapter-only placeholders keep internal context but never
+        // change what the church sees.
+        if candidate.is_chapter_only {
             return false;
         }
-        return true;
+        if verse_digits_could_grow(recent.verse_start) {
+            return false;
+        }
+        return candidate.confidence >= 0.90;
     }
 
     if current_book == recent.book_number && current_chapter == recent.chapter {
@@ -289,11 +341,14 @@ pub(crate) fn should_restart_reading(
     }
 
     if current_book != recent.book_number {
-        if !candidate.is_chapter_only && verse_digits_could_grow(recent.verse_start) {
+        if candidate.is_chapter_only {
             return false;
         }
-        // Different book — only an explicit, high-confidence reference restarts.
-        return candidate.confidence >= 0.90 || candidate.is_chapter_only;
+        if verse_digits_could_grow(recent.verse_start) {
+            return false;
+        }
+        // Different book — only an explicit, high-confidence citation restarts.
+        return candidate.confidence >= 0.90;
     }
 
     // Same book, different chapter — natural progression, but not for growable.

@@ -4,7 +4,6 @@ import {
   dropDigitPrefixLosers,
   handleReadingAdvance,
   handleVerseDetections,
-  pendingSemanticConfirmationCountForTests,
   refineSemanticAutoLiveWinner,
   resetDetectionArbitrationForTests,
   resetSemanticConfirmationForTests,
@@ -54,7 +53,7 @@ vi.mock("@tauri-apps/plugin-store", () => ({
 function makeDetection(
   overrides: Partial<DetectionResult> = {}
 ): DetectionResult {
-  return {
+  const detection: DetectionResult = {
     verse_ref: "John 3:16",
     verse_text: "For God so loved the world",
     book_name: "John",
@@ -66,8 +65,38 @@ function makeDetection(
     auto_queued: true,
     transcript_snippet: "John three sixteen",
     is_chapter_only: false,
+    is_fuzzy_book: false,
+    has_lexical_quote: false,
+    is_final_utterance: true,
     ...overrides,
   }
+  if (!detection.authorization) {
+    if (detection.source === "direct") {
+      detection.authorization = detection.is_chapter_only
+        ? "suggestion"
+        : "live-authorized"
+      detection.job = "citation"
+    } else if (detection.content_type === "egw") {
+      detection.authorization =
+        detection.confidence >= 0.88 || detection.auto_queued
+          ? "live-authorized"
+          : "preview-authorized"
+      detection.job = "quotation"
+    } else {
+      detection.job = "quotation"
+      if (detection.confidence >= 0.85) {
+        detection.authorization = "live-authorized"
+      } else if (detection.confidence >= 0.7) {
+        detection.authorization = "preview-authorized"
+      } else {
+        detection.authorization = "suggestion"
+      }
+    }
+  }
+  if (!detection.job) {
+    detection.job = detection.source === "direct" ? "citation" : "quotation"
+  }
+  return detection
 }
 
 function makeQueueItem(overrides: Partial<QueueItem> = {}): QueueItem {
@@ -299,7 +328,7 @@ describe("verse detection workflow", () => {
     expect(useQueueStore.getState().items).toHaveLength(0)
   })
 
-  it("requires repeated semantic evidence at the auto-live threshold", async () => {
+  it("does not auto-preview unauthorized semantic Bible detections", async () => {
     useSettingsStore.setState({ confidenceThreshold: 0.85 })
     await handleVerseDetections([
       makeDetection({
@@ -312,6 +341,7 @@ describe("verse detection workflow", () => {
         verse: 10,
         confidence: 0.85,
         auto_queued: false,
+        authorization: "suggestion",
         transcript_snippet: "the court was seated and the books were opened",
       }),
     ])
@@ -329,7 +359,36 @@ describe("verse detection workflow", () => {
         verse: 10,
         confidence: 0.85,
         auto_queued: false,
+        authorization: "suggestion",
         transcript_snippet: "the court was seated and the books were opened",
+      }),
+    ])
+
+    expect(useBibleStore.getState().selectedVerse).toBeNull()
+    expect(useBroadcastStore.getState().liveItem).toBeNull()
+    expect(invokeMock).not.toHaveBeenCalledWith(
+      "set_reading_mode_reference",
+      expect.anything()
+    )
+  })
+
+  it("previews an authorized quotation without starting reading mode", async () => {
+    await handleVerseDetections([
+      makeDetection({
+        source: "semantic",
+        verse_ref: "Daniel 7:10",
+        verse_text: "The court was seated, and the books were opened.",
+        book_name: "Daniel",
+        book_number: 27,
+        chapter: 7,
+        verse: 10,
+        confidence: 0.98,
+        auto_queued: false,
+        has_lexical_quote: true,
+        authorization: "live-authorized",
+        job: "quotation",
+        is_final_utterance: true,
+        utterance_id: 9,
       }),
     ])
 
@@ -340,6 +399,10 @@ describe("verse detection workflow", () => {
     })
     expect(useBroadcastStore.getState().liveItem?.reference).toBe(
       "Daniel 7:10 (KJV)"
+    )
+    expect(invokeMock).not.toHaveBeenCalledWith(
+      "set_reading_mode_reference",
+      expect.anything()
     )
   })
 
@@ -482,7 +545,7 @@ describe("verse detection workflow", () => {
     })
   })
 
-  it("prunes expired pending semantic confirmations instead of accumulating them", async () => {
+  it("does not preview or queue unconfirmed weak semantic detections", async () => {
     const unconfirmed = [
       {
         verse_ref: "Daniel 7:10",
@@ -517,32 +580,15 @@ describe("verse detection workflow", () => {
       await handleVerseDetections([
         makeDetection({
           source: "semantic",
-          confidence: 0.85,
+          confidence: 0.65,
+          authorization: "suggestion",
           auto_queued: false,
           ...v,
         }),
       ])
     }
-    expect(pendingSemanticConfirmationCountForTests()).toBe(unconfirmed.length)
-
-    // Let every pending entry age out past the confirmation window.
-    vi.advanceTimersByTime(9_000)
-
-    // A fresh weak semantic detection must evict the expired keys, not pile on.
-    await handleVerseDetections([
-      makeDetection({
-        source: "semantic",
-        confidence: 0.85,
-        auto_queued: false,
-        verse_ref: "Micah 6:8",
-        book_name: "Micah",
-        book_number: 33,
-        chapter: 6,
-        verse: 8,
-      }),
-    ])
-
-    expect(pendingSemanticConfirmationCountForTests()).toBe(1)
+    expect(useBibleStore.getState().selectedVerse).toBeNull()
+    expect(useQueueStore.getState().items).toHaveLength(0)
   })
 
   it("auto-previews one exceptionally strong semantic detection", async () => {
@@ -568,7 +614,7 @@ describe("verse detection workflow", () => {
     expect(useQueueStore.getState().items).toHaveLength(0)
   })
 
-  it("queues semantic detections without pending navigation", async () => {
+  it("keeps semantic quotations out of the auto-queue in manual mode", async () => {
     useSettingsStore.setState({ autoMode: false })
     await handleVerseDetections([
       makeDetection({
@@ -580,15 +626,8 @@ describe("verse detection workflow", () => {
 
     expect(useBibleStore.getState().selectedVerse).toBeNull()
     expect(useBibleStore.getState().pendingNavigation).toBeNull()
-    expect(useQueueStore.getState().items).toEqual([
-      expect.objectContaining({
-        source: "ai-semantic",
-        confidence: 0.72,
-        presentation: expect.objectContaining({
-          reference: "John 3:16",
-        }),
-      }),
-    ])
+    expect(useDetectionStore.getState().detections).toHaveLength(1)
+    expect(useQueueStore.getState().items).toHaveLength(0)
   })
 
   it("previews a stronger semantic hit over a lower-confidence direct hit", async () => {
@@ -632,7 +671,7 @@ describe("verse detection workflow", () => {
     expect(useQueueStore.getState().items).toHaveLength(0)
   })
 
-  it("queues chapter-only direct detections without selecting preview", async () => {
+  it("keeps chapter-only direct detections as suggestions without auto-queueing", async () => {
     useSettingsStore.setState({ autoMode: false })
     await handleVerseDetections([
       makeDetection({
@@ -641,24 +680,13 @@ describe("verse detection workflow", () => {
         verse_text: "Chapter start",
         transcript_snippet: "John chapter three",
         is_chapter_only: true,
+        authorization: "suggestion",
       }),
     ])
 
     expect(useBibleStore.getState().selectedVerse).toBeNull()
-    expect(useQueueStore.getState().items).toEqual([
-      expect.objectContaining({
-        source: "ai-direct",
-        is_chapter_only: true,
-        presentation: expect.objectContaining({
-          reference: "John 3",
-          verse: expect.objectContaining({
-            book_number: 43,
-            chapter: 3,
-            verse: 1,
-          }),
-        }),
-      }),
-    ])
+    expect(useDetectionStore.getState().detections).toHaveLength(1)
+    expect(useQueueStore.getState().items).toHaveLength(0)
   })
 
   it("refines a chapter-only queue item instead of adding a duplicate verse", async () => {
@@ -736,7 +764,7 @@ describe("verse detection workflow", () => {
   })
 
   it("does not auto-live direct detections when the toggle is off", async () => {
-    const detection = {
+    const detection = makeDetection({
       verse_ref: "John 3:16",
       verse_text: "For God so loved the world.",
       book_name: "John",
@@ -744,11 +772,11 @@ describe("verse detection workflow", () => {
       chapter: 3,
       verse: 16,
       confidence: 0.95,
-      source: "direct" as const,
+      source: "direct",
       auto_queued: false,
       transcript_snippet: "John 3:16",
       is_chapter_only: false,
-    }
+    })
 
     useBroadcastStore.setState({
       isLive: true,
@@ -1511,6 +1539,8 @@ describe("verse detection workflow", () => {
         chapter: 16,
         verse: 25,
         transcript_snippet: "the passage where paul and silas sang in prison",
+        authorization: "preview-authorized",
+        job: "request",
         ...overrides,
       })
     }

@@ -1,0 +1,261 @@
+[
+  {
+    "id": "explicit-genesis-1-8",
+    "category": "citation",
+    "events": [
+      { "kind": "partial", "utteranceId": 1001, "text": "Genesis one" },
+      { "kind": "final", "utteranceId": 1001, "text": "Genesis one, verse eight" }
+    ],
+    "expect": {
+      "authorization": ["live-authorized", "reading-authorized"],
+      "preview": "Genesis 1:8",
+      "live": "Genesis 1:8",
+      "queue": ["Genesis 1:8"],
+      "reading": "Genesis 1:8"
+    }
+  },
+  {
+    "id": "explicit-joshua-1-9",
+    "category": "citation",
+    "events": [
+      { "kind": "partial", "utteranceId": 1002, "text": "Joshua chapter one" },
+      { "kind": "final", "utteranceId": 1002, "text": "Joshua chapter one, verse nine" }
+    ],
+    "expect": {
+      "authorization": ["live-authorized", "reading-authorized"],
+      "preview": "Joshua 1:9",
+      "live": "Joshua 1:9",
+      "queue": ["Joshua 1:9"],
+      "reading": "Joshua 1:9"
+    }
+  },
+  {
+    "id": "request-paul-silas-prison",
+    "category": "request",
+    "events": [
+      { "kind": "final", "utteranceId": 1003, "text": "show me the verse about Paul and Silas singing in prison" }
+    ],
+    "expect": {
+      "authorization": ["preview-authorized"],
+      "preview": "Acts 16:25",
+      "live": null,
+      "queue": [],
+      "reading": null
+    }
+  },
+  {
+    "id": "request-jesus-walking-water",
+    "category": "request",
+    "events": [
+      { "kind": "final", "utteranceId": 1004, "text": "the verse about Jesus walking on water" }
+    ],
+    "expect": {
+      "authorization": ["preview-authorized"],
+      "preview": "Matthew 14:25",
+      "previewAny": ["Matthew 14:25", "John 6:19"],
+      "live": null,
+      "queue": [],
+      "reading": null
+    }
+  },
+  {
+    "id": "request-joseph-pit-well",
+    "category": "request",
+    "events": [
+      { "kind": "final", "utteranceId": 1005, "text": "show the passage where Joseph is thrown into a well" }
+    ],
+    "expect": {
+      "authorization": ["preview-authorized"],
+      "preview": "Genesis 37:24",
+      "live": null,
+      "queue": [],
+      "reading": null
+    }
+  },
+  {
+    "id": "request-mark-of-beast",
+    "category": "request",
+    "events": [
+      { "kind": "final", "utteranceId": 1006, "text": "what is the verse about the mark of the beast" }
+    ],
+    "expect": {
+      "authorization": ["preview-authorized"],
+      "preview": "Revelation 13:16",
+      "previewAny": ["Revelation 13:16", "Revelation 13:17"],
+      "live": null,
+      "queue": [],
+      "reading": null
+    }
+  },
+  {
+    "id": "noise-numeric-testing",
+    "category": "noise",
+    "events": [
+      { "kind": "final", "utteranceId": 1007, "text": "testing one two three four testing sound check" }
+    ],
+    "expect": {
+      "authorization": ["suggestion", "reject"],
+      "preview": null,
+      "live": null,
+      "queue": [],
+      "reading": null
+    }
+  },
+  {
+    "id": "false-direct-makes-one",
+    "category": "noise",
+    "events": [
+      { "kind": "partial", "utteranceId": 1008, "text": "that explains or makes one" },
+      { "kind": "final", "utteranceId": 1008, "text": "that explains or makes one" }
+    ],
+    "expect": {
+      "authorization": ["suggestion", "reject"],
+      "preview": null,
+      "live": null,
+      "queue": [],
+      "reading": null
+    }
+  },
+  {
+    "id": "theology-egw-passage-patriarchs",
+    "category": "egw-theology",
+    "events": [
+      { "kind": "final", "utteranceId": 1009, "text": "A statement by Ellen White in Patriarchs and Prophets says the human race yet retained much of its early vigor" }
+    ],
+    "expect": {
+      "authorization": ["suggestion", "reject"],
+      "preview": null,
+      "live": null,
+      "queue": [],
+      "reading": null
+    }
+  },
+  {
+    "id": "theology-egw-passage-great-controversy",
+    "category": "egw-theology",
+    "events": [
+      { "kind": "final", "utteranceId": 1010, "text": "In the Great Controversy we read that the light of truth was not wholly extinguished" }
+    ],
+    "expect": {
+      "authorization": ["suggestion", "reject"],
+      "preview": null,
+      "live": null,
+      "queue": [],
+      "reading": null
+    }
+  },
+  {
+    "id": "theology-egw-passage-steps-to-christ",
+    "category": "egw-theology",
+    "events": [
+      { "kind": "final", "utteranceId": 1011, "text": "Steps to Christ reminds us that God does not require of us to make our peace with Him" }
+    ],
+    "expect": {
+      "authorization": ["suggestion", "reject"],
+      "preview": null,
+      "live": null,
+      "queue": [],
+      "reading": null
+    }
+  },
+  {
+    "id": "theology-egw-passage-desire-of-ages",
+    "category": "egw-theology",
+    "events": [
+      { "kind": "final", "utteranceId": 1012, "text": "Desire of Ages chapter one tells us that His name shall be called Emmanuel God with us" }
+    ],
+    "expect": {
+      "authorization": ["suggestion", "reject"],
+      "preview": null,
+      "live": null,
+      "queue": [],
+      "reading": null
+    }
+  },
+  {
+    "id": "verified-exact-bible-quotation",
+    "category": "quotation",
+    "events": [
+      { "kind": "final", "utteranceId": 1013, "text": "For God so loved the world that he gave his only begotten Son that whosoever believeth in him should not perish" }
+    ],
+    "expect": {
+      "authorization": ["live-authorized", "preview-authorized"],
+      "preview": "John 3:16",
+      "live": "John 3:16",
+      "queue": [],
+      "reading": null
+    }
+  },
+  {
+    "id": "repeated-partial-plus-final-single-utterance",
+    "category": "finality",
+    "events": [
+      { "kind": "partial", "utteranceId": 1014, "text": "For God so loved the world" },
+      { "kind": "final", "utteranceId": 1014, "text": "For God so loved the world that he gave his only begotten Son" }
+    ],
+    "expect": {
+      "authorization": ["live-authorized", "preview-authorized"],
+      "preview": "John 3:16",
+      "live": "John 3:16",
+      "queue": [],
+      "reading": null
+    }
+  },
+  {
+    "id": "dual-final-confirmation",
+    "category": "finality",
+    "events": [
+      { "kind": "final", "utteranceId": 1015, "text": "stand against the wiles of the devil" },
+      { "kind": "final", "utteranceId": 1016, "text": "put on the whole armour of God to stand against the wiles of the devil" }
+    ],
+    "expect": {
+      "authorization": ["live-authorized", "preview-authorized"],
+      "preview": "Ephesians 6:11",
+      "live": "Ephesians 6:11",
+      "queue": [],
+      "reading": null
+    }
+  },
+  {
+    "id": "chapter-only-joshua-1",
+    "category": "chapter-only",
+    "events": [
+      { "kind": "final", "utteranceId": 1017, "text": "Joshua chapter one" }
+    ],
+    "expect": {
+      "authorization": ["suggestion"],
+      "preview": null,
+      "live": null,
+      "queue": [],
+      "reading": null
+    }
+  },
+  {
+    "id": "fuzzy-book-filipians",
+    "category": "fuzzy",
+    "events": [
+      { "kind": "final", "utteranceId": 1018, "text": "Filipians chapter four verse thirteen" }
+    ],
+    "expect": {
+      "authorization": ["suggestion"],
+      "preview": null,
+      "live": null,
+      "queue": [],
+      "reading": null
+    }
+  },
+  {
+    "id": "unrelated-semantic-high-score-no-lexical",
+    "category": "semantic",
+    "events": [
+      { "kind": "final", "utteranceId": 1019, "text": "we must meditate deeply on spiritual growth and leadership" }
+    ],
+    "expect": {
+      "authorization": ["suggestion", "reject"],
+      "preview": null,
+      "live": null,
+      "queue": [],
+      "reading": null
+    }
+  }
+]

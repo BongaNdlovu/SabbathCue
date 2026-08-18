@@ -83,6 +83,8 @@ pub async fn start_transcription(
         return Err("Transcription is already running".into());
     }
 
+    live_session::reset_evidence_ledger();
+
     let provider_name = provider.as_deref().unwrap_or("vosk");
     let stt_language = stt_language.as_deref().unwrap_or("en");
 
@@ -623,6 +625,8 @@ pub fn stop_transcription(state: State<'_, Mutex<AppState>>) -> Result<(), Strin
     for handle in task_handles {
         handle.abort();
     }
+
+    live_session::reset_evidence_ledger();
 
     log::info!("Transcription stop requested");
     Ok(())

@@ -22,6 +22,12 @@ import {
 } from "@/lib/workflow-trace"
 import { recordDetectionFeedback } from "@/lib/detection-feedback"
 import { recordAutoSelectionPerformance } from "@/lib/detection-profiler"
+import {
+  mayAutoQueue,
+  mayGoLive,
+  mayPreview,
+  mayStartReading,
+} from "@/lib/presentation-decision"
 import { detectionCandidateId, scheduleRanking } from "@/lib/deepseek-ranker"
 import type {
   DetectionResult,
@@ -69,6 +75,8 @@ function readingAdvanceToDetection(advance: ReadingAdvance): DetectionResult {
     auto_queued: false,
     transcript_snippet: "",
     is_chapter_only: false,
+    authorization: "reading-authorized",
+    job: "citation",
     egw_paragraph: null,
   }
 }
@@ -348,6 +356,7 @@ function selectPreviewHit(
       (d) =>
         d.source === "direct" &&
         d.confidence >= minConfidence &&
+        mayPreview(d) &&
         !d.is_chapter_only &&
         (isEgwDetection(d) || d.book_number > 0)
     )
@@ -361,7 +370,7 @@ function selectPreviewHit(
   const semanticCandidates = detections.filter(
     (d) =>
       d.source === "semantic" &&
-      d.confidence >= semanticMinConfidence &&
+      mayPreview(d) &&
       !d.is_chapter_only &&
       (isEgwDetection(d) || d.book_number > 0)
   )
@@ -490,7 +499,7 @@ async function queueDetectedVerse(
     return
   }
 
-  if (!detection.auto_queued) {
+  if (!mayAutoQueue(detection)) {
     recordWorkflowTrace("detection.queue.skipped", "Detection not queued", {
       reason: "auto_queued_false",
       detection: traceDetectionDetails(detection),
@@ -524,7 +533,6 @@ const DETECTION_ARBITRATION_WINDOW_MS = 400
 let pendingDetectionBatch: DetectionResult[] = []
 let detectionArbitrationTimer: ReturnType<typeof setTimeout> | null = null
 let detectionArbitrationWaiters: Array<() => void> = []
-const SEMANTIC_SINGLE_PASS_MATCH_STRENGTH = 0.95
 const SEMANTIC_AUTO_LIVE_MIN_MARGIN = 0.02
 /**
  * When the live screen is already on a verse that still appears in the
@@ -538,8 +546,6 @@ const STICKY_LIVE_SEMANTIC_MARGIN = 0.15
  * within this confidence of the Bible winner (or higher).
  */
 const EGW_OVER_BIBLE_SEMANTIC_MARGIN = 0.05
-const SEMANTIC_CONFIRMATION_WINDOW_MS = 8_000
-const pendingSemanticConfirmations = new Map<string, number>()
 
 function notifyStaleBatchWaiters(): void {
   const current = detectionHandlingGeneration
@@ -586,62 +592,25 @@ function discardStaleDetectionBatch(
 }
 
 export function resetSemanticConfirmationForTests() {
-  pendingSemanticConfirmations.clear()
+  // no-op: backend is single presentation authority
 }
 
 export function pendingSemanticConfirmationCountForTests() {
-  return pendingSemanticConfirmations.size
+  return 0
 }
-
-/** EGW fire-band confidence (matches backend EGW_QUOTE fire threshold). */
-const EGW_SINGLE_PASS_MATCH_STRENGTH = 0.88
 
 function confirmedSemanticHit(
   detection: DetectionResult | null
 ): DetectionResult | null {
-  if (!detection || detection.source !== "semantic") {
-    pendingSemanticConfirmations.clear()
-    return detection
+  if (!detection) {
+    return null
+  }
+  // Backend authorization is the only presentation commit signal.
+  if (!mayPreview(detection)) {
+    return null
   }
 
-  // Live 2026-08-04: PP p.322 at 92% auto_q=true never reached preview/live
-  // because confirmation required 0.95 — first sighting was discarded. EGW
-  // fire-band (0.88+) and prequalified auto_q hits must single-pass.
-  if (
-    isEgwDetection(detection) &&
-    (detection.auto_queued ||
-      detection.confidence >= EGW_SINGLE_PASS_MATCH_STRENGTH)
-  ) {
-    pendingSemanticConfirmations.clear()
-    return detection
-  }
-
-  if (detection.confidence >= SEMANTIC_SINGLE_PASS_MATCH_STRENGTH) {
-    pendingSemanticConfirmations.clear()
-    return detection
-  }
-
-  const key =
-    detection.content_type === "egw"
-      ? `egw:${detection.verse_ref}`
-      : `${detection.book_number}:${detection.chapter}:${detection.verse}`
-  const now = Date.now()
-
-  // Evict confirmations that have aged out of the window so the map cannot
-  // grow unbounded over a long session.
-  for (const [pendingKey, seenAt] of pendingSemanticConfirmations) {
-    if (now - seenAt > SEMANTIC_CONFIRMATION_WINDOW_MS) {
-      pendingSemanticConfirmations.delete(pendingKey)
-    }
-  }
-
-  if (pendingSemanticConfirmations.has(key)) {
-    pendingSemanticConfirmations.delete(key)
-    return detection
-  }
-
-  pendingSemanticConfirmations.set(key, now)
-  return null
+  return detection
 }
 
 let pendingAiSuggestion: Promise<DetectionResult | null> = Promise.resolve(null)
@@ -822,7 +791,10 @@ async function handleVerseDetectionsInternal(
           fallbackReason: resolved.fallbackReason,
         }
       )
-      previewVerseAndMaybeAutoLive(resolved.verse, { autoLive: true })
+      previewVerseAndMaybeAutoLive(resolved.verse, {
+        autoLive: mayGoLive(previewHit),
+        startReading: mayStartReading(previewHit),
+      })
     }
   } else if (autoPreview) {
     recordWorkflowTrace(
@@ -958,5 +930,6 @@ export function handleReadingAdvance(advance: ReadingAdvance) {
 
   previewVerseAndMaybeAutoLive(verse, {
     autoLive: true,
+    startReading: false,
   })
 }

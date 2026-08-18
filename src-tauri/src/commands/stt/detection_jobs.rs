@@ -22,6 +22,8 @@ pub(crate) struct SemanticJob {
     /// `LIVE_EGW_QUOTE_WINDOW_WORDS` — Bible detection keeps the tight `text`.
     pub(crate) egw_text: String,
     pub(crate) stt_confidence: f64,
+    pub(crate) is_final: bool,
+    pub(crate) utterance_id: u64,
 }
 
 /// Take the latest pending semantic job from a shared slot, recovering from
@@ -98,6 +100,8 @@ pub(crate) fn enqueue_final_semantic_job(
             text,
             egw_text,
             stt_confidence,
+            is_final: true,
+            utterance_id: seq,
         },
         "final",
     );
@@ -149,6 +153,8 @@ pub(crate) fn enqueue_partial_semantic_job(
             text,
             egw_text,
             stt_confidence,
+            is_final: false,
+            utterance_id: seq,
         },
         "partial",
     );
