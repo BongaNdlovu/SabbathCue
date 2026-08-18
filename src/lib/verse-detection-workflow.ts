@@ -777,10 +777,10 @@ async function handleVerseDetectionsInternal(
         aiWinner
       )
     : null
-  const previewHit =
-    selectedHit && selectedHit === aiWinner
-      ? selectedHit
-      : confirmedSemanticHit(selectedHit)
+  // AI sees the same provisional partial batches as local detection. Do not
+  // let a one-off prefix winner commit a live verse; it must survive the same
+  // repeated-candidate confirmation used for local semantics.
+  const previewHit = confirmedSemanticHit(selectedHit)
   const resolvedDetections = new WeakMap<
     DetectionResult,
     ResolvedDetectionVerse

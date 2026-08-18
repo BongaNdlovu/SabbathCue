@@ -83,6 +83,9 @@ describe("buildRankingCandidates", () => {
     expect(candidates[0].reference).toBe("Acts 16:25")
     expect(candidates[0].verseText).toBe("x".repeat(300))
     expect(candidates[0].confidence).toBe(0.78)
+    expect(candidates[0].evidence.rankScore).toBe(0.78)
+    expect(candidates[0].evidence.namedBookMatch).toBe(false)
+    expect(candidates[0].evidence.exactPhraseMatch).toBe(false)
   })
 
   it("passes local confidence through to the ranking candidates", () => {
@@ -113,6 +116,8 @@ describe("buildRankingCandidates", () => {
     expect(candidates[0].confidence).toBe(0.7)
     expect(candidates[0].reference).toBe("Esther 4:14")
     expect(candidates[0].verseText).toBe("for such a time as this")
+    expect(candidates[0].evidence.exactPhraseMatch).toBe(true)
+    expect(candidates[0].evidence.overlapTerms).toEqual(["such", "time"])
   })
 
   it("keeps EGW statements out of Bible candidate ranking", () => {
@@ -277,6 +282,36 @@ describe("ranking result cache", () => {
 
     await rankSemanticDetections(
       [...two, semantic({ verse: 27, confidence: 0.7 })],
+      gate
+    )
+
+    expect(invokeTauri).toHaveBeenCalledTimes(2)
+  })
+
+  it("calls again when candidate confidence changes", async () => {
+    invokeTauri.mockResolvedValue(null)
+    await rankSemanticDetections(two, gate)
+
+    await rankSemanticDetections(
+      two.map((detection, index) =>
+        index === 0 ? { ...detection, confidence: 0.76 } : detection
+      ),
+      gate
+    )
+
+    expect(invokeTauri).toHaveBeenCalledTimes(2)
+  })
+
+  it("calls again when candidate verse text changes", async () => {
+    invokeTauri.mockResolvedValue(null)
+    await rankSemanticDetections(two, gate)
+
+    await rankSemanticDetections(
+      two.map((detection, index) =>
+        index === 0
+          ? { ...detection, verse_text: `${detection.verse_text} updated` }
+          : detection
+      ),
       gate
     )
 
@@ -459,13 +494,14 @@ describe("preferSpokenBook", () => {
 })
 
 describe("pickRankingTranscript", () => {
-  it("uses the longest semantic snippet, clamped to 500 chars", () => {
+  it("uses the most common normalized semantic snippet, clamped to 500 chars", () => {
     const detections = [
-      semantic({ transcript_snippet: "short" }),
-      semantic({ verse: 26, transcript_snippet: "x".repeat(600) }),
+      semantic({ transcript_snippet: "Peter in prison" }),
+      semantic({ verse: 26, transcript_snippet: "  Peter   in prison " }),
+      semantic({ verse: 27, transcript_snippet: "unrelated longer context" }),
     ]
     const transcript = pickRankingTranscript(detections)
-    expect(transcript.length).toBe(500)
+    expect(transcript).toBe("peter in prison")
   })
 })
 

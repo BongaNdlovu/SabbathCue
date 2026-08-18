@@ -168,7 +168,7 @@ pub async fn start_transcription(
     let partial_semantic_notify = Arc::new(Notify::new());
 
     // Background detection channel — direct + reading mode, non-blocking
-    let (detect_tx, mut detect_rx) = tokio::sync::mpsc::channel::<(u64, String)>(64);
+    let (detect_tx, mut detect_rx) = tokio::sync::mpsc::channel::<(u64, String, bool)>(64);
 
     let detect_sent = Arc::new(AtomicU64::new(0));
     let detect_dropped = Arc::new(AtomicU64::new(0));
@@ -201,12 +201,17 @@ pub async fn start_transcription(
     let det_app = app.clone();
     let det_latest_seq = latest_accepted_seq.clone();
     task_handles.push(spawn_stt_task("detection", async move {
-        while let Some((seq, transcript)) = detect_rx.recv().await {
+        while let Some((seq, transcript, is_final_transcript)) = detect_rx.recv().await {
             let app_clone = det_app.clone();
             let latest_seq = det_latest_seq.clone();
             let _ = tokio::task::spawn_blocking(move || {
-                let direct_candidates =
-                    run_direct_detection(&app_clone, seq, &latest_seq, &transcript);
+                let direct_candidates = run_direct_detection(
+                    &app_clone,
+                    seq,
+                    &latest_seq,
+                    &transcript,
+                    is_final_transcript,
+                );
                 if is_bible_detection_enabled(&app_clone) {
                     check_reading_mode(&app_clone, &transcript, direct_candidates);
                 }
@@ -295,6 +300,7 @@ pub async fn start_transcription(
                                     &detect_dropped_evt,
                                     seq,
                                     detection_text,
+                                    false,
                                     "deepgram_partial",
                                 );
                             }
@@ -422,6 +428,7 @@ pub async fn start_transcription(
                                     &detect_dropped_evt,
                                     seq,
                                     detection_text.clone(),
+                                    speech_final,
                                     "final",
                                 );
 

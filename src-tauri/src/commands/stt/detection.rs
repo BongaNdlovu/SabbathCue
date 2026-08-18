@@ -97,8 +97,11 @@ pub(crate) const DIRECT_REPEAT_SUPPRESSION: Duration = Duration::from_secs(3);
 /// citations with no preview/live path.
 #[derive(Default)]
 pub(crate) struct RecentDirectEmissions {
-    seen: std::collections::HashMap<(String, i32, i32, i32, bool), std::time::Instant>,
+    seen: std::collections::HashMap<DirectEmissionKey, DirectEmissionState>,
 }
+
+type DirectEmissionKey = (String, i32, i32, i32, bool);
+type DirectEmissionState = (std::time::Instant, bool);
 
 impl RecentDirectEmissions {
     pub(crate) fn suppress_repeats(
@@ -107,9 +110,31 @@ impl RecentDirectEmissions {
         window: Duration,
         now: std::time::Instant,
     ) {
+        self.suppress_repeats_with_finality(results, window, now, false);
+    }
+
+    /// A final transcript may be the first complete form of a single-digit
+    /// citation. Let that refinement through even when the same reference was
+    /// emitted provisionally from a partial transcript.
+    pub(crate) fn suppress_repeats_final(
+        &mut self,
+        results: &mut Vec<crate::commands::detection::DetectionResult>,
+        window: Duration,
+        now: std::time::Instant,
+    ) {
+        self.suppress_repeats_with_finality(results, window, now, true);
+    }
+
+    fn suppress_repeats_with_finality(
+        &mut self,
+        results: &mut Vec<crate::commands::detection::DetectionResult>,
+        window: Duration,
+        now: std::time::Instant,
+        allow_final_single_digit: bool,
+    ) {
         // Bound growth on a long service without needing a separate sweep.
         self.seen
-            .retain(|_, seen_at| now.duration_since(*seen_at) < window.saturating_mul(4));
+            .retain(|_, (seen_at, _)| now.duration_since(*seen_at) < window.saturating_mul(4));
         results.retain(|result| {
             let key = (
                 result.content_type.clone(),
@@ -118,8 +143,15 @@ impl RecentDirectEmissions {
                 result.verse,
                 result.is_chapter_only,
             );
+            let is_final_single_digit = allow_final_single_digit
+                && result.content_type == "bible"
+                && (1..=9).contains(&result.verse)
+                && !result.is_chapter_only;
             match self.seen.get(&key) {
-                Some(seen_at) if now.duration_since(*seen_at) < window => {
+                Some((seen_at, seen_final))
+                    if now.duration_since(*seen_at) < window
+                        && (!is_final_single_digit || *seen_final) =>
+                {
                     log::debug!(
                         "[DET-DIRECT] Suppressed repeat {} within {}ms",
                         result.verse_ref,
@@ -128,7 +160,7 @@ impl RecentDirectEmissions {
                     false
                 }
                 _ => {
-                    self.seen.insert(key, now);
+                    self.seen.insert(key, (now, is_final_single_digit));
                     true
                 }
             }
@@ -163,7 +195,55 @@ pub(crate) const WINDOW_RESET_GAP: Duration = Duration::from_secs(8);
 pub(crate) fn rebalance_auto_queue_for_digit_growth(
     results: &mut [crate::commands::detection::DetectionResult],
     auto_queue_threshold: f64,
+    is_final_transcript: bool,
 ) {
+    if is_final_transcript {
+        let non_single_digit_already_queued = results.iter().any(|result| {
+            result.auto_queued
+                && !(result.content_type == "bible"
+                    && (1..=9).contains(&result.verse)
+                    && !result.is_chapter_only)
+        });
+        if non_single_digit_already_queued {
+            for result in results.iter_mut().filter(|result| {
+                result.content_type == "bible"
+                    && (1..=9).contains(&result.verse)
+                    && !result.is_chapter_only
+            }) {
+                result.auto_queued = false;
+            }
+            return;
+        }
+
+        for result in results.iter_mut().filter(|result| {
+            result.content_type == "bible"
+                && (1..=9).contains(&result.verse)
+                && !result.is_chapter_only
+        }) {
+            result.auto_queued = false;
+        }
+
+        if let Some(best) = results
+            .iter_mut()
+            .filter(|result| {
+                result.content_type == "bible"
+                    && result.source == "direct"
+                    && !result.is_chapter_only
+                    && (1..=9).contains(&result.verse)
+                    && result.confidence >= auto_queue_threshold
+            })
+            .max_by(|a, b| {
+                a.confidence
+                    .partial_cmp(&b.confidence)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+                    .then_with(|| a.verse.cmp(&b.verse))
+            })
+        {
+            best.auto_queued = true;
+        }
+        return;
+    }
+
     let mut stripped_auto = false;
     for result in results.iter_mut() {
         if result.content_type == "bible"
@@ -735,6 +815,39 @@ mod tests {
     }
 
     #[test]
+    fn final_single_digit_reference_can_replace_its_partial_repeat() {
+        let mut recent = RecentDirectEmissions::default();
+        let start = std::time::Instant::now();
+
+        let mut partial = vec![direct_result("Genesis 2:8", 1, 2, 8, false)];
+        recent.suppress_repeats(&mut partial, DIRECT_REPEAT_SUPPRESSION, start);
+        assert_eq!(partial.len(), 1);
+
+        let mut final_result = vec![direct_result("Genesis 2:8", 1, 2, 8, false)];
+        recent.suppress_repeats_final(
+            &mut final_result,
+            DIRECT_REPEAT_SUPPRESSION,
+            start + Duration::from_millis(100),
+        );
+        assert_eq!(
+            final_result.len(),
+            1,
+            "the final citation must reach the frontend for auto-live"
+        );
+
+        let mut repeated_final = vec![direct_result("Genesis 2:8", 1, 2, 8, false)];
+        recent.suppress_repeats_final(
+            &mut repeated_final,
+            DIRECT_REPEAT_SUPPRESSION,
+            start + Duration::from_millis(200),
+        );
+        assert!(
+            repeated_final.is_empty(),
+            "only the first final citation may replace the provisional repeat"
+        );
+    }
+
+    #[test]
     fn refined_reference_is_never_suppressed_by_its_own_prefix() {
         // The whole point of the partial race: John 3:16 arrives after John 3:1
         // and must always reach the operator.
@@ -1281,7 +1394,7 @@ mod auto_queue_digit_growth_tests {
     fn single_digit_citation_loses_auto_queue() {
         // "John 3 verse 1..." while "sixteen" is still arriving.
         let mut results = vec![bible_hit(3, 1.0, true)];
-        rebalance_auto_queue_for_digit_growth(&mut results, 0.98);
+        rebalance_auto_queue_for_digit_growth(&mut results, 0.98, false);
         assert!(
             !results[0].auto_queued,
             "a provisional single-digit citation must not auto-fire"
@@ -1289,11 +1402,26 @@ mod auto_queue_digit_growth_tests {
     }
 
     #[test]
+    fn final_single_digit_citation_keeps_auto_queue() {
+        let mut results = vec![bible_hit(8, 1.0, false)];
+        rebalance_auto_queue_for_digit_growth(&mut results, 0.98, true);
+        assert!(results[0].auto_queued);
+    }
+
+    #[test]
+    fn final_single_digit_citation_does_not_create_a_second_auto_queue() {
+        let mut results = vec![bible_hit(8, 1.0, true), bible_hit(16, 1.0, true)];
+        rebalance_auto_queue_for_digit_growth(&mut results, 0.98, true);
+        assert!(!results[0].auto_queued);
+        assert!(results[1].auto_queued);
+    }
+
+    #[test]
     fn auto_queue_moves_to_the_digit_stable_citation() {
         // Live 2026-08-04: 3:1 consumed the merger's single auto-queue slot and
         // left the verse actually being read at auto_q=false.
         let mut results = vec![bible_hit(1, 1.0, true), bible_hit(16, 1.0, false)];
-        rebalance_auto_queue_for_digit_growth(&mut results, 0.98);
+        rebalance_auto_queue_for_digit_growth(&mut results, 0.98, false);
 
         assert!(!results[0].auto_queued, "John 3:1 must lose auto-queue");
         assert!(results[1].auto_queued, "John 3:16 must inherit auto-queue");
@@ -1304,7 +1432,7 @@ mod auto_queue_digit_growth_tests {
         // 3:16 sits below the configured auto-queue threshold, so the merger
         // would never have auto-queued it — the strip must not hand it the flag.
         let mut results = vec![bible_hit(1, 1.0, true), bible_hit(16, 0.80, false)];
-        rebalance_auto_queue_for_digit_growth(&mut results, 0.98);
+        rebalance_auto_queue_for_digit_growth(&mut results, 0.98, false);
 
         assert!(!results[0].auto_queued);
         assert!(
@@ -1318,7 +1446,7 @@ mod auto_queue_digit_growth_tests {
         // Manual mode sets the threshold to infinity, so nothing arrives
         // auto-queued and there is nothing to re-award.
         let mut results = vec![bible_hit(1, 1.0, false), bible_hit(16, 1.0, false)];
-        rebalance_auto_queue_for_digit_growth(&mut results, f64::INFINITY);
+        rebalance_auto_queue_for_digit_growth(&mut results, f64::INFINITY, false);
 
         assert!(results.iter().all(|result| !result.auto_queued));
     }
@@ -1327,7 +1455,7 @@ mod auto_queue_digit_growth_tests {
     fn an_untouched_auto_queue_elsewhere_blocks_re_award() {
         // 3:33 already holds the slot; stripping 3:1 must not add a second.
         let mut results = vec![bible_hit(1, 1.0, true), bible_hit(33, 1.0, true)];
-        rebalance_auto_queue_for_digit_growth(&mut results, 0.98);
+        rebalance_auto_queue_for_digit_growth(&mut results, 0.98, false);
 
         assert!(!results[0].auto_queued);
         assert!(results[1].auto_queued);
