@@ -243,6 +243,8 @@ test.describe("operator flow harness", () => {
       auto_queued: true,
       transcript_snippet: "For God so loved the world",
       is_chapter_only: false,
+      authorization: "reading-authorized",
+      job: "citation",
     }
 
     await page.evaluate((payload) => {
@@ -278,6 +280,8 @@ test.describe("operator flow harness", () => {
       auto_queued: true,
       transcript_snippet: "John 3:16",
       is_chapter_only: false,
+      authorization: "reading-authorized",
+      job: "citation",
     }
     const secondDetection = {
       verse_ref: "John 3:17 (KJV)",
@@ -291,6 +295,8 @@ test.describe("operator flow harness", () => {
       auto_queued: true,
       transcript_snippet: "John 3:17",
       is_chapter_only: false,
+      authorization: "reading-authorized",
+      job: "citation",
     }
 
     await page.locator('[data-slot="transcript-panel"]').waitFor()

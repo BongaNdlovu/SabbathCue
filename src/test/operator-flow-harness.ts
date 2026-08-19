@@ -385,6 +385,8 @@ export function makeHarnessDetection(reference = "John 3:16"): DetectionResult {
     auto_queued: true,
     transcript_snippet: "For God so loved the world",
     is_chapter_only: false,
+    authorization: "reading-authorized",
+    job: "citation",
   }
 }
 
