@@ -50,6 +50,7 @@ struct PresentationEffects {
     decisions: Vec<PresentationDecision>,
 }
 
+#[allow(clippy::too_many_lines, clippy::if_not_else)]
 fn simulate_effects_for_case(case: &ReplayCase) -> PresentationEffects {
     let mut detector = DirectDetector::new();
     let mut ledger = EvidenceLedger::default();
@@ -85,7 +86,7 @@ fn simulate_effects_for_case(case: &ReplayCase) -> PresentationEffects {
                 };
                 let grant = decide_presentation(&evidence);
                 effects.decisions.push(grant.decision);
-                apply_grant_to_effects(&grant, &verse_key, &mut effects);
+                apply_grant_to_effects(grant, &verse_key, &mut effects);
             }
         } else {
             // Semantic / request / noise simulation
@@ -133,7 +134,7 @@ fn simulate_effects_for_case(case: &ReplayCase) -> PresentationEffects {
                 };
                 let grant = decide_presentation(&evidence);
                 effects.decisions.push(grant.decision);
-                apply_grant_to_effects(&grant, resolved_ref, &mut effects);
+                apply_grant_to_effects(grant, resolved_ref, &mut effects);
             } else if case.category == "quotation" || case.category == "finality" {
                 let (resolved_ref, quote_cov, has_quote) = match case.id.as_str() {
                     "verified-exact-bible-quotation" => ("John 3:16", 0.90, true),
@@ -161,7 +162,7 @@ fn simulate_effects_for_case(case: &ReplayCase) -> PresentationEffects {
                 };
                 let grant = decide_presentation(&evidence);
                 effects.decisions.push(grant.decision);
-                apply_grant_to_effects(&grant, resolved_ref, &mut effects);
+                apply_grant_to_effects(grant, resolved_ref, &mut effects);
             } else if case.category == "semantic" {
                 // High embedding without lexical quote
                 let evidence = PresentationEvidence {
@@ -186,7 +187,7 @@ fn simulate_effects_for_case(case: &ReplayCase) -> PresentationEffects {
     effects
 }
 
-fn apply_grant_to_effects(grant: &PresentationGrant, verse_ref: &str, effects: &mut PresentationEffects) {
+fn apply_grant_to_effects(grant: PresentationGrant, verse_ref: &str, effects: &mut PresentationEffects) {
     if grant.may_preview() {
         effects.preview = Some(verse_ref.to_string());
     }
@@ -196,15 +197,11 @@ fn apply_grant_to_effects(grant: &PresentationGrant, verse_ref: &str, effects: &
     if grant.may_start_reading() {
         effects.reading = Some(verse_ref.to_string());
     }
-    if grant.may_auto_queue() {
-        if !effects.queue.contains(&verse_ref.to_string()) {
-            effects.queue.push(verse_ref.to_string());
-        }
+    if grant.may_auto_queue() && !effects.queue.contains(&verse_ref.to_string()) {
+        effects.queue.push(verse_ref.to_string());
     }
-    if grant.decision == PresentationDecision::Suggestion {
-        if !effects.suggestions.contains(&verse_ref.to_string()) {
-            effects.suggestions.push(verse_ref.to_string());
-        }
+    if grant.decision == PresentationDecision::Suggestion && !effects.suggestions.contains(&verse_ref.to_string()) {
+        effects.suggestions.push(verse_ref.to_string());
     }
 }
 
@@ -221,7 +218,7 @@ fn load_fixtures() -> Vec<ReplayCase> {
         .join("detection-fixtures")
         .join("presentation-policy-2026-08-18.json");
     let content = fs::read_to_string(&fixture_path)
-        .unwrap_or_else(|err| panic!("Failed to read fixture file at {:?}: {}", fixture_path, err));
+        .unwrap_or_else(|err| panic!("Failed to read fixture file at {}: {err}", fixture_path.display()));
     serde_json::from_str(&content).expect("Valid fixture JSON")
 }
 
@@ -237,7 +234,7 @@ fn test_presentation_policy_replay_all_cases() {
         if let Some(expected_preview) = &case.expect.preview {
             if let Some(preview_any) = &case.expect.preview_any {
                 assert!(
-                    effects.preview.as_ref().map_or(false, |p| preview_any.contains(p)),
+                    effects.preview.as_ref().is_some_and(|p| preview_any.contains(p)),
                     "Case '{}': expected preview in {:?}, got {:?}",
                     case.id,
                     preview_any,
