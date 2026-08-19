@@ -147,7 +147,8 @@ impl DetectionMerger {
             let eligible = detection.confidence >= self.auto_queue_threshold
                 && cooldown_ok
                 && matches!(detection.source, DetectionSource::DirectReference)
-                && !detection.is_chapter_only;
+                && !detection.is_chapter_only
+                && !detection.is_fuzzy_book;
             let auto_queued = eligible && !auto_queue_used;
             if auto_queued {
                 auto_queue_used = true;
@@ -270,6 +271,7 @@ mod tests {
             transcript_snippet: format!("{book_name} {chapter}:{verse_start}"),
             detected_at: 0,
             is_chapter_only: false,
+            ..Detection::default()
         }
     }
 
@@ -290,6 +292,7 @@ mod tests {
             transcript_snippet: format!("semantic hit {verse_id}"),
             detected_at: 0,
             is_chapter_only: false,
+            ..Detection::default()
         }
     }
 

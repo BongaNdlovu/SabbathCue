@@ -464,8 +464,7 @@ mod tests {
             auto_queued: false,
             transcript_snippet: "snippet".to_string(),
             is_chapter_only: false,
-            egw_paragraph: None,
-            match_char_start: None,
+            ..crate::commands::detection::DetectionResult::default()
         }
     }
 
@@ -492,30 +491,21 @@ mod tests {
                 transcript_snippet: "snippet".to_string(),
                 detected_at: 0,
                 is_chapter_only,
+                ..Detection::default()
             },
             auto_queued: false,
         }
     }
 
     #[test]
-    fn direct_reading_candidates_include_chapter_only_handoffs_below_ninety_percent() {
+    fn direct_reading_candidates_exclude_chapter_only_handoffs() {
         let merged = vec![make_merged_direct("Philippians", 50, 4, 1, 0.88, true)];
 
-        let candidates = direct_reading_candidates(&merged);
+        let candidates = direct_reading_candidates(&merged, true);
 
-        assert_eq!(
-            candidates,
-            vec![detection_logic::DirectReadingCandidate {
-                verse_ref: VerseRef {
-                    book_number: 50,
-                    book_name: "Philippians".to_string(),
-                    chapter: 4,
-                    verse_start: 1,
-                    verse_end: None,
-                },
-                confidence: 0.88,
-                is_chapter_only: true,
-            }]
+        assert!(
+            candidates.is_empty(),
+            "chapter-only detections must not enter the reading-mode handoff"
         );
     }
 
@@ -602,7 +592,10 @@ mod tests {
         let provisional = reading_candidate(40, 6, 3, 1.0, false);
         assert!(!should_restart_reading(false, 0, 0, None, &provisional));
         let chapter_only = reading_candidate(40, 6, 1, 0.92, true);
-        assert!(should_restart_reading(false, 0, 0, None, &chapter_only));
+        assert!(
+            !should_restart_reading(false, 0, 0, None, &chapter_only),
+            "chapter-only must never start reading mode"
+        );
         let stable = reading_candidate(40, 6, 33, 1.0, false);
         assert!(should_restart_reading(false, 0, 0, None, &stable));
     }
@@ -613,7 +606,7 @@ mod tests {
             make_merged_direct("Matthew", 40, 6, 3, 1.0, false),
             make_merged_direct("Matthew", 40, 6, 33, 1.0, false),
         ];
-        let candidates = direct_reading_candidates(&merged);
+        let candidates = direct_reading_candidates(&merged, true);
         assert_eq!(candidates.len(), 1);
         assert_eq!(candidates[0].verse_ref.verse_start, 33);
     }
@@ -630,7 +623,7 @@ mod tests {
             make_merged_direct("Isaiah", 23, 4, 3, 1.0, false),
             make_merged_direct("Philippians", 50, 4, 3, 1.0, false),
             make_merged_direct("Revelation", 66, 1, 3, 1.0, false),
-        ]);
+        ], true);
 
         let selected = choose_reading_candidate(&candidates, Some((50, 4)));
 
@@ -789,8 +782,7 @@ mod tests {
             auto_queued: false,
             transcript_snippet: String::new(),
             is_chapter_only,
-            egw_paragraph: None,
-            match_char_start: None,
+            ..DetectionResult::default()
         }
     }
 
@@ -1277,12 +1269,16 @@ mod tests {
             text: "old".to_string(),
             egw_text: "old".to_string(),
             stt_confidence: 0.5,
+            is_final: true,
+            utterance_id: 1,
         };
         let new = SemanticJob {
             seq: 2,
             text: "new".to_string(),
             egw_text: "new".to_string(),
             stt_confidence: 0.8,
+            is_final: true,
+            utterance_id: 2,
         };
         assert!(!replace_semantic_job(&slot, old, "test"));
         assert!(replace_semantic_job(&slot, new.clone(), "test"));
@@ -1303,6 +1299,8 @@ mod tests {
                 text: "poisoned".to_string(),
                 egw_text: "poisoned".to_string(),
                 stt_confidence: 0.4,
+                is_final: false,
+                utterance_id: 1,
             });
             panic!("poison semantic slot");
         });
@@ -1314,6 +1312,8 @@ mod tests {
                 text: "recovered".to_string(),
                 egw_text: "recovered".to_string(),
                 stt_confidence: 0.9,
+                is_final: true,
+                utterance_id: 2,
             },
             "test"
         ));
@@ -1324,6 +1324,8 @@ mod tests {
                 text: "recovered".to_string(),
                 egw_text: "recovered".to_string(),
                 stt_confidence: 0.9,
+                is_final: true,
+                utterance_id: 2,
             })
         );
     }
@@ -1385,8 +1387,7 @@ mod auto_queue_digit_growth_tests {
             auto_queued,
             transcript_snippet: String::new(),
             is_chapter_only: false,
-            egw_paragraph: None,
-            match_char_start: None,
+            ..DetectionResult::default()
         }
     }
 
@@ -1487,8 +1488,7 @@ mod egw_cue_refresh_tests {
             auto_queued: false,
             transcript_snippet: String::new(),
             is_chapter_only: false,
-            egw_paragraph: None,
-            match_char_start: None,
+            ..DetectionResult::default()
         }
     }
 

@@ -26,7 +26,7 @@ pub(crate) use egw::{
     drop_egw_quotes_echoing_scripture, detect_egw_references, egw_cue_is_currently_live,
     note_and_check_egw_cue, retain_best_egw_quote,
 };
-pub use result::{to_result, DetectionResult};
+pub use result::{apply_presentation_grant, to_result, DetectionResult};
 use semantic_search::{run_semantic_search, SemanticSearchResult};
 use settings::{apply_detection_settings_to_merger, DEFAULT_SEMANTIC_VISIBILITY_THRESHOLD};
 
@@ -290,6 +290,9 @@ pub fn update_detection_settings(
         app_state
             .semantic_detection_enabled
             .store(semantic_enabled, Ordering::SeqCst);
+        app_state
+            .auto_mode
+            .store(auto_mode, Ordering::SeqCst);
     }
 
     if !bible_enabled {
@@ -386,6 +389,7 @@ mod tests {
             transcript_snippet: "testimony about grace and rescue".to_string(),
             detected_at: 0,
             is_chapter_only: false,
+            ..Detection::default()
         }
     }
 
@@ -405,6 +409,7 @@ mod tests {
                 transcript_snippet: "God so loved the world".to_string(),
                 detected_at: 0,
                 is_chapter_only: false,
+                ..Detection::default()
             },
             auto_queued: false,
         }
@@ -426,6 +431,7 @@ mod tests {
                 transcript_snippet: format!("John {chapter}:{verse}"),
                 detected_at: 0,
                 is_chapter_only: false,
+                ..Detection::default()
             },
             auto_queued: true,
         }

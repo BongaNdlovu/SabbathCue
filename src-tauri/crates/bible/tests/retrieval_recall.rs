@@ -15,7 +15,7 @@ fn recall_db() -> BibleDb {
     )
     .unwrap();
 
-    let verses: [(i64, i32, &str, i32, i32, &str); 13] = [
+    let verses: [(i64, i32, &str, i32, i32, &str); 18] = [
         (1, 17, "Esther", 4, 14, "For if thou altogether holdest thy peace at this time, then shall there enlargement and deliverance arise to the Jews from another place; but thou and thy father's house shall be destroyed: and who knoweth whether thou art come to the kingdom for such a time as this?"),
         (2, 30, "Amos", 5, 13, "Therefore the prudent shall keep silence in that time; for it is an evil time."),
         (3, 39, "Malachi", 1, 1, "The burden of the word of the LORD to Israel by Malachi."),
@@ -29,6 +29,11 @@ fn recall_db() -> BibleDb {
         (11, 40, "Matthew", 3, 13, "Then cometh Jesus from Galilee to Jordan unto John, to be baptized of him."),
         (12, 43, "John", 3, 3, "Jesus answered and said unto him, Verily, verily, I say unto thee, Except a man be born again, he cannot see the kingdom of God."),
         (13, 43, "John", 11, 43, "And when he thus had spoken, he cried with a loud voice, Lazarus, come forth."),
+        (14, 1, "Genesis", 37, 24, "And they took him, and cast him into a pit: and the pit was empty, there was no water in it."),
+        (15, 66, "Revelation", 13, 16, "And he causeth all, both small and great, rich and poor, free and bond, to receive a mark in their right hand, or in their foreheads:"),
+        (16, 66, "Revelation", 13, 17, "And that no man might buy or sell, save he that had the mark, or the name of the beast, or the number of his name."),
+        (17, 40, "Matthew", 14, 25, "And in the fourth watch of the night Jesus went unto them, walking on the sea."),
+        (18, 43, "John", 6, 19, "So when they had rowed about five and twenty or thirty furlongs, they see Jesus walking on the sea, and drawing nigh unto the ship: and they were afraid."),
     ];
     for (id, book_number, book_name, chapter, verse, text) in verses {
         conn.execute(
@@ -84,6 +89,38 @@ fn modern_storm_and_boat_request_recalls_the_kjv_calm() {
 fn prison_scene_request_recalls_paul_and_silas_praying() {
     let db = recall_db();
     assert_recalls(&db, "Paul and Silas in prison", "Acts", 16, 25);
+}
+
+#[test]
+fn joseph_pit_request_recalls_genesis_37_24() {
+    let db = recall_db();
+    assert_recalls(&db, "Joseph thrown into a well", "Genesis", 37, 24);
+    assert_recalls(&db, "Joseph thrown into a pit", "Genesis", 37, 24);
+}
+
+#[test]
+fn mark_of_the_beast_request_recalls_revelation_13() {
+    let db = recall_db();
+    assert_recalls(&db, "mark of the beast", "Revelation", 13, 16);
+}
+
+#[test]
+fn jesus_walking_on_water_recalls_the_gospel_scene() {
+    let db = recall_db();
+    let results = db
+        .search_verses_bm25("Jesus walking on water", 10)
+        .unwrap();
+    assert!(
+        results.iter().any(|r| {
+            (r.book_name == "Matthew" && r.chapter == 14 && r.verse == 25)
+                || (r.book_name == "John" && r.chapter == 6 && r.verse == 19)
+        }),
+        "expected a walking-on-water Gospel verse, got {:?}",
+        results
+            .iter()
+            .map(|r| format!("{} {}:{}", r.book_name, r.chapter, r.verse))
+            .collect::<Vec<_>>()
+    );
 }
 
 #[test]

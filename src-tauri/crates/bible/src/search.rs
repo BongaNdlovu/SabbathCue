@@ -105,7 +105,7 @@ const CONVERSATIONAL_PREFIXES: &[&str] = &[
     "verse that talks about",
 ];
 
-fn strip_conversational_preamble(input: &str) -> String {
+pub(crate) fn strip_conversational_preamble(input: &str) -> String {
     let lower = input.to_ascii_lowercase();
 
     CONVERSATIONAL_PREFIXES
@@ -303,6 +303,14 @@ fn spoken_kjv_variants(word: &str) -> &'static [&'static str] {
     }
 }
 
+/// Short concept anchors for modern event descriptions whose wording differs
+/// from the KJV text. These are issued before the rolling phrase spans so the
+/// anchor verse enters the candidate pool even when surrounding names or
+/// commentary dilute BM25 ranking.
+pub(crate) fn build_topic_phrase_queries(input: &str) -> Vec<String> {
+    crate::request_retrieval::RequestRetrievalPlan::plan(input).direct_queries
+}
+
 // ── SQL runner ──────────────────────────────────────────────────────
 
 /// Execute a BM25-ranked FTS5 query across unlocked translations.
@@ -410,39 +418,6 @@ fn build_short_clause_and_queries(input: &str) -> Vec<String> {
     clauses.sort_by_key(|(terms, _)| *terms);
     clauses.truncate(4);
     clauses.into_iter().map(|(_, query)| query).collect()
-}
-
-/// Short concept anchors for modern event descriptions whose wording differs
-/// from the KJV text. These are issued before the rolling phrase spans so the
-/// anchor verse enters the candidate pool even when surrounding names or
-/// commentary dilute BM25 ranking.
-fn build_topic_phrase_queries(input: &str) -> Vec<String> {
-    let normalized = strip_conversational_preamble(input);
-    let lower = normalized.to_ascii_lowercase();
-    let mut queries = Vec::new();
-    if lower.contains("peter") && (lower.contains("prison") || lower.contains("jail")) {
-        queries.push("Peter prison".to_string());
-    }
-    if (lower.contains("paul") || lower.contains("silas"))
-        && (lower.contains("prison") || lower.contains("sing"))
-    {
-        queries.push("Paul Silas".to_string());
-    }
-    if lower.contains("lazarus")
-        && (lower.contains("come out") || lower.contains("come forth"))
-    {
-        queries.push("Lazarus".to_string());
-    }
-    if lower.contains("born again") {
-        queries.push("\"born again\"".to_string());
-    }
-    if lower.contains("baptiz") {
-        if lower.contains("jesus") {
-            queries.push("baptized Jesus".to_string());
-        }
-        queries.push("\"baptized\"".to_string());
-    }
-    queries
 }
 
 // ── BibleDb methods ─────────────────────────────────────────────────
@@ -1181,27 +1156,52 @@ mod tests {
     fn topic_phrase_queries_keep_modern_event_anchors() {
         assert_eq!(
             build_topic_phrase_queries("where Jesus and Nicodemus talk about being born again"),
-            vec!["\"born again\""]
+            vec!["\"born again\"", "except a man be born again"]
         );
         assert_eq!(
             build_topic_phrase_queries("John the Baptist baptizing Jesus"),
-            vec!["baptized Jesus", "\"baptized\""]
+            vec!["baptized Jesus", "baptized of him", "\"baptized\""]
         );
         assert_eq!(
             build_topic_phrase_queries(
                 "Uh, let's go to the verse that talks about Peter being in prison"
             ),
-            vec!["Peter prison"]
+            vec!["Peter prison", "Peter was kept in prison"]
         );
         assert_eq!(
             build_topic_phrase_queries(
                 "Let's go back to the verse which talks about Paul and Silas singing in prison"
             ),
-            vec!["Paul Silas"]
+            vec!["Paul Silas", "Paul and Silas prayed"]
         );
         assert_eq!(
             build_topic_phrase_queries("Jesus said Lazarus come out with a loud voice"),
-            vec!["Lazarus"]
+            vec!["Lazarus come forth", "Lazarus", "loud voice Lazarus"]
+        );
+        assert_eq!(
+            build_topic_phrase_queries("Joseph thrown into a well"),
+            vec![
+                "Joseph pit",
+                "cast him into a pit",
+                "empty there was no water"
+            ]
+        );
+        assert_eq!(
+            build_topic_phrase_queries("the mark of the beast"),
+            vec![
+                "mark of the beast",
+                "receive a mark",
+                "mark in their right hand",
+                "number of his name"
+            ]
+        );
+        assert_eq!(
+            build_topic_phrase_queries("Jesus walking on water"),
+            vec![
+                "walking on the sea",
+                "Jesus went unto them walking",
+                "walking on water"
+            ]
         );
     }
 

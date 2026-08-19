@@ -1100,7 +1100,8 @@ impl DirectDetector {
         // Step 1: Find all book name matches using Aho-Corasick
         // Step 1b: If the automaton found nothing, try fuzzy matching as fallback
         let fuzzy_matches: Vec<BookMatch>;
-        let effective_matches: &[BookMatch] = if book_matches.is_empty() {
+        let used_fuzzy_book_match = book_matches.is_empty();
+        let effective_matches: &[BookMatch] = if used_fuzzy_book_match {
             fuzzy_matches = fuzzy::fuzzy_find_books(text)
                 .into_iter()
                 .map(|fm| BookMatch {
@@ -1239,6 +1240,12 @@ impl DirectDetector {
                             transcript_snippet: snippet,
                             detected_at: now,
                             is_chapter_only: true,
+                            is_fuzzy_book: used_fuzzy_book_match,
+                            has_lexical_quote: false,
+                            quote_coverage: 0.0,
+                            candidate_margin: 1.0,
+                            utterance_id: None,
+                            is_final_utterance: false,
                         });
                         self.push_recent(&chapter_start);
                     }
@@ -1268,6 +1275,12 @@ impl DirectDetector {
                     transcript_snippet: snippet,
                     detected_at: now,
                     is_chapter_only: false,
+                    is_fuzzy_book: used_fuzzy_book_match,
+                    has_lexical_quote: false,
+                    quote_coverage: 0.0,
+                    candidate_margin: 1.0,
+                    utterance_id: None,
+                    is_final_utterance: false,
                 };
 
                 // Track in recent detections for "previous verse" support
@@ -1324,6 +1337,12 @@ impl DirectDetector {
             transcript_snippet: text.to_string(),
             detected_at: now,
             is_chapter_only: false,
+            is_fuzzy_book: false,
+            has_lexical_quote: false,
+            quote_coverage: 0.0,
+            candidate_margin: 1.0,
+            utterance_id: None,
+            is_final_utterance: false,
         })
     }
 
@@ -1484,6 +1503,12 @@ impl DirectDetector {
             transcript_snippet: snippet,
             detected_at: now,
             is_chapter_only: false,
+            is_fuzzy_book: false,
+            has_lexical_quote: false,
+            quote_coverage: 0.0,
+            candidate_margin: 1.0,
+            utterance_id: None,
+            is_final_utterance: false,
         }
     }
 }
@@ -2246,6 +2271,59 @@ mod tests {
             replace_case_insensitive_phrase("someone johnny said one john", "one john", "1 John"),
             "someone johnny said 1 John"
         );
+    }
+
+    #[test]
+    fn makes_one_is_not_an_actionable_james_citation() {
+        let mut detector = DirectDetector::new();
+        for text in [
+            "makes one",
+            "makes one.",
+            "that makes one",
+            "what makes one",
+            "love makes one.",
+        ] {
+            let results = detector.detect(text);
+            assert!(
+                results.iter().all(|r| {
+                    r.verse_ref.book_name != "James"
+                        || r.is_chapter_only
+                        || r.is_fuzzy_book
+                        || !r.is_complete_citation()
+                }),
+                "{text:?} must not emit a complete James citation: {:?}",
+                results
+                    .iter()
+                    .map(|r| format!(
+                        "{} {}:{} chapter_only={} fuzzy={}",
+                        r.verse_ref.book_name,
+                        r.verse_ref.chapter,
+                        r.verse_ref.verse_start,
+                        r.is_chapter_only,
+                        r.is_fuzzy_book
+                    ))
+                    .collect::<Vec<_>>()
+            );
+            assert!(
+                results.iter().all(|r| {
+                    !crate::decide_presentation(&crate::PresentationEvidence {
+                        job: crate::DetectionJob::Citation,
+                        source_is_direct: true,
+                        is_chapter_only: r.is_chapter_only,
+                        is_fuzzy_book: r.is_fuzzy_book,
+                        is_complete_citation: r.is_complete_citation(),
+                        is_final_utterance: true,
+                        has_lexical_quote: false,
+                        quote_coverage: 0.0,
+                        candidate_margin: 1.0,
+                        independent_final_count: 1,
+                        automation_live_enabled: true,
+                    })
+                    .may_start_reading()
+                }),
+                "{text:?} must not be reading-authorized"
+            );
+        }
     }
 
     #[test]

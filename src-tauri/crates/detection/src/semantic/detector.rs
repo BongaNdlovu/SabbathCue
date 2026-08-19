@@ -305,6 +305,7 @@ impl SemanticDetector {
             transcript_snippet: snippet.to_string(),
             detected_at,
             is_chapter_only: false,
+            ..Detection::default()
         }
     }
 }

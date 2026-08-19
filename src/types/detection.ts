@@ -23,6 +23,18 @@ export interface DetectionResult {
   transcript_snippet: string
   /** True when detected from a chapter-only reference (verse defaults to 1, may be refined). */
   is_chapter_only: boolean
+  /** Backend-owned presentation decision. The UI must not infer permission. */
+  authorization?:
+    | "reject"
+    | "suggestion"
+    | "preview-authorized"
+    | "reading-authorized"
+    | "live-authorized"
+  job?: "citation" | "quotation" | "request"
+  is_fuzzy_book?: boolean
+  has_lexical_quote?: boolean
+  utterance_id?: number | null
+  is_final_utterance?: boolean
   egw_paragraph?: EgwParagraph | null
   hymn?: HymnDetection | null
   /** UTF-8 byte offset into verse_text where the spoken quote begins (EGW). */
