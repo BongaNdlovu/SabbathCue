@@ -421,8 +421,9 @@ function selectPreviewHit(
       aiConfirmed ? [...directHits, aiConfirmed] : directHits
     )
   }
-  const finalists = [...directHits, strongest]
-  if (aiConfirmed && aiConfirmed !== strongest) finalists.push(aiConfirmed)
+  const finalists = aiConfirmed
+    ? [...directHits, aiConfirmed, strongest]
+    : [...directHits, strongest]
   return bestDetection(finalists)
 }
 

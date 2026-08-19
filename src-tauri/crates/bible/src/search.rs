@@ -44,7 +44,7 @@ const STOP_WORDS: &[&str] = &[
 
 static STOP_WORD_SET: OnceLock<HashSet<&str>> = OnceLock::new();
 
-fn is_stop_word(word: &str) -> bool {
+pub fn is_stop_word(word: &str) -> bool {
     STOP_WORD_SET
         .get_or_init(|| STOP_WORDS.iter().copied().collect())
         .contains(word.to_lowercase().as_str())

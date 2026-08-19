@@ -10,7 +10,7 @@ const V10_RECOMMENDED_ADDITIONS = [
 // Resolving the flat config takes ~8s on its own, which leaves almost no room
 // under the 10s global testTimeout — the test timed out intermittently when the
 // full suite ran its files in parallel. Give this one case its own budget.
-const CONFIG_RESOLVE_TIMEOUT_MS = 30_000
+const CONFIG_RESOLVE_TIMEOUT_MS = 60_000
 
 describe('ESLint migration configuration', () => {
   it(

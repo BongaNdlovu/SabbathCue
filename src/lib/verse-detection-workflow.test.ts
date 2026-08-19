@@ -1884,5 +1884,39 @@ describe("verse detection workflow", () => {
         verse: 39,
       })
     })
+
+    it("selects AI-confirmed 1 Peter 5:8 over tied Ezekiel 22:25", async () => {
+      const peter = makeSemantic({
+        confidence: 0.88,
+        verse_ref: "1 Peter 5:8",
+        verse_text:
+          "Be sober, be vigilant; because your adversary the devil, as a roaring lion, walketh about, seeking whom he may devour:",
+        book_name: "1 Peter",
+        book_number: 60,
+        chapter: 5,
+        verse: 8,
+        transcript_snippet: "the devil is like a roaring lion",
+      })
+      const ezekiel = makeSemantic({
+        confidence: 0.88,
+        verse_ref: "Ezekiel 22:25",
+        verse_text:
+          "There is a conspiracy of her prophets in the midst thereof, like a roaring lion ravening the prey; they have devoured souls;",
+        book_name: "Ezekiel",
+        book_number: 26,
+        chapter: 22,
+        verse: 25,
+        transcript_snippet: "the devil is like a roaring lion",
+      })
+      scheduleRankingMock.mockResolvedValue(peter)
+
+      await handleVerseDetections([ezekiel, peter])
+
+      expect(useBibleStore.getState().selectedVerse).toMatchObject({
+        book_number: 60,
+        chapter: 5,
+        verse: 8,
+      })
+    })
   })
 })

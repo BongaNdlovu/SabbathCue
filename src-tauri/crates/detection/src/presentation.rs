@@ -307,6 +307,16 @@ mod tests {
     }
 
     #[test]
+    fn complete_final_citation_with_auto_live_off_cannot_go_live() {
+        let mut evidence = citation_final();
+        evidence.automation_live_enabled = false;
+        let grant = decide_presentation(&evidence);
+        assert_eq!(grant.decision, PresentationDecision::ReadingAuthorized);
+        assert!(grant.may_start_reading());
+        assert!(!grant.may_go_live());
+    }
+
+    #[test]
     fn partial_citation_is_suggestion_only() {
         let mut evidence = citation_final();
         evidence.is_final_utterance = false;

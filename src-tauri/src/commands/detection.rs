@@ -265,6 +265,7 @@ pub fn update_detection_settings(
     confidence_threshold: f64,
     semantic_confidence_threshold: Option<f64>,
     cooldown_ms: u64,
+    live_output_enabled: Option<bool>,
 ) -> Result<(), String> {
     if !confidence_threshold.is_finite() {
         return Err("confidence_threshold must be finite".into());
@@ -280,6 +281,7 @@ pub fn update_detection_settings(
         .clamp(0.0, 1.0);
     let bible_enabled = bible_detection_enabled.unwrap_or(true);
     let semantic_enabled = semantic_detection_enabled.unwrap_or(true);
+    let live_enabled = live_output_enabled.unwrap_or(false);
     let auto_threshold = auto_mode.then_some(threshold);
 
     {
@@ -293,6 +295,9 @@ pub fn update_detection_settings(
         app_state
             .auto_mode
             .store(auto_mode, Ordering::SeqCst);
+        app_state
+            .live_output_enabled
+            .store(live_enabled, Ordering::SeqCst);
     }
 
     if !bible_enabled {
@@ -325,7 +330,7 @@ pub fn update_detection_settings(
     }
 
     log::info!(
-        "[DET] Settings updated: auto_mode={auto_mode}, operator_threshold={OPERATOR_DETECTION_THRESHOLD:.2}, bible_enabled={bible_enabled}, semantic_enabled={semantic_enabled}, semantic_threshold={semantic_threshold:.2}, auto_threshold={}, cooldown_ms={}",
+        "[DET] Settings updated: auto_mode={auto_mode}, live_output_enabled={live_enabled}, operator_threshold={OPERATOR_DETECTION_THRESHOLD:.2}, bible_enabled={bible_enabled}, semantic_enabled={semantic_enabled}, semantic_threshold={semantic_threshold:.2}, auto_threshold={}, cooldown_ms={}",
         auto_threshold.map_or_else(|| "disabled".to_string(), |value| format!("{value:.2}")),
         cooldown_ms.clamp(250, 60_000)
     );

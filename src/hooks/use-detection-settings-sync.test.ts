@@ -4,8 +4,57 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { createRoot } from "react-dom/client"
 import React from "react"
 
-const invokeMock = vi.fn()
-const reportOutputIssueMock = vi.fn()
+const {
+  invokeMock,
+  reportOutputIssueMock,
+  broadcastStoreMock,
+  setBroadcastAutoLive,
+  resetBroadcastStoreMock,
+} = vi.hoisted(() => {
+  const invokeMock = vi.fn()
+  const reportOutputIssueMock = vi.fn()
+  type BroadcastState = {
+    readingModeAutoLive: boolean
+    reportOutputIssue: typeof reportOutputIssueMock
+  }
+  const listeners = new Set<
+    (state: BroadcastState, previous: BroadcastState) => void
+  >()
+  let state: BroadcastState = {
+    readingModeAutoLive: false,
+    reportOutputIssue: reportOutputIssueMock,
+  }
+  const broadcastStoreMock = Object.assign(
+    (selector: (current: BroadcastState) => unknown) => selector(state),
+    {
+      getState: () => state,
+      subscribe: (listener: (current: BroadcastState, previous: BroadcastState) => void) => {
+        listeners.add(listener)
+        return () => listeners.delete(listener)
+      },
+    }
+  )
+  const setBroadcastAutoLive = (readingModeAutoLive: boolean) => {
+    const previous = state
+    state = { ...state, readingModeAutoLive }
+    for (const listener of listeners) listener(state, previous)
+  }
+  const resetBroadcastStoreMock = () => {
+    state = {
+      readingModeAutoLive: false,
+      reportOutputIssue: reportOutputIssueMock,
+    }
+    listeners.clear()
+  }
+
+  return {
+    invokeMock,
+    reportOutputIssueMock,
+    broadcastStoreMock,
+    setBroadcastAutoLive,
+    resetBroadcastStoreMock,
+  }
+})
 
 vi.mock("@/lib/tauri-runtime", () => ({
   isTauriRuntime: () => true,
@@ -13,11 +62,7 @@ vi.mock("@/lib/tauri-runtime", () => ({
 }))
 
 vi.mock("@/stores/broadcast-store", () => ({
-  useBroadcastStore: {
-    getState: () => ({
-      reportOutputIssue: reportOutputIssueMock,
-    }),
-  },
+  useBroadcastStore: broadcastStoreMock,
 }))
 
 describe("useDetectionSettingsSync", () => {
@@ -27,6 +72,7 @@ describe("useDetectionSettingsSync", () => {
   beforeEach(() => {
     invokeMock.mockReset()
     reportOutputIssueMock.mockReset()
+    resetBroadcastStoreMock()
     invokeMock.mockResolvedValue(undefined)
     container = document.createElement("div")
     document.body.appendChild(container)
@@ -70,6 +116,7 @@ describe("useDetectionSettingsSync", () => {
       semanticConfidenceThreshold:
         useSettingsStore.getState().semanticConfidenceThreshold,
       cooldownMs: useSettingsStore.getState().cooldownMs,
+      liveOutputEnabled: false,
     })
     expect(reportOutputIssueMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -110,6 +157,7 @@ describe("useDetectionSettingsSync", () => {
       confidenceThreshold: useSettingsStore.getState().confidenceThreshold,
       semanticConfidenceThreshold: 0.72,
       cooldownMs: useSettingsStore.getState().cooldownMs,
+      liveOutputEnabled: false,
     })
   })
 
@@ -145,6 +193,7 @@ describe("useDetectionSettingsSync", () => {
       semanticConfidenceThreshold:
         useSettingsStore.getState().semanticConfidenceThreshold,
       cooldownMs: useSettingsStore.getState().cooldownMs,
+      liveOutputEnabled: false,
     })
   })
 
@@ -179,6 +228,44 @@ describe("useDetectionSettingsSync", () => {
       semanticConfidenceThreshold:
         useSettingsStore.getState().semanticConfidenceThreshold,
       cooldownMs: useSettingsStore.getState().cooldownMs,
+      liveOutputEnabled: false,
+    })
+  })
+
+  it("syncs Auto Live changes to backend presentation authorization", async () => {
+    const { useSettingsStore } = await import("@/stores/settings-store")
+    const { useDetectionSettingsSync } =
+      await import("./use-detection-settings-sync")
+    useSettingsStore.getState().setAutoMode(true)
+
+    function Probe() {
+      useDetectionSettingsSync()
+      return null
+    }
+
+    await act(async () => {
+      root.render(React.createElement(Probe))
+      await Promise.resolve()
+    })
+
+    invokeMock.mockClear()
+
+    await act(async () => {
+      setBroadcastAutoLive(true)
+      await Promise.resolve()
+    })
+
+    expect(invokeMock).toHaveBeenCalledWith("update_detection_settings", {
+      autoMode: useSettingsStore.getState().autoMode,
+      bibleDetectionEnabled:
+        useSettingsStore.getState().bibleDetectionEnabled,
+      semanticDetectionEnabled:
+        useSettingsStore.getState().semanticDetectionEnabled,
+      confidenceThreshold: useSettingsStore.getState().confidenceThreshold,
+      semanticConfidenceThreshold:
+        useSettingsStore.getState().semanticConfidenceThreshold,
+      cooldownMs: useSettingsStore.getState().cooldownMs,
+      liveOutputEnabled: true,
     })
   })
 })
