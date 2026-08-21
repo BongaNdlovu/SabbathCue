@@ -33,8 +33,8 @@ fn main() {
     // Keep in sync with sabbathcue asset_paths PREFERRED_EMBEDDINGS_FILENAME.
     let embeddings = arg(&args, "--embeddings")
         .unwrap_or_else(|| "embeddings/public-minilm-l6-v2-q8.bin".into());
-    let ids = arg(&args, "--ids")
-        .unwrap_or_else(|| "embeddings/public-minilm-l6-v2-q8-ids.bin".into());
+    let ids =
+        arg(&args, "--ids").unwrap_or_else(|| "embeddings/public-minilm-l6-v2-q8-ids.bin".into());
     let input = arg(&args, "--input").expect("--input probes.txt required");
 
     let embedder = OnnxEmbedder::load(&PathBuf::from(&model), &PathBuf::from(&tokenizer))

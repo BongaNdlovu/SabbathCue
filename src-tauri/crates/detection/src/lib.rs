@@ -36,7 +36,7 @@ pub use egw_quote::{
 pub use direct::detector::{is_voice_command_utterance, DirectDetector};
 pub use error::*;
 pub use merger::{AutoQueueCooldown, DetectionMerger, MergedDetection};
-pub use pipeline::DetectionPipeline;
+pub use pipeline::{event_term_coverage, DetectionPipeline};
 pub use presentation::{
     classify_job, decide_presentation, looks_like_verse_request, DetectionJob, EvidenceLedger,
     PresentationDecision, PresentationEvidence, PresentationGrant, PresentationPolicy,

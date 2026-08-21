@@ -23,7 +23,7 @@ mod settings;
 
 pub(crate) use egw::{
     apply_egw_auto_queue, dampen_egw_for_low_stt_confidence, detect_egw_quotes,
-    drop_egw_quotes_echoing_scripture, detect_egw_references, egw_cue_is_currently_live,
+    detect_egw_references, drop_egw_quotes_echoing_scripture, egw_cue_is_currently_live,
     note_and_check_egw_cue, retain_best_egw_quote,
 };
 pub use result::{apply_presentation_grant, to_result, DetectionResult};
@@ -265,6 +265,7 @@ pub fn update_detection_settings(
     confidence_threshold: f64,
     semantic_confidence_threshold: Option<f64>,
     cooldown_ms: u64,
+    live_output_enabled: Option<bool>,
 ) -> Result<(), String> {
     if !confidence_threshold.is_finite() {
         return Err("confidence_threshold must be finite".into());
@@ -280,6 +281,7 @@ pub fn update_detection_settings(
         .clamp(0.0, 1.0);
     let bible_enabled = bible_detection_enabled.unwrap_or(true);
     let semantic_enabled = semantic_detection_enabled.unwrap_or(true);
+    let live_enabled = live_output_enabled.unwrap_or(false);
     let auto_threshold = auto_mode.then_some(threshold);
 
     {
@@ -290,9 +292,10 @@ pub fn update_detection_settings(
         app_state
             .semantic_detection_enabled
             .store(semantic_enabled, Ordering::SeqCst);
+        app_state.auto_mode.store(auto_mode, Ordering::SeqCst);
         app_state
-            .auto_mode
-            .store(auto_mode, Ordering::SeqCst);
+            .live_output_enabled
+            .store(live_enabled, Ordering::SeqCst);
     }
 
     if !bible_enabled {
@@ -325,7 +328,7 @@ pub fn update_detection_settings(
     }
 
     log::info!(
-        "[DET] Settings updated: auto_mode={auto_mode}, operator_threshold={OPERATOR_DETECTION_THRESHOLD:.2}, bible_enabled={bible_enabled}, semantic_enabled={semantic_enabled}, semantic_threshold={semantic_threshold:.2}, auto_threshold={}, cooldown_ms={}",
+        "[DET] Settings updated: auto_mode={auto_mode}, live_output_enabled={live_enabled}, operator_threshold={OPERATOR_DETECTION_THRESHOLD:.2}, bible_enabled={bible_enabled}, semantic_enabled={semantic_enabled}, semantic_threshold={semantic_threshold:.2}, auto_threshold={}, cooldown_ms={}",
         auto_threshold.map_or_else(|| "disabled".to_string(), |value| format!("{value:.2}")),
         cooldown_ms.clamp(250, 60_000)
     );

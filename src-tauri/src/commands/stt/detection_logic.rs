@@ -258,9 +258,7 @@ pub(crate) fn choose_reading_candidate(
     };
 
     let pick_best = |pool: &[DirectReadingCandidate]| -> Option<DirectReadingCandidate> {
-        pool.iter()
-            .min_by_key(|candidate| rank(candidate))
-            .cloned()
+        pool.iter().min_by_key(|candidate| rank(candidate)).cloned()
     };
 
     if let Some((book_number, chapter)) = active_scope {
@@ -471,6 +469,19 @@ pub(crate) fn filter_semantic_results_to_reading_scope(
                 || (result.book_number == book_number && result.chapter == chapter)
         })
         .collect()
+}
+
+/// Apply the reading-chapter semantic filter, except when the operator is
+/// asking to leave the chapter ("go to the verse that talks about…").
+pub(crate) fn apply_semantic_reading_scope(
+    results: Vec<crate::commands::detection::DetectionResult>,
+    scope: Option<(i32, i32)>,
+    transcript: &str,
+) -> Vec<crate::commands::detection::DetectionResult> {
+    if rhema_detection::looks_like_verse_request(transcript) {
+        return results;
+    }
+    filter_semantic_results_to_reading_scope(results, scope)
 }
 
 pub(crate) fn filter_direct_results_to_scope_if_present(

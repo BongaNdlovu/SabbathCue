@@ -25,4 +25,4 @@ pub use db::*;
 pub use error::*;
 pub use models::*;
 pub use request_retrieval::*;
-pub use search::Bm25Result;
+pub use search::{is_stop_word, Bm25Result};

@@ -50,9 +50,6 @@ const LIVE_SEMANTIC_CAP: usize = 5;
 /// quote evidence. Guards (minimum matched words, minimum verse vocabulary)
 /// keep short verses and scattered keyword coincidences from qualifying.
 /// The verse-vocabulary floor sits at the matched-words floor so a fully
-/// spoken short verse still qualifies — Psalm 23:1 ("The LORD is my shepherd;
-/// I shall not want") has exactly four content words (lord, shepherd, shall,
-/// want), so a floor above four silently excluded famous short verses.
 const QUOTE_OVERLAP_MIN_FRACTION: f64 = 0.28;
 const QUOTE_OVERLAP_MIN_MATCHED: usize = 4;
 const QUOTE_OVERLAP_MIN_VERSE_WORDS: usize = 4;
@@ -351,12 +348,21 @@ impl DetectionPipeline {
                     .iter_mut()
                     .find(|detection| detection_verse_key(detection) == key)
                 {
-                    existing.confidence = (existing.confidence + OVERLAP_CONFIDENCE_BOOST)
+                    // Name-only FTS corroboration (Paul+Silas on Acts 15:40) must
+                    // not inherit the quote-overlap boost. Require the spoken
+                    // event terms to actually appear in the verse.
+                    let overlap_boost =
+                        if query_distinctive_content_coverage(text, &fts.text) >= 0.75 {
+                            OVERLAP_CONFIDENCE_BOOST
+                        } else {
+                            0.0
+                        };
+                    existing.confidence = (existing.confidence + overlap_boost)
                         .min(1.0)
                         .max(overlap_confidence.unwrap_or(0.0))
                         .max(confidence);
                     if let DetectionSource::Semantic { similarity } = &mut existing.source {
-                        *similarity = (*similarity + OVERLAP_CONFIDENCE_BOOST)
+                        *similarity = (*similarity + overlap_boost)
                             .min(1.0)
                             .max(overlap_confidence.unwrap_or(0.0))
                             .max(anchor_rank_score);
@@ -483,15 +489,29 @@ fn live_fts_candidate_confidence(
         concept_anchor_confidence(text, &fts.text)
     };
     let mut rank_confidence = fts_confidence(rank, fts.rank, fts.is_broad_match);
+    let distinctive_coverage = query_distinctive_content_coverage(text, &fts.text);
+    let distinctive_query_count = event_tokens(text).len();
+
     // Contiguous phrase-tier hits (and verified exact spoken spans) get a
-    // floor above typical vector-only scores. AND/OR keyword hits do not.
-    if exact_phrase_confidence.is_some() || fts.is_phrase_match {
+    // floor above typical vector-only scores. When a candidate matches only an
+    // isolated tail subphrase (e.g. "like a roaring lion") while missing major
+    // spoken subjects (e.g. "devil"), its phrase floor scales with query coverage.
+    if exact_phrase_confidence.is_some() {
+        rank_confidence = rank_confidence.max(PHRASE_TIER_CONFIDENCE_FLOOR);
+    } else if fts.is_phrase_match {
+        if distinctive_coverage >= 0.75 || distinctive_query_count <= 2 {
+            rank_confidence = rank_confidence.max(PHRASE_TIER_CONFIDENCE_FLOOR);
+        } else {
+            rank_confidence = rank_confidence.max(0.70 + 0.15 * distinctive_coverage);
+        }
+    }
+    if distinctive_coverage >= 0.99 && distinctive_query_count >= 2 {
         rank_confidence = rank_confidence.max(PHRASE_TIER_CONFIDENCE_FLOOR);
     }
     let ai_review_candidate = is_indirect_request(text)
         || (text.split_whitespace().count() <= 6
             && shared_content_word_count(text, &fts.text) >= 2);
-    let confidence = cap_pastoral_prayer_address_confidence(
+    let mut confidence = cap_pastoral_prayer_address_confidence(
         text,
         overlap_confidence
             .into_iter()
@@ -501,6 +521,17 @@ fn live_fts_candidate_confidence(
             .fold(rank_confidence, f64::max)
             .max(if ai_review_candidate { 0.70 } else { 0.0 }),
     );
+    // A phrase hit on two names (Paul, Silas) is not the prison-singing
+    // scene. Keep incomplete event coverage out of the 80%+ band, but do
+    // not demote verified quote evidence.
+    if distinctive_query_count >= 3
+        && distinctive_coverage < 0.75
+        && overlap_confidence.is_none()
+        && exact_phrase_confidence.is_none()
+        && short_quote_confidence.is_none()
+    {
+        confidence = confidence.min(0.70 + 0.15 * distinctive_coverage);
+    }
     log::debug!(
         "[DET-SEMANTIC] FTS5 candidate idx={rank} bm25={:.3} {} {}:{} conf={:.0}% overlap={:?} anchor={:?} broad={}",
         fts.rank,
@@ -532,8 +563,7 @@ fn live_fts_candidate_confidence(
 }
 
 fn is_indirect_request(text: &str) -> bool {
-    let normalized = text.to_ascii_lowercase();
-    normalized.contains("show") && (normalized.contains("verse") || normalized.contains("passage"))
+    crate::looks_like_verse_request(text)
 }
 
 /// Return a bounded retrieval boost when the transcript names both an event
@@ -583,7 +613,7 @@ fn concept_anchor_confidence(query: &str, verse_text: &str) -> Option<f64> {
         .collect();
     let shared: HashSet<String> = query_stems
         .iter()
-        .filter(|stem| verse_stems.contains(*stem))
+        .filter(|stem| verse_contains_stem(&verse_stems, stem))
         .cloned()
         .collect();
     let verse_numbers = number_signatures(verse_text);
@@ -662,7 +692,29 @@ fn stem_anchor_word(word: &str) -> String {
     } else if stem.len() > 4 && stem.ends_with('s') {
         stem.truncate(stem.len() - 1);
     }
-    stem
+    match stem.as_str() {
+        "sang" | "sung" => "sing".to_string(),
+        _ => stem,
+    }
+}
+
+fn stems_align(left: &str, right: &str) -> bool {
+    if left == right {
+        return true;
+    }
+    let (short, long) = if left.len() <= right.len() {
+        (left, right)
+    } else {
+        (right, left)
+    };
+    short.len() >= 6 && long.starts_with(short)
+}
+
+fn verse_contains_stem(verse_stems: &HashSet<String>, query_stem: &str) -> bool {
+    verse_stems.contains(query_stem)
+        || verse_stems
+            .iter()
+            .any(|verse_stem| stems_align(query_stem, verse_stem))
 }
 
 fn number_signatures(text: &str) -> HashSet<i32> {
@@ -709,7 +761,12 @@ fn short_quote_confidence(fragment: &str, verse_text: &str) -> Option<f64> {
                 return None;
             }
             let shared = longest_ordered_shared_words(&clause_words, &verse_words);
-            (shared >= 3 && shared * 4 >= clause_words.len() * 3).then_some(0.92)
+            let distinctive_shared = clause_words
+                .iter()
+                .filter(|word| word.len() >= 7 && verse_words.contains(word))
+                .count();
+            let quote_like = shared >= 4 || (shared >= 3 && distinctive_shared >= 2);
+            (quote_like && shared * 4 >= clause_words.len() * 3).then_some(0.92)
         })
         .max_by(f64::total_cmp)
 }
@@ -727,13 +784,13 @@ fn longest_ordered_shared_words(left: &[String], right: &[String]) -> usize {
         }
         previous = current;
     }
-    previous.last().copied().unwrap_or(0)
+    previous[right.len()]
 }
 
-/// Confidence earned by quote overlap: the fraction of the candidate verse's
-/// content vocabulary present in the spoken fragment, mapped onto
-/// hint-to-quote confidence. `None` when the evidence is too thin to count
-/// (short verse, few matched words, low fraction).
+/// Measure what fraction of a verse's distinctive content vocabulary is
+/// present in the spoken fragment, mapped onto hint-to-quote confidence.
+/// `None` when the evidence is too thin to count (short verse, few matched
+/// words, low fraction).
 ///
 /// Word matching is exact on lowercased tokens of at least
 /// `QUOTE_OVERLAP_MIN_WORD_LEN` letters, so archaic/garbled inflections
@@ -788,17 +845,22 @@ fn quote_overlap_confidence(fragment: &str, verse_text: &str) -> Option<f64> {
     // span - the ordinary case - the two are near-identical and this is a no-op;
     // it only bites when the verse is a fragment of what was actually spoken.
     let fraction = (matched as f64 / verse_words.len() as f64).min(fragment_coverage);
-    if fraction < QUOTE_OVERLAP_MIN_FRACTION {
+    if fraction < QUOTE_OVERLAP_MIN_FRACTION && !is_exact_quote_fragment(fragment, verse_text) {
         return None;
     }
+    let effective_fraction = if is_exact_quote_fragment(fragment, verse_text) {
+        fraction.max(fragment_coverage)
+    } else {
+        fraction
+    };
     // A barely qualifying overlap is a review hint; 0.56 reaches live
     // confidence. Above that boundary, retain overlap quality up to 0.98 so
     // the most complete quotation wins deterministic ranking.
-    if fraction <= QUOTE_OVERLAP_FIRE_FRACTION {
-        return Some(0.52 + 0.68 * fraction);
+    if effective_fraction <= QUOTE_OVERLAP_FIRE_FRACTION {
+        return Some(0.52 + 0.68 * effective_fraction);
     }
     let high_overlap =
-        (fraction - QUOTE_OVERLAP_FIRE_FRACTION) / (1.0 - QUOTE_OVERLAP_FIRE_FRACTION);
+        (effective_fraction - QUOTE_OVERLAP_FIRE_FRACTION) / (1.0 - QUOTE_OVERLAP_FIRE_FRACTION);
     Some(
         QUOTE_OVERLAP_FIRE_CONFIDENCE
             + (QUOTE_OVERLAP_MAX_CONFIDENCE - QUOTE_OVERLAP_FIRE_CONFIDENCE) * high_overlap,
@@ -907,6 +969,48 @@ pub fn content_words_indexed(text: &str) -> impl Iterator<Item = (usize, String)
             let offset = word.as_ptr() as usize - text.as_ptr() as usize;
             (offset, word.to_lowercase())
         })
+}
+
+pub fn distinctive_content_words(text: &str) -> impl Iterator<Item = String> + '_ {
+    text.split(|c: char| !c.is_alphanumeric())
+        .filter(|word| word.len() >= 3 && !rhema_bible::is_stop_word(word))
+        .map(str::to_lowercase)
+}
+
+/// Fraction of distinctive spoken event terms present in `verse_text`.
+///
+/// Request scaffolding (`verse`, `talks`, `show`) is dropped so a
+/// companion-choice hit on two names cannot look as complete as the
+/// verse that actually contains the spoken event (singing, prison).
+pub fn event_term_coverage(query: &str, verse_text: &str) -> f64 {
+    query_distinctive_content_coverage(query, verse_text)
+}
+
+fn event_tokens(text: &str) -> Vec<String> {
+    anchor_tokens(text)
+        .into_iter()
+        .filter(|token| !rhema_bible::is_stop_word(token))
+        .collect()
+}
+
+#[expect(clippy::cast_precision_loss, reason = "word count is tiny")]
+fn query_distinctive_content_coverage(query: &str, verse_text: &str) -> f64 {
+    let query_stems: Vec<String> = event_tokens(query)
+        .into_iter()
+        .map(|token| stem_anchor_word(&token))
+        .collect();
+    if query_stems.is_empty() {
+        return 1.0;
+    }
+    let verse_stems: HashSet<String> = event_tokens(verse_text)
+        .into_iter()
+        .map(|token| stem_anchor_word(&token))
+        .collect();
+    let matched = query_stems
+        .iter()
+        .filter(|stem| verse_contains_stem(&verse_stems, stem))
+        .count();
+    matched as f64 / query_stems.len() as f64
 }
 
 #[expect(clippy::cast_precision_loss, reason = "rank index is small")]
@@ -1078,6 +1182,126 @@ mod tests {
             scored.is_some_and(|(confidence, _)| confidence >= 0.70),
             "explicit indirect requests need review candidates for AI ranking: {scored:?}"
         );
+    }
+
+    #[test]
+    fn go_to_the_verse_that_talks_about_paul_and_silas_is_kept_for_review() {
+        // 2026-08-21 live: FTS returned 10 hits for this request, then hybrid
+        // emitted 0 because is_indirect_request only recognized "show … verse".
+        let candidate = Bm25Result {
+            rank: -5.0,
+            book_number: 44,
+            book_name: "Acts".to_string(),
+            chapter: 16,
+            verse: 25,
+            is_broad_match: true,
+            is_phrase_match: false,
+            text: "And at midnight Paul and Silas prayed, and sang praises unto God: and the prisoners heard them.".to_string(),
+        };
+
+        let spoken =
+            "And then let's go to the verse that talks about Paul and Silas singing in a prison.";
+        let scored = live_fts_candidate_confidence(spoken, &candidate, 0, &HashSet::new());
+        assert!(
+            scored.is_some_and(|(confidence, _)| confidence >= 0.70),
+            "Paul and Silas request must stay in the review pool: {scored:?}"
+        );
+
+        let window = "to the verse that talks about Paul and Silas singing in a prison";
+        let windowed = live_fts_candidate_confidence(window, &candidate, 0, &HashSet::new());
+        assert!(
+            windowed.is_some_and(|(confidence, _)| confidence >= 0.70),
+            "12-word live window must still count as a request: {windowed:?}"
+        );
+    }
+
+    #[test]
+    fn prison_singing_request_covers_acts_16_25_not_the_companion_choice() {
+        // 2026-08-21 live: "Paul and Silas singing in a prison" scored Acts 15:40
+        // (Paul chose Silas) at 86% tied with Acts 16:25. Suffix-only stemming
+        // leaves singing≠sang and prison≠prisoners, so both verses only match
+        // the two names.
+        let query = "the verse that talks about Paul and Silas singing in a prison";
+        let singing = "And at midnight Paul and Silas prayed, and sang praises unto God: and the prisoners heard them.";
+        let companion = "And Paul chose Silas, and departed, being recommended by the brethren unto the grace of God.";
+
+        let singing_coverage = query_distinctive_content_coverage(query, singing);
+        let companion_coverage = query_distinctive_content_coverage(query, companion);
+        assert!(
+            singing_coverage >= 0.75,
+            "singing/sang and prison/prisoners must count: {singing_coverage}"
+        );
+        assert!(
+            companion_coverage < 0.75,
+            "choosing Silas as a companion is not the prison scene: {companion_coverage}"
+        );
+    }
+
+    #[test]
+    fn paul_and_silas_singing_in_prison_ranks_acts_16_25_over_acts_15_40() {
+        let mut pipeline = DetectionPipeline::new();
+        let query = "the verse that talks about Paul and Silas singing in a prison";
+        let fts = vec![
+            Bm25Result {
+                rank: -20.0,
+                book_number: 44,
+                book_name: "Acts".to_string(),
+                chapter: 15,
+                verse: 40,
+                is_broad_match: false,
+                is_phrase_match: true,
+                text: "And Paul chose Silas, and departed, being recommended by the brethren unto the grace of God.".to_string(),
+            },
+            Bm25Result {
+                rank: -18.0,
+                book_number: 44,
+                book_name: "Acts".to_string(),
+                chapter: 16,
+                verse: 25,
+                is_broad_match: false,
+                is_phrase_match: true,
+                text: "And at midnight Paul and Silas prayed, and sang praises unto God: and the prisoners heard them.".to_string(),
+            },
+            Bm25Result {
+                rank: -10.0,
+                book_number: 44,
+                book_name: "Acts".to_string(),
+                chapter: 16,
+                verse: 29,
+                is_broad_match: true,
+                is_phrase_match: false,
+                text: "Then he called for a light, and sprang in, and came trembling, and fell down before Paul and Silas,".to_string(),
+            },
+        ];
+
+        let results = pipeline.process_hybrid_with_fts(query, &fts);
+        assert!(
+            !results.is_empty(),
+            "prison-singing request must keep review candidates"
+        );
+        assert_eq!(
+            (
+                results[0].detection.verse_ref.book_number,
+                results[0].detection.verse_ref.chapter,
+                results[0].detection.verse_ref.verse_start
+            ),
+            (44, 16, 25),
+            "Acts 16:25 must outrank Acts 15:40, got {} {}:{}",
+            results[0].detection.verse_ref.book_name,
+            results[0].detection.verse_ref.chapter,
+            results[0].detection.verse_ref.verse_start
+        );
+
+        let companion = results.iter().find(|result| {
+            result.detection.verse_ref.chapter == 15 && result.detection.verse_ref.verse_start == 40
+        });
+        if let Some(companion) = companion {
+            assert!(
+                companion.detection.confidence < 0.80,
+                "Acts 15:40 must stay out of the 80%+ band on a prison-singing request, got {:.0}%",
+                companion.detection.confidence * 100.0
+            );
+        }
     }
 
     #[test]
@@ -2072,8 +2296,8 @@ mod tests {
         .0;
 
         assert!(
-            (0.80..0.90).contains(&confidence),
-            "short phrases shared across scripture need operator review: {confidence}"
+            (0.70..PHRASE_TIER_CONFIDENCE_FLOOR).contains(&confidence),
+            "short phrases shared across scripture stay in review, not phrase-floor: {confidence}"
         );
     }
 
@@ -2429,5 +2653,212 @@ mod tests {
                 "vector-only cap must keep topical hits out of the 80%+ fire band"
             );
         }
+    }
+
+    #[test]
+    fn devil_roaring_lion_ranks_peter_over_ezekiel() {
+        let mut pipeline = DetectionPipeline::new();
+        let fts = vec![
+            Bm25Result {
+                book_number: 60,
+                book_name: "1 Peter".to_string(),
+                chapter: 5,
+                verse: 8,
+                rank: -12.0,
+                is_broad_match: false,
+                is_phrase_match: false,
+                text: "Be sober, be vigilant; because your adversary the devil, as a roaring lion, walketh about, seeking whom he may devour:".to_string(),
+            },
+            Bm25Result {
+                book_number: 26,
+                book_name: "Ezekiel".to_string(),
+                chapter: 22,
+                verse: 25,
+                rank: -10.0,
+                is_broad_match: false,
+                is_phrase_match: true,
+                text: "There is a conspiracy of her prophets in the midst thereof, like a roaring lion ravening the prey; they have devoured souls;".to_string(),
+            },
+        ];
+
+        let results = pipeline.process_hybrid_with_fts("the devil is like a roaring lion", &fts);
+        assert!(
+            !results.is_empty(),
+            "must return candidate detections for roaring lion quote"
+        );
+        let top = &results[0];
+        assert_eq!(
+            top.detection.verse_ref.book_number,
+            60,
+            "1 Peter 5:8 must rank first over Ezekiel 22:25, got {} {}:{}",
+            top.detection.verse_ref.book_name,
+            top.detection.verse_ref.chapter,
+            top.detection.verse_ref.verse_start
+        );
+        assert_eq!(top.detection.verse_ref.chapter, 5);
+        assert_eq!(top.detection.verse_ref.verse_start, 8);
+    }
+
+    #[test]
+    fn generic_three_word_overlap_does_not_auto_live_as_a_short_quote() {
+        let confidence = live_fts_candidate_confidence(
+            "When lawlessness is in the church. These things are happening in the church.",
+            &Bm25Result {
+                book_number: 42,
+                book_name: "Luke".to_string(),
+                chapter: 21,
+                verse: 31,
+                rank: -10.0,
+                is_broad_match: false,
+                is_phrase_match: true,
+                text: "So likewise ye, when ye see these things come to pass, know ye that the kingdom of God is nigh at hand.".to_string(),
+            },
+            0,
+            &HashSet::new(),
+        )
+        .expect("the candidate remains visible for review");
+
+        assert!(
+            confidence.0 < QUOTE_OVERLAP_FIRE_CONFIDENCE,
+            "generic three-word overlap must stay below auto-live confidence: {}",
+            confidence.0
+        );
+    }
+
+    #[test]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "comprehensive key verses test fixtures"
+    )]
+    fn user_reported_key_verses_rank_correctly_under_distinctive_coverage() {
+        let mut pipeline = DetectionPipeline::new();
+
+        // 1. Genesis 6:5
+        let gen_fts = vec![
+            Bm25Result {
+                book_number: 1,
+                book_name: "Genesis".to_string(),
+                chapter: 6,
+                verse: 5,
+                rank: -12.0,
+                is_broad_match: false,
+                is_phrase_match: false,
+                text: "And GOD saw that the wickedness of man was great in the earth, and that every imagination of the thoughts of his heart was only evil continually.".to_string(),
+            },
+            Bm25Result {
+                book_number: 1,
+                book_name: "Genesis".to_string(),
+                chapter: 8,
+                verse: 21,
+                rank: -11.0,
+                is_broad_match: false,
+                is_phrase_match: false,
+                text: "the imagination of man's heart is evil from his youth;".to_string(),
+            },
+        ];
+        let gen_res = pipeline.process_hybrid_with_fts(
+            "every imagination of the thoughts of his heart was only evil continually",
+            &gen_fts,
+        );
+        assert_eq!(gen_res[0].detection.verse_ref.book_number, 1);
+        assert_eq!(gen_res[0].detection.verse_ref.chapter, 6);
+        assert_eq!(gen_res[0].detection.verse_ref.verse_start, 5);
+
+        // 2. Joshua 1:8
+        let josh_fts = vec![
+            Bm25Result {
+                book_number: 6,
+                book_name: "Joshua".to_string(),
+                chapter: 1,
+                verse: 8,
+                rank: -13.0,
+                is_broad_match: false,
+                is_phrase_match: false,
+                text: "This book of the law shall not depart out of thy mouth; but thou shalt meditate therein day and night, that thou mayest observe to do according to all that is written therein: for then thou shalt make thy way prosperous, and then thou shalt have good success.".to_string(),
+            },
+            Bm25Result {
+                book_number: 19,
+                book_name: "Psalms".to_string(),
+                chapter: 1,
+                verse: 2,
+                rank: -10.0,
+                is_broad_match: false,
+                is_phrase_match: false,
+                text: "But his delight is in the law of the LORD; and in his law doth he meditate day and night.".to_string(),
+            },
+        ];
+        let josh_res = pipeline.process_hybrid_with_fts("this book of the law shall not depart out of thy mouth but thou shalt meditate therein day and night", &josh_fts);
+        assert_eq!(josh_res[0].detection.verse_ref.book_number, 6);
+        assert_eq!(josh_res[0].detection.verse_ref.chapter, 1);
+        assert_eq!(josh_res[0].detection.verse_ref.verse_start, 8);
+
+        // 3. Zechariah 1:3
+        let zech_fts = vec![
+            Bm25Result {
+                book_number: 38,
+                book_name: "Zechariah".to_string(),
+                chapter: 1,
+                verse: 3,
+                rank: -11.0,
+                is_broad_match: false,
+                is_phrase_match: false,
+                text: "Therefore say thou unto them, Thus saith the LORD of hosts; Turn ye unto me, saith the LORD of hosts, and I will turn unto you, saith the LORD of hosts.".to_string(),
+            },
+            Bm25Result {
+                book_number: 39,
+                book_name: "Malachi".to_string(),
+                chapter: 3,
+                verse: 7,
+                rank: -10.0,
+                is_broad_match: false,
+                is_phrase_match: false,
+                text: "Return unto me, and I will return unto you, saith the LORD of hosts.".to_string(),
+            },
+        ];
+        let zech_res = pipeline.process_hybrid_with_fts(
+            "turn ye unto me saith the Lord of hosts and I will turn unto you",
+            &zech_fts,
+        );
+        assert_eq!(zech_res[0].detection.verse_ref.book_number, 38);
+        assert_eq!(zech_res[0].detection.verse_ref.chapter, 1);
+        assert_eq!(zech_res[0].detection.verse_ref.verse_start, 3);
+
+        // 4. Jude 1:3
+        let jude_fts = vec![
+            Bm25Result {
+                book_number: 65,
+                book_name: "Jude".to_string(),
+                chapter: 1,
+                verse: 3,
+                rank: -12.0,
+                is_broad_match: false,
+                is_phrase_match: false,
+                text: "Beloved, when I gave all diligence to write unto you of the common salvation, it was needful for me to write unto you, and exhort you that ye should earnestly contend for the faith which was once delivered unto the saints.".to_string(),
+            },
+        ];
+        let jude_res = pipeline.process_hybrid_with_fts(
+            "earnestly contend for the faith which was once delivered unto the saints",
+            &jude_fts,
+        );
+        assert_eq!(jude_res[0].detection.verse_ref.book_number, 65);
+        assert_eq!(jude_res[0].detection.verse_ref.chapter, 1);
+        assert_eq!(jude_res[0].detection.verse_ref.verse_start, 3);
+
+        // 5. Psalm 23:1
+        let ps_fts = vec![Bm25Result {
+            book_number: 19,
+            book_name: "Psalms".to_string(),
+            chapter: 23,
+            verse: 1,
+            rank: -10.0,
+            is_broad_match: false,
+            is_phrase_match: false,
+            text: "The LORD is my shepherd; I shall not want.".to_string(),
+        }];
+        let ps_res =
+            pipeline.process_hybrid_with_fts("the Lord is my shepherd I shall not want", &ps_fts);
+        assert_eq!(ps_res[0].detection.verse_ref.book_number, 19);
+        assert_eq!(ps_res[0].detection.verse_ref.chapter, 23);
+        assert_eq!(ps_res[0].detection.verse_ref.verse_start, 1);
     }
 }

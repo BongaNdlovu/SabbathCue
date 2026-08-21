@@ -789,8 +789,6 @@ const INCOMPLETE_REF_TIMEOUT_MS: u128 = 15_000;
 /// Confidence for an explicitly spoken chapter-only citation ("Daniel chapter
 /// one"): a direct citation that should go live, sitting just above the 0.90
 /// auto-fire threshold but below full chapter:verse references.
-const CHAPTER_ONLY_CONFIDENCE: f64 = 0.92;
-
 /// Confidence for a "verse N" / "chapter N verse M" whose book was filled in
 /// from mutable reference context rather than repeated by the speaker. Keep it
 /// visible to the operator, but below the auto-live threshold: a later citation
@@ -1215,40 +1213,9 @@ impl DirectDetector {
                     self.context.update(&resolved);
                     self.save_context_if_requested(&lower_text, &resolved);
 
-                    // Only surface a chapter-only detection when the chapter is
-                    // actually known (spoken or inherited). A lone book name with
-                    // no chapter — often a mis-heard keyterm like "Esther" — is
-                    // held for refinement but not emitted or auto-staged.
-                    if has_explicit_chapter {
-                        let mut chapter_start = resolved.clone();
-                        chapter_start.verse_start = 1;
-                        let snippet = extract_snippet(text, book_match.start, book_match.end);
-                        #[expect(
-                            clippy::cast_possible_truncation,
-                            reason = "timestamp millis won't exceed u64 for centuries"
-                        )]
-                        let now = SystemTime::now()
-                            .duration_since(UNIX_EPOCH)
-                            .unwrap_or_default()
-                            .as_millis() as u64;
-
-                        detections.push(Detection {
-                            verse_ref: chapter_start.clone(),
-                            verse_id: None,
-                            confidence: CHAPTER_ONLY_CONFIDENCE,
-                            source: DetectionSource::DirectReference,
-                            transcript_snippet: snippet,
-                            detected_at: now,
-                            is_chapter_only: true,
-                            is_fuzzy_book: used_fuzzy_book_match,
-                            has_lexical_quote: false,
-                            quote_coverage: 0.0,
-                            candidate_margin: 1.0,
-                            utterance_id: None,
-                            is_final_utterance: false,
-                        });
-                        self.push_recent(&chapter_start);
-                    }
+                    // Incomplete citations (book+chapter, no verse) stay held for
+                    // refinement. They must not become detection cards, preview,
+                    // reading, or live output.
                     continue;
                 }
 
@@ -1425,11 +1392,12 @@ impl DirectDetector {
             self.incomplete = None;
         }
         self.context.update(&restored);
+        if is_chapter_only {
+            return None;
+        }
         self.push_recent(&restored);
 
-        let mut detection = self.make_direct_detection(&restored, 0.92, text, 0, text.len());
-        detection.is_chapter_only = is_chapter_only;
-        Some(detection)
+        Some(self.make_direct_detection(&restored, 0.92, text, 0, text.len()))
     }
 
     /// Resolve an explicit spoken "verse N" / "chapter N verse M" that carries
@@ -1606,10 +1574,7 @@ mod tests {
             })
             .collect::<Vec<_>>();
 
-        assert_eq!(
-            references,
-            vec![("Matthew", 26, 1), ("1 Corinthians", 11, 23)]
-        );
+        assert_eq!(references, vec![("1 Corinthians", 11, 23)]);
     }
 
     #[test]
@@ -1850,11 +1815,7 @@ mod tests {
         // Chapter-only references are NOT emitted — just held as incomplete for refinement
         let mut detector = DirectDetector::new();
         let results = detector.detect("Genesis 3 is about the fall of man");
-        assert_eq!(results.len(), 1);
-        assert_eq!(results[0].verse_ref.book_name, "Genesis");
-        assert_eq!(results[0].verse_ref.chapter, 3);
-        assert_eq!(results[0].verse_ref.verse_start, 1);
-        assert!(results[0].is_chapter_only);
+        assert!(results.is_empty());
         assert!(detector.incomplete.is_some()); // Held for refinement
         let inc = detector.incomplete.as_ref().unwrap();
         assert_eq!(inc.verse_ref.book_name, "Genesis");
@@ -1866,14 +1827,12 @@ mod tests {
         // Same book+chapter in a subsequent call — still held, no emission
         let mut detector = DirectDetector::new();
         let results = detector.detect("Genesis 3");
-        assert_eq!(results.len(), 1);
-        assert!(results[0].is_chapter_only);
+        assert!(results.is_empty());
         assert!(detector.incomplete.is_some());
 
         // Same text again — still held
         let results = detector.detect("Genesis 3");
-        assert_eq!(results.len(), 1);
-        assert!(results[0].is_chapter_only);
+        assert!(results.is_empty());
         assert!(detector.incomplete.is_some());
     }
 
@@ -1883,8 +1842,7 @@ mod tests {
         let mut detector = DirectDetector::new();
         // First: chapter-only — held as incomplete, not emitted
         let results = detector.detect("Genesis 3");
-        assert_eq!(results.len(), 1);
-        assert!(results[0].is_chapter_only);
+        assert!(results.is_empty());
         assert!(detector.incomplete.is_some());
 
         // Second: verse continuation — refines the detection
@@ -1915,14 +1873,12 @@ mod tests {
         // EDGE-01: a new book/chapter replaces the pending incomplete cleanly
         let mut detector = DirectDetector::new();
         let results = detector.detect("Genesis 3");
-        assert_eq!(results.len(), 1);
-        assert!(results[0].is_chapter_only);
+        assert!(results.is_empty());
         assert!(detector.incomplete.is_some());
 
         // Different book — supersedes Genesis 3
         let results = detector.detect("let's look at John 1");
-        assert_eq!(results.len(), 1);
-        assert!(results[0].is_chapter_only);
+        assert!(results.is_empty());
         // Incomplete now tracks John 1, not Genesis 3
         let inc = detector.incomplete.as_ref().unwrap();
         assert_eq!(inc.verse_ref.book_name, "John");
@@ -1953,8 +1909,7 @@ mod tests {
         // EDGE-02: after timeout, incomplete is cleaned up without re-emission
         let mut detector = DirectDetector::new();
         let results = detector.detect("Genesis 3");
-        assert_eq!(results.len(), 1);
-        assert!(results[0].is_chapter_only);
+        assert!(results.is_empty());
         assert!(detector.incomplete.is_some());
 
         // Simulate timeout by replacing with an expired timestamp (exceeds 15s)
@@ -2034,11 +1989,7 @@ mod tests {
         let mut detector = DirectDetector::new();
 
         let results = detector.detect("Genesis 1");
-        assert_eq!(results.len(), 1);
-        assert_eq!(results[0].verse_ref.book_name, "Genesis");
-        assert_eq!(results[0].verse_ref.chapter, 1);
-        assert_eq!(results[0].verse_ref.verse_start, 1);
-        assert!(results[0].is_chapter_only);
+        assert!(results.is_empty());
 
         let mut detector = DirectDetector::new();
         let results = detector.detect("John chapter 1 verse 1");
@@ -2876,12 +2827,13 @@ mod tests {
         let mut detector = DirectDetector::new();
 
         let results = detector.detect("Daniel 7");
-        assert_eq!(results.len(), 1);
-        assert!(results[0].is_chapter_only);
-        assert_eq!(results[0].verse_ref.book_name, "Daniel");
-        assert_eq!(results[0].verse_ref.chapter, 7);
-        assert_eq!(results[0].verse_ref.verse_start, 1);
+        assert!(results.is_empty());
         assert!(detector.incomplete.is_some());
+        assert_eq!(
+            detector.incomplete.as_ref().unwrap().verse_ref.book_name,
+            "Daniel"
+        );
+        assert_eq!(detector.incomplete.as_ref().unwrap().verse_ref.chapter, 7);
 
         let results = detector.detect("7 verse");
         assert!(results.is_empty());
@@ -2929,9 +2881,9 @@ mod tests {
         // stray bare "2" from STT must not refine to Matthew 1:2.
         let mut detector = DirectDetector::new();
         let first = detector.detect("Matthew chapter 1");
-        assert_eq!(first.len(), 1);
-        assert!(first[0].is_chapter_only);
-        assert_eq!(first[0].verse_ref.verse_start, 1);
+        assert!(first.is_empty());
+        assert!(detector.incomplete.is_some());
+        assert_eq!(detector.incomplete.as_ref().unwrap().verse_ref.chapter, 1);
 
         let stolen = detector.detect("2");
         assert!(
@@ -2951,8 +2903,8 @@ mod tests {
         let mut detector = DirectDetector::new();
 
         let results = detector.detect("Genesis 3");
-        assert_eq!(results.len(), 1);
-        assert!(results[0].is_chapter_only);
+        assert!(results.is_empty());
+        assert!(detector.incomplete.is_some());
 
         let results = detector.detect("and I'm reading from verse 15");
         assert!(!results.is_empty());
@@ -2965,8 +2917,8 @@ mod tests {
         let mut detector = DirectDetector::new();
 
         let results = detector.detect("turn with me in your Bibles to Revelation chapter 14");
-        assert_eq!(results.len(), 1);
-        assert!(results[0].is_chapter_only);
+        assert!(results.is_empty());
+        assert!(detector.incomplete.is_some());
 
         let results = detector
             .detect("we won't read verse six, but verse seven, the message of the first angel");
@@ -3009,8 +2961,8 @@ mod tests {
         let mut detector = DirectDetector::new();
 
         let results = detector.detect("Romans 4");
-        assert_eq!(results.len(), 1);
-        assert!(results[0].is_chapter_only);
+        assert!(results.is_empty());
+        assert!(detector.incomplete.is_some());
 
         let results = detector.detect("then verse 21, sorry 22");
         assert_eq!(results.len(), 1);
@@ -3024,8 +2976,8 @@ mod tests {
         let mut detector = DirectDetector::new();
 
         let results = detector.detect("keep your place in John 3");
-        assert_eq!(results.len(), 1);
-        assert!(results[0].is_chapter_only);
+        assert!(results.is_empty());
+        assert!(detector.incomplete.is_some());
 
         let results = detector.detect("John 12 verse 32 and 33");
         assert_eq!(results.len(), 1);
@@ -3110,5 +3062,69 @@ mod tests {
         assert_eq!(results[0].verse_ref.book_name, "Joao");
         assert_eq!(results[0].verse_ref.chapter, 3);
         assert_eq!(results[0].verse_ref.verse_start, 16);
+    }
+
+    fn refs_of(results: &[Detection]) -> Vec<String> {
+        results
+            .iter()
+            .map(|detection| {
+                format!(
+                    "{} {}:{}",
+                    detection.verse_ref.book_name,
+                    detection.verse_ref.chapter,
+                    detection.verse_ref.verse_start
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn incomplete_citations_from_2026_08_21_session_emit_nothing() {
+        for text in ["Genesis three", "John chapter", "Genesis four,"] {
+            let mut detector = DirectDetector::new();
+            let results = detector.detect(text);
+            assert!(
+                results.is_empty(),
+                "{text:?} must not emit a card before book+chapter+verse: {:?}",
+                refs_of(&results)
+            );
+        }
+    }
+
+    #[test]
+    fn testing_prefix_genesis_three_verse_15_emits_only_that_verse() {
+        let mut detector = DirectDetector::new();
+        let results = detector.detect("One , two and turn to Genesis three, verse 15");
+        assert_eq!(refs_of(&results), vec!["Genesis 3:15".to_string()]);
+        assert!(!results[0].is_chapter_only);
+    }
+
+    #[test]
+    fn john_chapter_one_verse_one_emits_john_1_1() {
+        let mut detector = DirectDetector::new();
+        let results = detector.detect("John chapter one, verse one");
+        assert_eq!(refs_of(&results), vec!["John 1:1".to_string()]);
+        assert!(!results[0].is_chapter_only);
+    }
+
+    #[test]
+    fn genesis_four_verse_eight_emits_genesis_4_8() {
+        let mut detector = DirectDetector::new();
+        let results = detector.detect("Genesis four, verse eight");
+        assert_eq!(refs_of(&results), vec!["Genesis 4:8".to_string()]);
+        assert!(!results[0].is_chapter_only);
+    }
+
+    #[test]
+    fn lets_go_to_genesis_for_this_eight_is_not_a_complete_citation() {
+        let mut detector = DirectDetector::new();
+        let results = detector.detect("Let's go to Genesis for this eight");
+        assert!(
+            results
+                .iter()
+                .all(|detection| !detection.is_complete_citation()),
+            "command speech must not emit a complete citation: {:?}",
+            refs_of(&results)
+        );
     }
 }

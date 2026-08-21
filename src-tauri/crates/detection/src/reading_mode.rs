@@ -3,6 +3,7 @@ use std::time::Instant;
 
 use serde::Serialize;
 
+use crate::direct::books::BOOKS;
 use crate::direct::parser::parse_spoken_number;
 
 /// Timeout: pause reading mode after 3 minutes of no verse matches.
@@ -404,9 +405,18 @@ impl ReadingMode {
             }
         }
 
-        // "chapter N" or "chapter N verse M" or "N verse M" anywhere in text
-        log::debug!("[READING] Attempting to extract chapter and verse from: {trimmed:?}");
-        let (chapter_num, verse_num) = extract_chapter_and_verse(trimmed)?;
+        // Leaving the current chapter requires the current book name in the
+        // same utterance. Bare "chapter 4 verse 8", "4 verse 8", or a leading
+        // "one … verse 15" must not retarget reading. A different book is a
+        // new citation for the direct detector, not in-book navigation.
+        if utterance_names_other_book(trimmed, self.book_number) {
+            return None;
+        }
+        let navigation_text = suffix_after_current_book(trimmed, self.book_number)?;
+
+        // "chapter N" or "chapter N verse M" or "N verse M" after the book name
+        log::debug!("[READING] Attempting to extract chapter and verse from: {navigation_text:?}");
+        let (chapter_num, verse_num) = extract_chapter_and_verse(navigation_text)?;
         log::debug!("[READING] Extracted: chapter={chapter_num}, verse={verse_num:?}");
 
         // Ignore same-chapter references that restate or trail the current
@@ -844,6 +854,55 @@ fn parse_number_token(text: &str) -> Option<i32> {
 /// - "chapter 3" → (3, None)
 /// - "chapter 3 verse 5" → (3, Some(5))
 /// - "3 verse 5" → (3, Some(5))
+fn book_needle_end(haystack: &str, needle: &str) -> Option<usize> {
+    if needle.is_empty() {
+        return None;
+    }
+    let haystack_lower = haystack.to_ascii_lowercase();
+    let needle_lower = needle.to_ascii_lowercase();
+    let mut last_end = None;
+    let mut search_from = 0;
+    while search_from < haystack_lower.len() {
+        let Some(rel) = haystack_lower[search_from..].find(&needle_lower) else {
+            break;
+        };
+        let start = search_from + rel;
+        let end = start + needle_lower.len();
+        let before_ok = start == 0 || !haystack_lower.as_bytes()[start - 1].is_ascii_alphanumeric();
+        let after_ok =
+            end == haystack_lower.len() || !haystack_lower.as_bytes()[end].is_ascii_alphanumeric();
+        if before_ok && after_ok {
+            last_end = Some(end);
+        }
+        search_from = start + 1;
+    }
+    last_end
+}
+
+fn last_end_for_book(text: &str, book_number: i32) -> Option<usize> {
+    let book = BOOKS
+        .iter()
+        .find(|candidate| candidate.number == book_number)?;
+    let mut last = book_needle_end(text, book.name);
+    for alias in book.aliases {
+        if let Some(end) = book_needle_end(text, alias) {
+            last = Some(last.map_or(end, |existing| existing.max(end)));
+        }
+    }
+    last
+}
+
+fn utterance_names_other_book(text: &str, current_book_number: i32) -> bool {
+    BOOKS.iter().any(|book| {
+        book.number != current_book_number && last_end_for_book(text, book.number).is_some()
+    })
+}
+
+fn suffix_after_current_book(text: &str, current_book_number: i32) -> Option<&str> {
+    let end = last_end_for_book(text, current_book_number)?;
+    Some(text.get(end..).unwrap_or(""))
+}
+
 fn extract_chapter_and_verse(text: &str) -> Option<(i32, Option<i32>)> {
     // First try to find "chapter N"
     if let Some(pos) = text.find("chapter ") {
@@ -1370,7 +1429,7 @@ mod tests {
             vec![(1, "In the beginning.".to_string())],
         );
 
-        let result = rm.check_chapter_command("let's go to chapter seven");
+        let result = rm.check_chapter_command("let's go to Genesis chapter seven");
         assert_eq!(
             result,
             Some(ChapterChange {
@@ -1388,7 +1447,7 @@ mod tests {
         let mut rm = ReadingMode::new();
         rm.start(1, "Genesis", 5, 1, vec![(1, "Text.".to_string())]);
 
-        let result = rm.check_chapter_command("let's go to chapter 8");
+        let result = rm.check_chapter_command("let's go to Genesis chapter 8");
         assert!(result.is_some());
         let change = result.unwrap();
         assert_eq!(change.new_chapter, 8);
@@ -1403,7 +1462,8 @@ mod tests {
             .collect();
         rm.start(66, "Revelation", 20, 12, verses);
 
-        let result = rm.check_chapter_command("let's now turn a few chapters back to chapter 13");
+        let result =
+            rm.check_chapter_command("let's now turn a few chapters back to Revelation chapter 13");
 
         assert!(result.is_some());
         let change = result.unwrap();
@@ -1473,7 +1533,7 @@ mod tests {
             vec![(1, "In the beginning.".to_string())],
         );
 
-        let result = rm.check_chapter_command("chapter 3 verse 5");
+        let result = rm.check_chapter_command("Genesis chapter 3 verse 5");
         assert!(result.is_some());
         let change = result.unwrap();
         assert_eq!(change.new_chapter, 3);
@@ -1567,7 +1627,7 @@ mod tests {
             vec![(1, "In the beginning.".to_string())],
         );
 
-        let result = rm.check_chapter_command("3 verse 5");
+        let result = rm.check_chapter_command("Genesis 3 verse 5");
         assert!(result.is_some());
         let change = result.unwrap();
         assert_eq!(change.new_chapter, 3);
@@ -1586,7 +1646,7 @@ mod tests {
             vec![(1, "In the beginning.".to_string())],
         );
 
-        let result = rm.check_chapter_command("chapter three verse five");
+        let result = rm.check_chapter_command("Genesis chapter three verse five");
         assert!(result.is_some());
         let change = result.unwrap();
         assert_eq!(change.new_chapter, 3);
@@ -1700,7 +1760,7 @@ mod tests {
         let _ = rm.check_chapter_command("chapter");
 
         // Say "chapter 3 verse 5" - full reference should reset context
-        let result = rm.check_chapter_command("chapter 3 verse 5");
+        let result = rm.check_chapter_command("Genesis chapter 3 verse 5");
         assert!(result.is_some());
         let change = result.unwrap();
         assert_eq!(change.new_chapter, 3);
@@ -1709,5 +1769,50 @@ mod tests {
 
         // Context should be reset to None after full reference
         // Next bare number should be handled by verse navigation
+    }
+
+    fn genesis_chapter_verses() -> Vec<(i32, String)> {
+        (1..=26)
+            .map(|i| (i, format!("Genesis verse {i} text.")))
+            .collect()
+    }
+
+    #[test]
+    fn testing_one_two_does_not_hijack_genesis_3_15_to_1_15() {
+        let mut rm = ReadingMode::new();
+        rm.start(1, "Genesis", 3, 15, genesis_chapter_verses());
+
+        let change = rm.check_chapter_command("One , two and turn to Genesis three, verse 15");
+
+        assert_eq!(change, None, "leading one/two must not become chapter 1");
+        assert_eq!(rm.current_verse(), Some(15));
+        assert_eq!(rm.current_chapter(), 3);
+    }
+
+    #[test]
+    fn leaving_chapter_requires_book_name() {
+        let mut rm = ReadingMode::new();
+        rm.start(1, "Genesis", 3, 15, genesis_chapter_verses());
+
+        assert_eq!(rm.check_chapter_command("chapter 4 verse 8"), None);
+        assert_eq!(rm.check_chapter_command("4 verse 8"), None);
+
+        let change = rm
+            .check_chapter_command("Genesis four, verse eight")
+            .expect("book name plus chapter:verse may leave the chapter");
+        assert_eq!(change.new_chapter, 4);
+        assert_eq!(change.start_verse, Some(8));
+    }
+
+    #[test]
+    fn same_chapter_verse_command_still_advances() {
+        let mut rm = ReadingMode::new();
+        rm.start(1, "Genesis", 3, 15, genesis_chapter_verses());
+
+        let advance = rm
+            .check_transcript("verse 16")
+            .expect("same-chapter verse N must still advance");
+        assert_eq!(advance.chapter, 3);
+        assert_eq!(advance.verse, 16);
     }
 }

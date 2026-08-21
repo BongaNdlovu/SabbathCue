@@ -80,8 +80,7 @@ pub fn semantic_assets_are_compatible(
     embeddings_path: &Path,
     ids_path: &Path,
 ) -> bool {
-    if is_rejected_embeddings_basename(embeddings_path)
-        || is_rejected_embeddings_basename(ids_path)
+    if is_rejected_embeddings_basename(embeddings_path) || is_rejected_embeddings_basename(ids_path)
     {
         return false;
     }

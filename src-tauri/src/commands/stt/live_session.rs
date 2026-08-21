@@ -15,8 +15,8 @@ use super::detection::{
 };
 use super::detection_jobs::finalize_live_semantic_results;
 use super::detection_logic::{
-    choose_reading_candidate, direct_reading_candidates, filter_direct_results_to_scope_if_present,
-    filter_semantic_results_to_reading_scope, live_pause_out_of_scope_bible_book,
+    apply_semantic_reading_scope, choose_reading_candidate, direct_reading_candidates,
+    filter_direct_results_to_scope_if_present, live_pause_out_of_scope_bible_book,
     should_release_stale_reading_scope, should_restart_reading, spoken_book_hint,
     strip_reference_scaffolding, strong_out_of_scope_bible_book, DirectReadingCandidate,
     READING_SCOPE_RELEASE_STREAK,
@@ -68,6 +68,7 @@ fn filter_live_semantic_results_to_reading_scope(
     app: &AppHandle,
     results: Vec<crate::commands::detection::DetectionResult>,
     semantic_min_confidence: f64,
+    transcript: &str,
 ) -> Vec<crate::commands::detection::DetectionResult> {
     let Some((book_number, chapter, book_name, stale_secs)) = active_reading_bible_scope(app)
     else {
@@ -127,11 +128,20 @@ fn filter_live_semantic_results_to_reading_scope(
     }
 
     let before = results.len();
-    let results = filter_semantic_results_to_reading_scope(results, Some((book_number, chapter)));
+    let results = apply_semantic_reading_scope(results, Some((book_number, chapter)), transcript);
     let suppressed = before.saturating_sub(results.len());
     if suppressed > 0 {
         log::info!(
             "[DET-SEMANTIC] Suppressed {suppressed} out-of-scope Bible result(s) while reading {book_name} {chapter}"
+        );
+    } else if rhema_detection::looks_like_verse_request(transcript)
+        && results.iter().any(|result| {
+            result.content_type == "bible"
+                && (result.book_number != book_number || result.chapter != chapter)
+        })
+    {
+        log::info!(
+            "[DET-SEMANTIC] Verse request; keeping out-of-scope Bible result(s) while reading {book_name} {chapter}"
         );
     }
 
@@ -276,11 +286,7 @@ pub(crate) fn is_automation_live_enabled(app: &AppHandle) -> bool {
     enabled
 }
 
-fn note_independent_finals(
-    verse_key: &str,
-    utterance_id: Option<u64>,
-    is_final: bool,
-) -> u32 {
+fn note_independent_finals(verse_key: &str, utterance_id: Option<u64>, is_final: bool) -> u32 {
     if !is_final {
         return 0;
     }
@@ -289,16 +295,24 @@ fn note_independent_finals(
     };
     let now_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |elapsed| u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX));
+        .map_or(0, |elapsed| {
+            u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX)
+        });
     let ledger = LEDGER.get_or_init(|| Mutex::new(rhema_detection::EvidenceLedger::default()));
     match ledger.lock() {
         Ok(mut ledger) => ledger.note_final(verse_key, utterance_id, now_ms),
-        Err(poisoned) => poisoned.into_inner().note_final(verse_key, utterance_id, now_ms),
+        Err(poisoned) => poisoned
+            .into_inner()
+            .note_final(verse_key, utterance_id, now_ms),
     }
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "authorization stamps every emitted field in one pass so grants cannot drift"
+)]
 fn authorize_emitted_results(
-    results: &mut [crate::commands::detection::DetectionResult],
+    results: &mut Vec<crate::commands::detection::DetectionResult>,
     detections: &[rhema_detection::Detection],
     transcript: &str,
     is_final_utterance: bool,
@@ -307,36 +321,38 @@ fn authorize_emitted_results(
 ) {
     if detections.is_empty() {
         for result in results.iter_mut() {
-            let grant = rhema_detection::decide_presentation(&rhema_detection::PresentationEvidence {
-                job: if result.source == "direct" {
-                    rhema_detection::DetectionJob::Citation
-                } else if rhema_detection::looks_like_verse_request(transcript) {
-                    rhema_detection::DetectionJob::Request
-                } else {
-                    rhema_detection::DetectionJob::Quotation
-                },
-                source_is_direct: result.source == "direct",
-                is_chapter_only: result.is_chapter_only,
-                is_fuzzy_book: result.is_fuzzy_book,
-                is_complete_citation: result.source == "direct"
-                    && !result.is_chapter_only
-                    && !result.is_fuzzy_book
-                    && result.book_number > 0
-                    && result.chapter > 0
-                    && result.verse > 0,
-                is_final_utterance,
-                has_lexical_quote: result.has_lexical_quote,
-                quote_coverage: 0.0,
-                candidate_margin: 1.0,
-                independent_final_count: note_independent_finals(
-                    &result.verse_ref,
-                    utterance_id,
+            let grant =
+                rhema_detection::decide_presentation(&rhema_detection::PresentationEvidence {
+                    job: if result.source == "direct" {
+                        rhema_detection::DetectionJob::Citation
+                    } else if rhema_detection::looks_like_verse_request(transcript) {
+                        rhema_detection::DetectionJob::Request
+                    } else {
+                        rhema_detection::DetectionJob::Quotation
+                    },
+                    source_is_direct: result.source == "direct",
+                    is_chapter_only: result.is_chapter_only,
+                    is_fuzzy_book: result.is_fuzzy_book,
+                    is_complete_citation: result.source == "direct"
+                        && !result.is_chapter_only
+                        && !result.is_fuzzy_book
+                        && result.book_number > 0
+                        && result.chapter > 0
+                        && result.verse > 0,
                     is_final_utterance,
-                ),
-                automation_live_enabled,
-            });
+                    has_lexical_quote: result.has_lexical_quote,
+                    quote_coverage: 0.0,
+                    candidate_margin: 1.0,
+                    independent_final_count: note_independent_finals(
+                        &result.verse_ref,
+                        utterance_id,
+                        is_final_utterance,
+                    ),
+                    automation_live_enabled,
+                });
             apply_presentation_grant(result, grant, is_final_utterance, utterance_id);
         }
+        retain_rejected_bible_results(results);
         return;
     }
 
@@ -409,6 +425,14 @@ fn authorize_emitted_results(
         });
         apply_presentation_grant(result, grant, is_final_utterance, utterance_id);
     }
+    retain_rejected_bible_results(results);
+}
+
+fn retain_rejected_bible_results(results: &mut Vec<crate::commands::detection::DetectionResult>) {
+    results.retain(|result| {
+        result.content_type == "egw"
+            || result.authorization != rhema_detection::PresentationDecision::Reject
+    });
 }
 
 fn retain_results_allowed_by_bible_mode(
@@ -767,8 +791,8 @@ pub(crate) fn run_semantic_detection(
     let t0 = std::time::Instant::now();
     let (mut egw_quotes, cue_active) =
         detect_live_egw_quotes(app, egw_cue_at_ms, egw_transcript, stt_confidence);
-    let cue_live = cue_active
-        || crate::commands::detection::egw_cue_is_currently_live(egw_cue_at_ms);
+    let cue_live =
+        cue_active || crate::commands::detection::egw_cue_is_currently_live(egw_cue_at_ms);
     if cue_live {
         pause_stale_reading_scope(app);
         log::info!(
@@ -923,8 +947,12 @@ pub(crate) fn run_semantic_detection(
         .collect();
 
     drop(app_state);
-    let results =
-        filter_live_semantic_results_to_reading_scope(app, results, semantic_min_confidence);
+    let results = filter_live_semantic_results_to_reading_scope(
+        app,
+        results,
+        semantic_min_confidence,
+        transcript,
+    );
     let mut results = finalize_live_semantic_results(results, semantic_min_confidence);
     authorize_emitted_results(
         &mut results,

@@ -88,7 +88,7 @@ export const HELP_GUIDE_SECTIONS = [
       "Do say Ellen White references as book, page, and paragraph, for example 'Patriarchs and Prophets page twenty nine paragraph two'.",
       "Do use Manual mode for important services where every slide must be reviewed before display.",
       "Don't expect semantic suggestions to appear when Semantic detection is off; when it is on, suggestions above the Semantic match-strength threshold stay visible for review.",
-      "Don't leave stale suggestions in the box during a new topic; Recent detections auto-clear after 10 seconds and can be cleared manually.",
+      "Don't leave stale suggestions in the box during a new topic; Recent detections auto-clear after 14 seconds and can be cleared manually.",
       "Don't treat automatic detections as final authority; verify the reference before relying on it publicly.",
     ],
   },

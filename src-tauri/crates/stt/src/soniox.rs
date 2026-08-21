@@ -100,26 +100,19 @@ pub(crate) fn parse_token_response(
     }
 
     let partial_transcript = format!("{}{}", finalized_text, partial_parts.join(""));
-    if !partial_transcript.trim().is_empty() {
-        if partial_parts.is_empty() && !new_final_parts.is_empty() {
-            events.push(TranscriptEvent::Final {
-                transcript: finalized_text.clone(),
-                words: vec![],
-                confidence: 1.0,
-                speech_final: endpoint,
-            });
-        } else {
-            events.push(TranscriptEvent::Partial {
-                transcript: partial_transcript,
-                words: vec![],
-            });
-        }
-    }
-
+    // Committed tokens without `<end>` stay Partial. Emitting Final here with
+    // speech_final=false made detection treat the citation as a partial (and
+    // suppress it as a repeat); the later endpoint Final was then dropped as
+    // duplicate_final, so John 1:1 never live-authorized (2026-08-21).
     if endpoint {
-        if !finalized_text.trim().is_empty() {
+        let committed = if finalized_text.trim().is_empty() {
+            partial_transcript
+        } else {
+            finalized_text.clone()
+        };
+        if !committed.trim().is_empty() {
             events.push(TranscriptEvent::Final {
-                transcript: finalized_text.clone(),
+                transcript: committed,
                 words: vec![],
                 confidence: 1.0,
                 speech_final: true,
@@ -127,6 +120,11 @@ pub(crate) fn parse_token_response(
         }
         events.push(TranscriptEvent::UtteranceEnd);
         finalized_text.clear();
+    } else if !partial_transcript.trim().is_empty() {
+        events.push(TranscriptEvent::Partial {
+            transcript: partial_transcript,
+            words: vec![],
+        });
     }
 
     Ok(events)
@@ -508,16 +506,114 @@ mod tests {
         )
         .unwrap();
 
-        assert!(events.iter().any(|event| matches!(
-            event,
+        let finals: Vec<_> = events
+            .iter()
+            .filter(|event| matches!(event, TranscriptEvent::Final { .. }))
+            .collect();
+        assert_eq!(
+            finals.len(),
+            1,
+            "a single Soniox packet must not emit two Finals: {events:?}"
+        );
+        assert!(matches!(
+            finals[0],
             TranscriptEvent::Final {
                 speech_final: true,
                 ..
             }
-        )));
+        ));
         assert!(events
             .iter()
             .any(|event| matches!(event, TranscriptEvent::UtteranceEnd)));
+    }
+
+    #[test]
+    fn committed_tokens_without_endpoint_stay_partial() {
+        // 2026-08-21 live: John 1:1 committed as Final { speech_final: false }
+        // before `<end>`. Detection treated that as a partial and suppressed
+        // it as a repeat; the later endpoint Final was duplicate_final, so
+        // the citation never live-authorized.
+        let mut finalized = String::new();
+        let events = parse_token_response(
+            &SonioxResponse {
+                tokens: vec![SonioxToken {
+                    text: "John chapter 1 verse 1".into(),
+                    is_final: true,
+                }],
+                error_code: None,
+                error_message: None,
+            },
+            &mut finalized,
+        )
+        .unwrap();
+
+        assert!(
+            events
+                .iter()
+                .all(|event| matches!(event, TranscriptEvent::Partial { .. })),
+            "committed tokens must stay partial until the endpoint: {events:?}"
+        );
+        assert!(
+            !events
+                .iter()
+                .any(|event| matches!(event, TranscriptEvent::Final { .. })),
+            "a pre-endpoint Final would swallow the real utterance-end Final"
+        );
+        assert_eq!(finalized, "John chapter 1 verse 1");
+    }
+
+    #[test]
+    fn endpoint_after_committed_tokens_emits_one_speech_final() {
+        let mut finalized = String::new();
+        let _ = parse_token_response(
+            &SonioxResponse {
+                tokens: vec![SonioxToken {
+                    text: "John chapter 1 verse 1".into(),
+                    is_final: true,
+                }],
+                error_code: None,
+                error_message: None,
+            },
+            &mut finalized,
+        )
+        .unwrap();
+
+        let events = parse_token_response(
+            &SonioxResponse {
+                tokens: vec![SonioxToken {
+                    text: "<end>".into(),
+                    is_final: true,
+                }],
+                error_code: None,
+                error_message: None,
+            },
+            &mut finalized,
+        )
+        .unwrap();
+
+        let finals: Vec<_> = events
+            .iter()
+            .filter_map(|event| match event {
+                TranscriptEvent::Final {
+                    transcript,
+                    speech_final,
+                    ..
+                } => Some((transcript.as_str(), *speech_final)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            finals,
+            vec![("John chapter 1 verse 1", true)],
+            "the endpoint packet is the only live-authorizing Final: {events:?}"
+        );
+        assert!(events
+            .iter()
+            .any(|event| matches!(event, TranscriptEvent::UtteranceEnd)));
+        assert!(
+            finalized.is_empty(),
+            "endpoint must clear the committed buffer"
+        );
     }
 
     #[test]

@@ -223,7 +223,7 @@
       { "kind": "final", "utteranceId": 1017, "text": "Joshua chapter one" }
     ],
     "expect": {
-      "authorization": ["suggestion"],
+      "authorization": ["reject"],
       "preview": null,
       "live": null,
       "queue": [],
@@ -237,7 +237,7 @@
       { "kind": "final", "utteranceId": 1018, "text": "Filipians chapter four verse thirteen" }
     ],
     "expect": {
-      "authorization": ["suggestion"],
+      "authorization": ["reject"],
       "preview": null,
       "live": null,
       "queue": [],
@@ -252,6 +252,65 @@
     ],
     "expect": {
       "authorization": ["suggestion", "reject"],
+      "preview": null,
+      "live": null,
+      "queue": [],
+      "reading": null
+    }
+  },
+  {
+    "id": "session-testing-prefix-genesis-3-15",
+    "category": "citation",
+    "events": [
+      { "kind": "partial", "utteranceId": 2101, "text": "Genesis three" },
+      { "kind": "final", "utteranceId": 2101, "text": "One , two and turn to Genesis three, verse 15" }
+    ],
+    "expect": {
+      "authorization": ["live-authorized", "reading-authorized"],
+      "preview": "Genesis 3:15",
+      "live": "Genesis 3:15",
+      "queue": ["Genesis 3:15"],
+      "reading": "Genesis 3:15"
+    }
+  },
+  {
+    "id": "session-john-1-1",
+    "category": "citation",
+    "events": [
+      { "kind": "partial", "utteranceId": 2102, "text": "John chapter" },
+      { "kind": "final", "utteranceId": 2102, "text": "John chapter one, verse one" }
+    ],
+    "expect": {
+      "authorization": ["live-authorized", "reading-authorized"],
+      "preview": "John 1:1",
+      "live": "John 1:1",
+      "queue": ["John 1:1"],
+      "reading": "John 1:1"
+    }
+  },
+  {
+    "id": "session-genesis-4-8",
+    "category": "citation",
+    "events": [
+      { "kind": "partial", "utteranceId": 2103, "text": "Genesis four," },
+      { "kind": "final", "utteranceId": 2103, "text": "Genesis four, verse eight" }
+    ],
+    "expect": {
+      "authorization": ["live-authorized", "reading-authorized"],
+      "preview": "Genesis 4:8",
+      "live": "Genesis 4:8",
+      "queue": ["Genesis 4:8"],
+      "reading": "Genesis 4:8"
+    }
+  },
+  {
+    "id": "session-lets-go-to-genesis-for-this-eight",
+    "category": "semantic",
+    "events": [
+      { "kind": "final", "utteranceId": 2104, "text": "Let's go to Genesis for this eight" }
+    ],
+    "expect": {
+      "authorization": ["reject"],
       "preview": null,
       "live": null,
       "queue": [],

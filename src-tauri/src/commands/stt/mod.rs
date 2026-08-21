@@ -23,8 +23,8 @@ use tokio::sync::Notify;
 use self::detection::{
     is_bible_detection_enabled, is_detection_paused, is_semantic_detection_enabled,
     load_egw_cue_books, record_egw_cue, LIVE_DETECTION_WINDOW_WORDS, LIVE_EGW_QUOTE_WINDOW_WORDS,
-    PARTIAL_SEMANTIC_DEBOUNCE,
-    PARTIAL_SEMANTIC_MIN_WORDS, SEMANTIC_WINDOW_SEGMENTS, WINDOW_RESET_GAP,
+    PARTIAL_SEMANTIC_DEBOUNCE, PARTIAL_SEMANTIC_MIN_WORDS, SEMANTIC_WINDOW_SEGMENTS,
+    WINDOW_RESET_GAP,
 };
 use self::detection_jobs::{
     enqueue_direct_detection_job, enqueue_final_semantic_job, enqueue_partial_semantic_job,

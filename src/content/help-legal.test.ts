@@ -41,7 +41,7 @@ describe("help-legal content", () => {
     expect(guideText).toContain("Ellen White")
     expect(guideText).toContain("85%")
     expect(guideText).toContain("Semantic detection")
-    expect(guideText).toContain("10 seconds")
+    expect(guideText).toContain("14 seconds")
     expect(guideText).toContain("Don't")
   })
 

@@ -1361,7 +1361,11 @@ mod tests {
             Some(Continuation::ChapterAndVerse(3, 22, None))
         );
         assert_eq!(
-            try_extract_continuation("chapter three and I'm reading from verse twenty two", false, false),
+            try_extract_continuation(
+                "chapter three and I'm reading from verse twenty two",
+                false,
+                false
+            ),
             Some(Continuation::ChapterAndVerse(3, 22, None))
         );
     }
@@ -1475,7 +1479,10 @@ mod tests {
 
     #[test]
     fn test_continuation_no_match() {
-        assert_eq!(try_extract_continuation("the weather is nice", false, false), None);
+        assert_eq!(
+            try_extract_continuation("the weather is nice", false, false),
+            None
+        );
         assert_eq!(
             try_extract_continuation("something unrelated here", false, false),
             None

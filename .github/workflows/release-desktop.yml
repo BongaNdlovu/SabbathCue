@@ -81,6 +81,8 @@ jobs:
           VITE_PADDLE_ENV: ${{ secrets.VITE_PADDLE_ENV }}
           VITE_PADDLE_PRICE_PRO_MONTH: ${{ secrets.VITE_PADDLE_PRICE_PRO_MONTH }}
           VITE_PADDLE_PRICE_PRO_YEAR: ${{ secrets.VITE_PADDLE_PRICE_PRO_YEAR }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           $missing = @()
           foreach ($name in @(
@@ -89,7 +91,10 @@ jobs:
             "VITE_ACTIVATION_LEASE_PUBLIC_KEY",
             "VITE_PADDLE_CLIENT_TOKEN",
             "VITE_PADDLE_ENV",
-            "VITE_PADDLE_PRICE_PRO_MONTH"
+            "VITE_PADDLE_PRICE_PRO_MONTH",
+            "VITE_PADDLE_PRICE_PRO_YEAR",
+            "TAURI_SIGNING_PRIVATE_KEY",
+            "TAURI_SIGNING_PRIVATE_KEY_PASSWORD"
           )) {
             if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
               $missing += $name

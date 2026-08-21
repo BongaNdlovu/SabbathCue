@@ -121,8 +121,8 @@ fn load_first_healthy_index(
 /// only symptom was `could not parse manifest`.
 fn manifest_record_count(manifest_text: &str) -> Result<u64, String> {
     let manifest_text = manifest_text.trim_start_matches('\u{feff}');
-    let manifest: serde_json::Value =
-        serde_json::from_str(manifest_text).map_err(|e| format!("could not parse manifest: {e}"))?;
+    let manifest: serde_json::Value = serde_json::from_str(manifest_text)
+        .map_err(|e| format!("could not parse manifest: {e}"))?;
     manifest
         .get("record_count")
         .and_then(serde_json::Value::as_u64)
