@@ -169,11 +169,7 @@ pub fn looks_like_verse_request(text: &str) -> bool {
 /// preview, reading-mode, live, or auto-queue permission.
 pub fn decide_presentation(evidence: &PresentationEvidence) -> PresentationGrant {
     let decision = if evidence.is_chapter_only || evidence.is_fuzzy_book {
-        if evidence.source_is_direct {
-            PresentationDecision::Suggestion
-        } else {
-            PresentationDecision::Reject
-        }
+        PresentationDecision::Reject
     } else {
         match evidence.job {
             DetectionJob::Citation => decide_citation(evidence),
@@ -205,11 +201,11 @@ fn decide_quotation(evidence: &PresentationEvidence) -> PresentationDecision {
     let lexical_ok = evidence.has_lexical_quote
         && evidence.quote_coverage + f64::EPSILON >= LEXICAL_QUOTE_MIN_COVERAGE
         && evidence.candidate_margin + f64::EPSILON >= QUOTATION_MIN_MARGIN;
-    let confirmed = lexical_ok
-        && (evidence.is_final_utterance || evidence.independent_final_count >= 2);
+    let confirmed =
+        lexical_ok && (evidence.is_final_utterance || evidence.independent_final_count >= 2);
 
     if !confirmed {
-        return PresentationDecision::Suggestion;
+        return PresentationDecision::Reject;
     }
     if evidence.automation_live_enabled {
         PresentationDecision::LiveAuthorized
@@ -219,7 +215,8 @@ fn decide_quotation(evidence: &PresentationEvidence) -> PresentationDecision {
 }
 
 fn decide_request(evidence: &PresentationEvidence) -> PresentationDecision {
-    if evidence.is_final_utterance && evidence.candidate_margin + f64::EPSILON >= QUOTATION_MIN_MARGIN
+    if evidence.is_final_utterance
+        && evidence.candidate_margin + f64::EPSILON >= QUOTATION_MIN_MARGIN
     {
         return PresentationDecision::PreviewAuthorized;
     }
@@ -282,7 +279,7 @@ mod tests {
         evidence.is_chapter_only = true;
         evidence.is_complete_citation = false;
         let grant = decide_presentation(&evidence);
-        assert_eq!(grant.decision, PresentationDecision::Suggestion);
+        assert_eq!(grant.decision, PresentationDecision::Reject);
         assert!(!grant.may_start_reading());
         assert!(!grant.may_preview());
         assert!(!grant.may_go_live());
@@ -294,7 +291,7 @@ mod tests {
         let mut evidence = citation_final();
         evidence.is_fuzzy_book = true;
         let grant = decide_presentation(&evidence);
-        assert_eq!(grant.decision, PresentationDecision::Suggestion);
+        assert_eq!(grant.decision, PresentationDecision::Reject);
         assert!(!grant.may_start_reading());
     }
 
@@ -343,7 +340,7 @@ mod tests {
         };
         assert_eq!(
             decide_presentation(&evidence).decision,
-            PresentationDecision::Suggestion
+            PresentationDecision::Reject
         );
     }
 
@@ -402,23 +399,72 @@ mod tests {
 
     #[test]
     fn classify_request_vs_quotation() {
-        assert_eq!(
-            classify_job(false, true, false),
-            DetectionJob::Request
-        );
-        assert_eq!(
-            classify_job(false, false, true),
-            DetectionJob::Quotation
-        );
-        assert_eq!(
-            classify_job(true, false, false),
-            DetectionJob::Citation
-        );
+        assert_eq!(classify_job(false, true, false), DetectionJob::Request);
+        assert_eq!(classify_job(false, false, true), DetectionJob::Quotation);
+        assert_eq!(classify_job(true, false, false), DetectionJob::Citation);
         assert!(looks_like_verse_request(
             "show me the verse about Paul and Silas singing in prison"
+        ));
+        assert!(looks_like_verse_request(
+            "And then let's go to the verse that talks about Paul and Silas singing in a prison."
         ));
         assert!(!looks_like_verse_request(
             "the Lord is my shepherd I shall not want"
         ));
+    }
+
+    #[test]
+    fn chapter_only_is_rejected_so_no_card_is_authorized() {
+        let mut evidence = citation_final();
+        evidence.is_chapter_only = true;
+        evidence.is_complete_citation = false;
+        let grant = decide_presentation(&evidence);
+        assert_eq!(grant.decision, PresentationDecision::Reject);
+        assert!(!grant.may_preview());
+        assert!(!grant.may_go_live());
+        assert!(!grant.may_start_reading());
+    }
+
+    #[test]
+    fn high_embedding_without_lexical_quote_is_rejected() {
+        let evidence = PresentationEvidence {
+            job: DetectionJob::Quotation,
+            source_is_direct: false,
+            is_chapter_only: false,
+            is_fuzzy_book: false,
+            is_complete_citation: false,
+            is_final_utterance: true,
+            has_lexical_quote: false,
+            quote_coverage: 0.98,
+            candidate_margin: 0.5,
+            independent_final_count: 1,
+            automation_live_enabled: true,
+        };
+        assert_eq!(
+            decide_presentation(&evidence).decision,
+            PresentationDecision::Reject
+        );
+    }
+
+    #[test]
+    fn verified_john_3_16_quote_keep_alive_still_goes_live() {
+        let evidence = PresentationEvidence {
+            job: DetectionJob::Quotation,
+            source_is_direct: false,
+            is_chapter_only: false,
+            is_fuzzy_book: false,
+            is_complete_citation: false,
+            is_final_utterance: true,
+            has_lexical_quote: true,
+            quote_coverage: 0.90,
+            candidate_margin: 0.10,
+            independent_final_count: 1,
+            automation_live_enabled: true,
+        };
+        let grant = decide_presentation(&evidence);
+        assert_eq!(grant.decision, PresentationDecision::LiveAuthorized);
+        assert!(grant.may_preview());
+        assert!(grant.may_go_live());
+        assert!(!grant.may_start_reading());
     }
 }

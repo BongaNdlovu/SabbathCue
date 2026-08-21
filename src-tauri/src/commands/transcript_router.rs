@@ -435,6 +435,27 @@ mod tests {
     }
 
     #[test]
+    fn citation_final_after_matching_partial_still_dispatches() {
+        // 2026-08-21: John 1:1 stayed suggestion-only because the Soniox
+        // endpoint Final never reached detection (duplicate_final of a
+        // pre-endpoint Final). A partial suggestion followed by one real
+        // Final must still be authoritative so auto-live can run.
+        let mut router = TranscriptRouter::default();
+        let partial = router.route(input(
+            TranscriptEventKind::Partial,
+            "John chapter 1 verse 1",
+        ));
+        assert!(partial.authoritative_detection.is_some());
+
+        let fin = router.route(input(TranscriptEventKind::Final, "John chapter 1 verse 1"));
+        assert_eq!(
+            fin.authoritative_detection.as_deref(),
+            Some("John chapter 1 verse 1"),
+            "the utterance-end Final must dispatch after the matching partial"
+        );
+    }
+
+    #[test]
     fn partial_spoken_reference_is_authoritative_for_any_provider() {
         let mut router = TranscriptRouter::default();
         let route = router.route(input(TranscriptEventKind::Partial, "John three sixteen"));

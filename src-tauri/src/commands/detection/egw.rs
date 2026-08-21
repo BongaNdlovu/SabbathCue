@@ -280,7 +280,9 @@ fn cue_is_live(now_ms: u64, cue_at_ms: u64) -> bool {
 pub(crate) fn egw_cue_is_currently_live(cue_at_ms: &AtomicU64) -> bool {
     let now_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |elapsed| u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX));
+        .map_or(0, |elapsed| {
+            u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX)
+        });
     cue_is_live(now_ms, cue_at_ms.load(Ordering::Relaxed))
 }
 

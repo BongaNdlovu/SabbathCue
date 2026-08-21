@@ -89,6 +89,13 @@ fn modern_storm_and_boat_request_recalls_the_kjv_calm() {
 fn prison_scene_request_recalls_paul_and_silas_praying() {
     let db = recall_db();
     assert_recalls(&db, "Paul and Silas in prison", "Acts", 16, 25);
+    assert_recalls(
+        &db,
+        "And then let's go to the verse that talks about Paul and Silas singing in a prison.",
+        "Acts",
+        16,
+        25,
+    );
 }
 
 #[test]

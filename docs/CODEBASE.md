@@ -1,6 +1,6 @@
 # Codebase Map - SabbathCue
 
-Created: 2026-07-12 - Last verified: 2026-08-03 - Confidence: High
+Created: 2026-07-12 - Last verified: 2026-08-21 - Confidence: High
 
 ## 0 - Snapshot
 
@@ -999,3 +999,6 @@ Top risks (ranked): 1. STT provider removal can leave stale docs or tests if his
 | 2026-08-03 | Added generic multi-concept reranking with stemmed subject/event/quantity anchors and numeric equivalence, and changed the detection store to order Bible, EGW, and hymn cards by confidence first while retaining the five-card cap and one EGW review slot. | 5-7, 10, 11, 15 |
 | 2026-08-03 | Split the public semantic corpus into one KJV vector plus independent WEB/SpaRV/FreJND/PorBLivre vectors, switched the shared ONNX tokenizer to dynamic batch-longest padding, rebuilt 155,345 f32/q8 vectors, and recorded retrieval, latency, quantization, and accuracy-gate evidence in `docs/reports/2026-08-03-split-corpus-dynamic-padding-report.md`. | 6, 7, 9-11, 15 |
 | 2026-08-03 | Prevented broad OR-tier FTS hits from receiving short-overlap exact-quote confidence; the curated 90% accuracy gate moved from 98.7% to 99.4% precision without raising the threshold, and the regression is locked in `pipeline::tests::broad_or_hit_does_not_become_exact_quote_evidence_from_short_overlap`. | 6, 10, 11, 15 |
+| 2026-08-21 | Soniox committed tokens stay Partial until `<end>`, so a pre-endpoint Final can no longer suppress the citation and then block the real utterance-end Final as `duplicate_final` (John 1:1 after Matthew 1). Hymn path unchanged. | 5-7, 10, 11, 15 |
+| 2026-08-21 | Verse requests skip the reading-chapter semantic filter so a Genesis 3 lock cannot swallow Acts 16:25. Event-term coverage now stems singing/sang and prison/prisoners and withholds the FTS+vector overlap boost unless those terms are in the verse, so Acts 15:40 no longer ties the prison scene at 86%. Hymn path unchanged. | 5-7, 10, 11, 15 |
+| 2026-08-21 | Incomplete citations no longer emit cards; leaving a reading-mode chapter requires the current book name (killing the Genesis 3:15 → 1:15 hijack); quotations without lexical overlap are rejected rather than suggested; Auto Live off still previews and reads but does not commit live. Hymn path unchanged. | 5-7, 10, 11, 15 |

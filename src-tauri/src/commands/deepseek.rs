@@ -410,7 +410,9 @@ pub fn map_cerebras_validation_status(status: u16) -> Result<(), String> {
     match status {
         200..=299 => Ok(()),
         401 => Err("Cerebras rejected the API key (401). Check the key and try again.".into()),
-        402 | 403 => Err(format!("Cerebras account or billing restriction ({status}).")),
+        402 | 403 => Err(format!(
+            "Cerebras account or billing restriction ({status})."
+        )),
         429 => Err("Cerebras rate limit reached (429). Try again shortly.".into()),
         other => Err(format!("Cerebras key check failed with status {other}.")),
     }
@@ -631,7 +633,9 @@ mod tests {
             .map(|i| CandidateInput {
                 id: format!("44:16:{}", 25 + i),
                 reference: format!("Acts 16:{}", 25 + i),
-                verse_text: format!("About midnight Paul and Silas were praying and singing {i}..."),
+                verse_text: format!(
+                    "About midnight Paul and Silas were praying and singing {i}..."
+                ),
                 summary: format!("Acts 16:{} — summary {i}", 25 + i),
                 confidence: 0.7,
                 evidence: RankingEvidenceInput {

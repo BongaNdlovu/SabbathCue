@@ -1919,4 +1919,78 @@ describe("verse detection workflow", () => {
       })
     })
   })
+
+  it("does not add 88% semantic cards that lack a lexical quote", async () => {
+    await handleVerseDetections([
+      makeDetection({
+        verse_ref: "Genesis 37:17",
+        verse_text: "And the man said, They are departed hence.",
+        book_name: "Genesis",
+        book_number: 1,
+        chapter: 37,
+        verse: 17,
+        confidence: 0.88,
+        source: "semantic",
+        auto_queued: false,
+        authorization: "suggestion",
+        job: "quotation",
+        has_lexical_quote: false,
+        transcript_snippet: "Let's go to Genesis for this eight",
+      }),
+    ])
+
+    expect(useDetectionStore.getState().detections).toEqual([])
+    expect(useBibleStore.getState().selectedVerse).toBeNull()
+    expect(useBroadcastStore.getState().liveItem).toBeNull()
+    expect(useBroadcastStore.getState().previewItem).toBeNull()
+  })
+
+  it("does not add reject-authorization incomplete citations", async () => {
+    await handleVerseDetections([
+      makeDetection({
+        verse_ref: "Genesis 3:1",
+        book_name: "Genesis",
+        book_number: 1,
+        chapter: 3,
+        verse: 1,
+        confidence: 0.92,
+        source: "direct",
+        auto_queued: false,
+        is_chapter_only: true,
+        authorization: "reject",
+        job: "citation",
+        transcript_snippet: "Genesis three",
+      }),
+    ])
+
+    expect(useDetectionStore.getState().detections).toEqual([])
+    expect(useBroadcastStore.getState().liveItem).toBeNull()
+  })
+
+  it("keeps a high-overlap quotation auto-live path intact", async () => {
+    await handleVerseDetections([
+      makeDetection({
+        verse_ref: "John 3:16",
+        verse_text:
+          "For God so loved the world, that he gave his only begotten Son.",
+        book_name: "John",
+        book_number: 43,
+        chapter: 3,
+        verse: 16,
+        confidence: 0.95,
+        source: "semantic",
+        auto_queued: false,
+        authorization: "live-authorized",
+        job: "quotation",
+        has_lexical_quote: true,
+        transcript_snippet:
+          "For God so loved the world that he gave his only begotten Son",
+      }),
+    ])
+
+    expect(useBroadcastStore.getState().isLive).toBe(true)
+    expect(useBroadcastStore.getState().liveItem?.reference).toBe(
+      "John 3:16 (KJV)"
+    )
+  })
 })

@@ -400,7 +400,6 @@ pub fn get_cerebras_api_key_or_empty_with_store(
     }
 }
 
-
 #[command]
 pub async fn validate_deepgram_api_key() -> Result<(), String> {
     let key = get_deepgram_api_key_or_empty()?;

@@ -320,7 +320,16 @@ pub(crate) fn finalize_live_semantic_results(
         .into_values()
         .map(|(mut result, overlap_count)| {
             if overlap_count > 1 {
-                result.confidence = (result.confidence + LIVE_SEMANTIC_OVERLAP_BOOST).min(0.98);
+                let event_coverage = rhema_detection::event_term_coverage(
+                    &result.transcript_snippet,
+                    &result.verse_text,
+                );
+                // FTS+vector agreement is quote corroboration only when the
+                // spoken event terms are in the verse. Otherwise Acts 15:40
+                // (Paul chose Silas) inherits 86% from the names alone.
+                if event_coverage >= 0.75 {
+                    result.confidence = (result.confidence + LIVE_SEMANTIC_OVERLAP_BOOST).min(0.98);
+                }
             }
             result
         })

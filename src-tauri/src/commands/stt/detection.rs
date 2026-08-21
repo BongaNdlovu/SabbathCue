@@ -113,9 +113,9 @@ impl RecentDirectEmissions {
         self.suppress_repeats_with_finality(results, window, now, false);
     }
 
-    /// A final transcript may be the first complete form of a single-digit
-    /// citation. Let that refinement through even when the same reference was
-    /// emitted provisionally from a partial transcript.
+    /// A final transcript is the first live-authorized form of a citation
+    /// whose partial was suggestion-only. Let that upgrade through even when
+    /// the same reference was emitted provisionally from a partial.
     pub(crate) fn suppress_repeats_final(
         &mut self,
         results: &mut Vec<crate::commands::detection::DetectionResult>,
@@ -130,7 +130,7 @@ impl RecentDirectEmissions {
         results: &mut Vec<crate::commands::detection::DetectionResult>,
         window: Duration,
         now: std::time::Instant,
-        allow_final_single_digit: bool,
+        from_final: bool,
     ) {
         // Bound growth on a long service without needing a separate sweep.
         self.seen
@@ -143,14 +143,9 @@ impl RecentDirectEmissions {
                 result.verse,
                 result.is_chapter_only,
             );
-            let is_final_single_digit = allow_final_single_digit
-                && result.content_type == "bible"
-                && (1..=9).contains(&result.verse)
-                && !result.is_chapter_only;
             match self.seen.get(&key) {
-                Some((seen_at, seen_final))
-                    if now.duration_since(*seen_at) < window
-                        && (!is_final_single_digit || *seen_final) =>
+                Some((seen_at, already_final))
+                    if now.duration_since(*seen_at) < window && (!from_final || *already_final) =>
                 {
                     log::debug!(
                         "[DET-DIRECT] Suppressed repeat {} within {}ms",
@@ -160,7 +155,7 @@ impl RecentDirectEmissions {
                     false
                 }
                 _ => {
-                    self.seen.insert(key, (now, is_final_single_digit));
+                    self.seen.insert(key, (now, from_final));
                     true
                 }
             }
@@ -468,6 +463,33 @@ mod tests {
         }
     }
 
+    fn make_quoted_detection_result(
+        verse_ref: &str,
+        book_number: i32,
+        chapter: i32,
+        verse: i32,
+        confidence: f64,
+        transcript_snippet: &str,
+        verse_text: &str,
+    ) -> crate::commands::detection::DetectionResult {
+        crate::commands::detection::DetectionResult {
+            content_type: "bible".to_string(),
+            verse_ref: verse_ref.to_string(),
+            verse_text: verse_text.to_string(),
+            book_name: "Book".to_string(),
+            book_number,
+            chapter,
+            verse,
+            confidence,
+            rank_score: confidence,
+            source: "semantic".to_string(),
+            auto_queued: false,
+            transcript_snippet: transcript_snippet.to_string(),
+            is_chapter_only: false,
+            ..crate::commands::detection::DetectionResult::default()
+        }
+    }
+
     fn make_merged_direct(
         book_name: &str,
         book_number: i32,
@@ -576,13 +598,7 @@ mod tests {
     fn single_digit_full_citation_does_not_reanchor_during_digit_growth() {
         // Live: Matthew 6:1 (chapter-only) then provisional Matthew 6:3 before 6:33.
         let provisional = reading_candidate(40, 6, 3, 1.0, false);
-        assert!(!should_restart_reading(
-            true,
-            40,
-            6,
-            Some(1),
-            &provisional
-        ));
+        assert!(!should_restart_reading(true, 40, 6, Some(1), &provisional));
         let stable = reading_candidate(40, 6, 33, 1.0, false);
         assert!(should_restart_reading(true, 40, 6, Some(1), &stable));
     }
@@ -619,11 +635,14 @@ mod tests {
 
     #[test]
     fn choose_reading_candidate_prefers_active_scope_over_stale_first_candidate() {
-        let candidates = direct_reading_candidates(&[
-            make_merged_direct("Isaiah", 23, 4, 3, 1.0, false),
-            make_merged_direct("Philippians", 50, 4, 3, 1.0, false),
-            make_merged_direct("Revelation", 66, 1, 3, 1.0, false),
-        ], true);
+        let candidates = direct_reading_candidates(
+            &[
+                make_merged_direct("Isaiah", 23, 4, 3, 1.0, false),
+                make_merged_direct("Philippians", 50, 4, 3, 1.0, false),
+                make_merged_direct("Revelation", 66, 1, 3, 1.0, false),
+            ],
+            true,
+        );
 
         let selected = choose_reading_candidate(&candidates, Some((50, 4)));
 
@@ -836,6 +855,33 @@ mod tests {
         assert!(
             repeated_final.is_empty(),
             "only the first final citation may replace the provisional repeat"
+        );
+    }
+
+    #[test]
+    fn final_two_digit_reference_can_replace_its_partial_repeat() {
+        // 2026-08-21 live: "Genesis 3, verse 15" emitted as a suggestion on the
+        // partial, then the final (the only live-authorized event) was dropped
+        // because verse 15 is not a single digit. Genesis 2:1 and Matthew 1:8
+        // in the same session went live because verses 1 and 8 took the
+        // single-digit exception.
+        let mut recent = RecentDirectEmissions::default();
+        let start = std::time::Instant::now();
+
+        let mut partial = vec![direct_result("Genesis 3:15", 1, 3, 15, false)];
+        recent.suppress_repeats(&mut partial, DIRECT_REPEAT_SUPPRESSION, start);
+        assert_eq!(partial.len(), 1);
+
+        let mut final_result = vec![direct_result("Genesis 3:15", 1, 3, 15, false)];
+        recent.suppress_repeats_final(
+            &mut final_result,
+            DIRECT_REPEAT_SUPPRESSION,
+            start + Duration::from_millis(100),
+        );
+        assert_eq!(
+            final_result.len(),
+            1,
+            "the final Genesis 3:15 must reach the frontend for auto-live"
         );
     }
 
@@ -1069,8 +1115,24 @@ mod tests {
     #[test]
     fn test_finalize_live_semantic_results_dedupes_and_boosts_overlap() {
         let results = vec![
-            make_detection_result("John 3:16", 43, 3, 16, 0.86),
-            make_detection_result("John 3:16", 43, 3, 16, 0.74),
+            make_quoted_detection_result(
+                "John 3:16",
+                43,
+                3,
+                16,
+                0.86,
+                "for God so loved the world that he gave his only begotten Son",
+                "For God so loved the world, that he gave his only begotten Son",
+            ),
+            make_quoted_detection_result(
+                "John 3:16",
+                43,
+                3,
+                16,
+                0.74,
+                "for God so loved the world that he gave his only begotten Son",
+                "For God so loved the world, that he gave his only begotten Son",
+            ),
             make_detection_result("Romans 8:28", 45, 8, 28, 0.72),
         ];
 
@@ -1081,6 +1143,27 @@ mod tests {
         assert!(
             finalized[0].confidence > 0.86,
             "overlap should boost the deduped result"
+        );
+    }
+
+    #[test]
+    fn finalize_does_not_overlap_boost_paul_chose_silas_on_prison_singing_request() {
+        // 2026-08-21 live: FTS + vector both hit Acts 15:40 on the names
+        // "Paul and Silas", then LIVE_SEMANTIC_OVERLAP_BOOST raised 76% to 86%
+        // tying Acts 16:25. Name-only corroboration is not quote evidence.
+        let request = "the verse that talks about Paul and Silas singing in a prison";
+        let companion = "And Paul chose Silas, and departed, being recommended by the brethren unto the grace of God.";
+        let results = vec![
+            make_quoted_detection_result("Acts 15:40", 44, 15, 40, 0.76, request, companion),
+            make_quoted_detection_result("Acts 15:40", 44, 15, 40, 0.70, request, companion),
+        ];
+
+        let finalized = finalize_live_semantic_results(results, LIVE_SEMANTIC_MIN_CONFIDENCE);
+        assert_eq!(finalized.len(), 1);
+        assert!(
+            finalized[0].confidence < 0.80,
+            "Acts 15:40 must not inherit an 86% overlap boost on a prison-singing request, got {:.0}%",
+            finalized[0].confidence * 100.0
         );
     }
 
@@ -1132,6 +1215,46 @@ mod tests {
 
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].verse_ref, "Revelation 13:8");
+    }
+
+    #[test]
+    fn reading_scope_filter_keeps_out_of_chapter_bible_hits_for_verse_requests() {
+        // 2026-08-21 live: Genesis 3:1 had locked reading mode, then
+        // "go to the verse that talks about Paul and Silas singing in a prison"
+        // produced Acts 16:25 candidates that were all suppressed as out of
+        // Genesis 3 (seq=37/52/62/65/67, emitted=0).
+        let results = vec![
+            make_detection_result("Acts 16:25", 44, 16, 25, 0.88),
+            make_detection_result("Acts 15:40", 44, 15, 40, 0.76),
+            make_detection_result("Genesis 3:1", 1, 3, 1, 0.70),
+        ];
+
+        let filtered = detection_logic::apply_semantic_reading_scope(
+            results,
+            Some((1, 3)),
+            "the verse that talks about Paul and Silas singing in a prison",
+        );
+
+        assert!(
+            filtered
+                .iter()
+                .any(|result| result.verse_ref == "Acts 16:25"),
+            "verse requests must surface the requested passage while reading another chapter"
+        );
+    }
+
+    #[test]
+    fn reading_scope_filter_still_suppresses_quotation_echoes_while_reading() {
+        let results = vec![make_detection_result("Acts 16:25", 44, 16, 25, 0.88)];
+        let filtered = detection_logic::apply_semantic_reading_scope(
+            results,
+            Some((1, 3)),
+            "and the prisoners heard them",
+        );
+        assert!(
+            filtered.is_empty(),
+            "ordinary quotation echoes must stay scoped to the active chapter"
+        );
     }
 
     #[test]

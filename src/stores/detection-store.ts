@@ -26,7 +26,7 @@ export interface HeldReferenceCandidate {
 
 const MAX_RECENT_DETECTIONS = 5
 // Keep matches actionable through a short live-speaking window, then clear old context.
-const DETECTION_TTL_MS = 11_000
+const DETECTION_TTL_MS = 14_000
 const NUMBER_TOKEN_PATTERN = /\d+/g
 const VERSE_REF_PATTERN = /(\d+)\s*:\s*(\d+)/g
 

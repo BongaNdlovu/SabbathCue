@@ -191,6 +191,18 @@ function detectionAllowedBySettings(
   detection: DetectionResult,
   settings: DetectionSettingsSnapshot
 ): boolean {
+  if (detection.authorization === "reject") {
+    return false
+  }
+  if (
+    detection.content_type !== "egw" &&
+    detection.job === "quotation" &&
+    !detection.has_lexical_quote &&
+    (detection.authorization === "suggestion" ||
+      detection.authorization === undefined)
+  ) {
+    return false
+  }
   return (
     detection.source !== "semantic" ||
     (settings.semanticDetectionEnabled &&

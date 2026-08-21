@@ -23,7 +23,7 @@ mod settings;
 
 pub(crate) use egw::{
     apply_egw_auto_queue, dampen_egw_for_low_stt_confidence, detect_egw_quotes,
-    drop_egw_quotes_echoing_scripture, detect_egw_references, egw_cue_is_currently_live,
+    detect_egw_references, drop_egw_quotes_echoing_scripture, egw_cue_is_currently_live,
     note_and_check_egw_cue, retain_best_egw_quote,
 };
 pub use result::{apply_presentation_grant, to_result, DetectionResult};
@@ -292,9 +292,7 @@ pub fn update_detection_settings(
         app_state
             .semantic_detection_enabled
             .store(semantic_enabled, Ordering::SeqCst);
-        app_state
-            .auto_mode
-            .store(auto_mode, Ordering::SeqCst);
+        app_state.auto_mode.store(auto_mode, Ordering::SeqCst);
         app_state
             .live_output_enabled
             .store(live_enabled, Ordering::SeqCst);

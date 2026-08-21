@@ -4,14 +4,13 @@
 //! visible presentation state (preview, live, queue, reading mode) unless
 //! granted by the presentation authority policy.
 
+use rhema_detection::{
+    classify_job, decide_presentation, looks_like_verse_request, DetectionJob, DirectDetector,
+    EvidenceLedger, PresentationDecision, PresentationEvidence, PresentationGrant,
+};
+use serde::Deserialize;
 use std::fs;
 use std::path::PathBuf;
-use serde::Deserialize;
-use rhema_detection::{
-    decide_presentation, classify_job, looks_like_verse_request,
-    DetectionJob, DirectDetector, EvidenceLedger, PresentationDecision,
-    PresentationEvidence, PresentationGrant,
-};
 
 #[derive(Debug, Deserialize)]
 struct ReplayEvent {
@@ -63,9 +62,16 @@ fn simulate_effects_for_case(case: &ReplayCase) -> PresentationEffects {
 
         if !direct_detections.is_empty() {
             for det in &direct_detections {
-                let verse_key = format!("{} {}:{}", det.verse_ref.book_name, det.verse_ref.chapter, det.verse_ref.verse_start);
+                let verse_key = format!(
+                    "{} {}:{}",
+                    det.verse_ref.book_name, det.verse_ref.chapter, det.verse_ref.verse_start
+                );
                 let independent_finals = if is_final {
-                    ledger.note_final(&verse_key, event.utterance_id, now_ms + (event_idx as u64 * 100))
+                    ledger.note_final(
+                        &verse_key,
+                        event.utterance_id,
+                        now_ms + (event_idx as u64 * 100),
+                    )
                 } else {
                     0
                 };
@@ -90,11 +96,16 @@ fn simulate_effects_for_case(case: &ReplayCase) -> PresentationEffects {
             }
         } else {
             // Semantic / request / noise simulation
-            let is_egw_theology = case.category == "egw-theology" || case.id.starts_with("theology-");
-            let is_noise = case.category == "noise" || case.id.contains("numeric-testing") || case.id.contains("makes-one");
+            let is_egw_theology =
+                case.category == "egw-theology" || case.id.starts_with("theology-");
+            let is_noise = case.category == "noise"
+                || case.id.contains("numeric-testing")
+                || case.id.contains("makes-one");
             let is_request = case.category == "request" || looks_like_verse_request(&event.text);
 
-            if is_egw_theology || is_noise {
+            if case.category == "chapter-only" {
+                effects.decisions.push(PresentationDecision::Reject);
+            } else if is_egw_theology || is_noise {
                 // Noise / EGW yields no Bible citation, at most rejected or suggestion
                 let evidence = PresentationEvidence {
                     job: DetectionJob::Quotation,
@@ -138,12 +149,18 @@ fn simulate_effects_for_case(case: &ReplayCase) -> PresentationEffects {
             } else if case.category == "quotation" || case.category == "finality" {
                 let (resolved_ref, quote_cov, has_quote) = match case.id.as_str() {
                     "verified-exact-bible-quotation" => ("John 3:16", 0.90, true),
-                    "repeated-partial-plus-final-single-utterance" => ("John 3:16", if is_final { 0.85 } else { 0.40 }, true),
+                    "repeated-partial-plus-final-single-utterance" => {
+                        ("John 3:16", if is_final { 0.85 } else { 0.40 }, true)
+                    }
                     "dual-final-confirmation" => ("Ephesians 6:11", 0.65, true),
                     _ => ("Unknown 1:1", 0.0, false),
                 };
                 let independent_finals = if is_final {
-                    ledger.note_final(resolved_ref, event.utterance_id, now_ms + (event_idx as u64 * 100))
+                    ledger.note_final(
+                        resolved_ref,
+                        event.utterance_id,
+                        now_ms + (event_idx as u64 * 100),
+                    )
                 } else {
                     0
                 };
@@ -187,7 +204,11 @@ fn simulate_effects_for_case(case: &ReplayCase) -> PresentationEffects {
     effects
 }
 
-fn apply_grant_to_effects(grant: PresentationGrant, verse_ref: &str, effects: &mut PresentationEffects) {
+fn apply_grant_to_effects(
+    grant: PresentationGrant,
+    verse_ref: &str,
+    effects: &mut PresentationEffects,
+) {
     if grant.may_preview() {
         effects.preview = Some(verse_ref.to_string());
     }
@@ -200,7 +221,9 @@ fn apply_grant_to_effects(grant: PresentationGrant, verse_ref: &str, effects: &m
     if grant.may_auto_queue() && !effects.queue.contains(&verse_ref.to_string()) {
         effects.queue.push(verse_ref.to_string());
     }
-    if grant.decision == PresentationDecision::Suggestion && !effects.suggestions.contains(&verse_ref.to_string()) {
+    if grant.decision == PresentationDecision::Suggestion
+        && !effects.suggestions.contains(&verse_ref.to_string())
+    {
         effects.suggestions.push(verse_ref.to_string());
     }
 }
@@ -217,8 +240,12 @@ fn load_fixtures() -> Vec<ReplayCase> {
         .join("data")
         .join("detection-fixtures")
         .join("presentation-policy-2026-08-18.json");
-    let content = fs::read_to_string(&fixture_path)
-        .unwrap_or_else(|err| panic!("Failed to read fixture file at {}: {err}", fixture_path.display()));
+    let content = fs::read_to_string(&fixture_path).unwrap_or_else(|err| {
+        panic!(
+            "Failed to read fixture file at {}: {err}",
+            fixture_path.display()
+        )
+    });
     serde_json::from_str(&content).expect("Valid fixture JSON")
 }
 
@@ -234,7 +261,10 @@ fn test_presentation_policy_replay_all_cases() {
         if let Some(expected_preview) = &case.expect.preview {
             if let Some(preview_any) = &case.expect.preview_any {
                 assert!(
-                    effects.preview.as_ref().is_some_and(|p| preview_any.contains(p)),
+                    effects
+                        .preview
+                        .as_ref()
+                        .is_some_and(|p| preview_any.contains(p)),
                     "Case '{}': expected preview in {:?}, got {:?}",
                     case.id,
                     preview_any,
@@ -293,8 +323,7 @@ fn test_presentation_policy_replay_all_cases() {
 
         // Check queue
         assert_eq!(
-            effects.queue,
-            case.expect.queue,
+            effects.queue, case.expect.queue,
             "Case '{}': unexpected auto_queue effect",
             case.id
         );
@@ -304,7 +333,10 @@ fn test_presentation_policy_replay_all_cases() {
         if let Some(last) = last_decision {
             let decision_str = last.as_str();
             assert!(
-                case.expect.authorization.iter().any(|allowed| allowed == decision_str),
+                case.expect
+                    .authorization
+                    .iter()
+                    .any(|allowed| allowed == decision_str),
                 "Case '{}': decision '{}' not in allowed list {:?}",
                 case.id,
                 decision_str,
@@ -319,7 +351,9 @@ fn test_makes_one_regression_is_never_authorizing() {
     let mut detector = DirectDetector::new();
     let detections = detector.detect("that explains or makes one");
     assert!(
-        detections.iter().all(|d| d.is_fuzzy_book || d.is_chapter_only || d.confidence < 0.90),
+        detections
+            .iter()
+            .all(|d| d.is_fuzzy_book || d.is_chapter_only || d.confidence < 0.90),
         "makes one must not produce high-confidence non-fuzzy citation"
     );
     for det in detections {
@@ -348,27 +382,8 @@ fn test_makes_one_regression_is_never_authorizing() {
 fn test_chapter_only_is_never_action_authorizing() {
     let mut detector = DirectDetector::new();
     let detections = detector.detect("Joshua chapter one");
-    assert!(!detections.is_empty());
-    for det in detections {
-        assert!(det.is_chapter_only);
-        let evidence = PresentationEvidence {
-            job: DetectionJob::Citation,
-            source_is_direct: true,
-            is_chapter_only: det.is_chapter_only,
-            is_fuzzy_book: det.is_fuzzy_book,
-            is_complete_citation: det.is_complete_citation(),
-            is_final_utterance: true,
-            has_lexical_quote: false,
-            quote_coverage: 0.0,
-            candidate_margin: 1.0,
-            independent_final_count: 1,
-            automation_live_enabled: true,
-        };
-        let grant = decide_presentation(&evidence);
-        assert_eq!(grant.decision, PresentationDecision::Suggestion);
-        assert!(!grant.may_preview());
-        assert!(!grant.may_go_live());
-        assert!(!grant.may_start_reading());
-        assert!(!grant.may_auto_queue());
-    }
+    assert!(
+        detections.is_empty(),
+        "incomplete citations must not emit cards: {detections:?}"
+    );
 }
