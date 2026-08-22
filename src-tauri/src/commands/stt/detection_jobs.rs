@@ -113,7 +113,7 @@ pub(crate) fn enqueue_final_semantic_job(
         log::debug!(
             "[QUEUE] final_semantic latest-wins replaced stale work sent={sent} replaced={replaced_count}"
         );
-    } else if n % 25 == 0 {
+    } else if n.is_multiple_of(25) {
         let replaced_count = replaced_counter.load(Ordering::Relaxed);
         log::info!("[QUEUE] final_semantic latest-wins sent={n} replaced={replaced_count}");
     }
@@ -166,7 +166,7 @@ pub(crate) fn enqueue_partial_semantic_job(
         log::debug!(
             "[QUEUE] partial_semantic latest-wins replaced stale work sent={sent} replaced={replaced_count}"
         );
-    } else if n % 25 == 0 {
+    } else if n.is_multiple_of(25) {
         let replaced_count = replaced_counter.load(Ordering::Relaxed);
         log::info!("[QUEUE] partial_semantic latest-wins sent={n} replaced={replaced_count}");
     }
@@ -192,7 +192,7 @@ pub(crate) fn enqueue_direct_detection_job(
         Ok(()) => {
             latest_accepted_seq.store(seq, Ordering::Release);
             let n = sent_counter.fetch_add(1, Ordering::Relaxed) + 1;
-            if n % 25 == 0 {
+            if n.is_multiple_of(25) {
                 let depth = detect_tx.max_capacity() - detect_tx.capacity();
                 let dropped = dropped_counter.load(Ordering::Relaxed);
                 log::info!(

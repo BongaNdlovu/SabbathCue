@@ -34,7 +34,7 @@ authors = ["BongaNdlovu"]
 license = "MIT"
 repository = "https://github.com/Bongisto/SabbathCue"
 edition = "2021"
-rust-version = "1.77.2"
+rust-version = "1.87"
 
 [lib]
 name = "rhema_lib"

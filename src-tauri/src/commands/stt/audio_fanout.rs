@@ -124,7 +124,7 @@ pub(super) fn spawn(
 
                             // (a) Compute audio levels at ~15 Hz
                             //     At 16 kHz with ~1024-sample frames, every 4th frame is ~15 Hz.
-                            if frame_count % 4 == 0 {
+                            if frame_count.is_multiple_of(4) {
                                 emit_level(&fan_app, &frame.samples);
                             }
 

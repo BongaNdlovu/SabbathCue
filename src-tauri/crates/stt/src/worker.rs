@@ -17,10 +17,6 @@ use crate::types::{TranscriptEvent, Word};
 
 const CHECK_READY_TIMEOUT: Duration = Duration::from_secs(20);
 const WORKER_MONITOR_INTERVAL: Duration = Duration::from_millis(50);
-#[expect(
-    clippy::duration_suboptimal_units,
-    reason = "Keep Duration::from_secs for compatibility with the project Rust MSRV"
-)]
 const PREFLIGHT_CACHE_TTL: Duration = Duration::from_secs(600);
 
 type PreflightCacheKey = (String, PathBuf, PathBuf);

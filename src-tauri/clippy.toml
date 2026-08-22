@@ -1,0 +1,4 @@
+# Keep MSRV-aware clippy lints honest: matches the newest std API used in the
+# workspace (usize::is_multiple_of, Rust 1.87). slice::as_chunks (1.88) is off
+# limits, which keeps chunks_exact idioms lint-clean.
+msrv = "1.87"

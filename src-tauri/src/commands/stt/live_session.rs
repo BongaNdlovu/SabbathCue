@@ -648,7 +648,7 @@ pub(crate) fn run_direct_detection(
         return reading_candidates;
     };
     let ok = LOCK_OK.fetch_add(1, Ordering::Relaxed) + 1;
-    if ok % 50 == 0 {
+    if ok.is_multiple_of(50) {
         let bad = LOCK_CONTENDED.load(Ordering::Relaxed);
         log::info!("[DET-DIRECT] AppState lock stats ok={ok} contended={bad}");
     }

@@ -422,8 +422,7 @@ pub fn run() {
                 let bible_db = if app
                     .path()
                     .resource_dir()
-                    .ok()
-                    .is_some_and(|dir| db_path.starts_with(dir))
+                    .is_ok_and(|dir| db_path.starts_with(dir))
                 {
                     rhema_bible::BibleDb::open_readonly(&db_path)
                 } else {

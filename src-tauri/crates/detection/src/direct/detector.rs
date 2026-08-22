@@ -915,7 +915,7 @@ impl DirectDetector {
         for (pattern, abbrev) in TRANSLATION_COMMANDS {
             if lower.contains(pattern) {
                 log::info!("[DET-DIRECT] Translation command detected: {abbrev}");
-                return Some(abbrev.to_string());
+                return Some((*abbrev).to_string());
             }
         }
 
@@ -950,7 +950,7 @@ impl DirectDetector {
             };
             if let Some(abbrev) = matched {
                 log::info!("[DET-DIRECT] Translation abbreviation detected: {abbrev}");
-                return Some(abbrev.to_string());
+                return Some((*abbrev).to_string());
             }
         }
 
