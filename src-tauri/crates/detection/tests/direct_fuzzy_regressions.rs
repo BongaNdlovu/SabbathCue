@@ -4,19 +4,25 @@ use rhema_detection::DirectDetector;
 fn singular_plural_book_variants_still_detect_through_direct_detector() {
     let mut detector = DirectDetector::new();
 
-    let hebrews = detector.detect("read Hebrew 11");
+    // Chapter-only citations ("Hebrew 11" with no verse) are held for
+    // refinement instead of emitted, so complete each citation with a verse.
+    let hebrews = detector.detect("read Hebrew 11 verse 4");
     assert!(
-        hebrews
-            .iter()
-            .any(|detection| detection.verse_ref.book_name == "Hebrews"),
+        hebrews.iter().any(|detection| {
+            detection.verse_ref.book_name == "Hebrews"
+                && detection.verse_ref.chapter == 11
+                && detection.verse_ref.verse_start == 4
+        }),
         "singular Hebrew should recover Hebrews"
     );
 
-    let romans = detector.detect("turn to Roman 8");
+    let romans = detector.detect("turn to Roman 8 verse 28");
     assert!(
-        romans
-            .iter()
-            .any(|detection| detection.verse_ref.book_name == "Romans"),
+        romans.iter().any(|detection| {
+            detection.verse_ref.book_name == "Romans"
+                && detection.verse_ref.chapter == 8
+                && detection.verse_ref.verse_start == 28
+        }),
         "singular Roman should recover Romans"
     );
 }

@@ -9,21 +9,31 @@ use rhema_detection::DirectDetector;
 const LIVE_THRESHOLD: f64 = 0.90;
 
 #[test]
-fn explicit_spoken_chapter_only_reaches_live_threshold() {
+fn explicit_spoken_chapter_only_is_held_and_completes_live() {
+    // Since the 2026-08-21 citation-autolive contract, incomplete citations
+    // emit nothing: "Daniel chapter one" is held for refinement, not carded.
     let mut detector = DirectDetector::new();
 
     let detections =
         detector.detect("In Daniel chapter one, by the way, now I want us to look at this text.");
 
-    let daniel = detections
+    assert!(
+        detections.iter().all(|d| d.verse_ref.book_name != "Daniel"),
+        "spoken 'Daniel chapter one' must not emit a detection card: {detections:?}"
+    );
+
+    // The held citation is still a direct citation once the verse arrives,
+    // and only then may it reach the live threshold.
+    let completed = detector.detect("read verse 2");
+    let daniel = completed
         .iter()
         .find(|d| d.verse_ref.book_name == "Daniel")
-        .expect("spoken 'Daniel chapter one' must surface a chapter-only detection");
+        .expect("held 'Daniel chapter one' must complete from 'read verse 2'");
     assert_eq!(daniel.verse_ref.chapter, 1);
-    assert!(daniel.is_chapter_only);
+    assert_eq!(daniel.verse_ref.verse_start, 2);
     assert!(
         daniel.confidence >= LIVE_THRESHOLD,
-        "an explicitly spoken chapter reference is a direct citation and must go live \
+        "an explicitly spoken chapter reference completed by its verse must go live \
          (got {:.2})",
         daniel.confidence
     );

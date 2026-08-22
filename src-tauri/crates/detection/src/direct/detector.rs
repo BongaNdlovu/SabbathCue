@@ -786,9 +786,6 @@ fn is_word_boundary(text: &str, idx: usize) -> bool {
 /// Preachers often pause between book name and chapter/verse.
 const INCOMPLETE_REF_TIMEOUT_MS: u128 = 15_000;
 
-/// Confidence for an explicitly spoken chapter-only citation ("Daniel chapter
-/// one"): a direct citation that should go live, sitting just above the 0.90
-/// auto-fire threshold but below full chapter:verse references.
 /// Confidence for a "verse N" / "chapter N verse M" whose book was filled in
 /// from mutable reference context rather than repeated by the speaker. Keep it
 /// visible to the operator, but below the auto-live threshold: a later citation
