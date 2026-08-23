@@ -78,4 +78,16 @@ describe("transcript-store Speechmatics coalescing", () => {
 
     expect(useTranscriptStore.getState().segments).toHaveLength(3)
   })
+
+  it("caps metadata-only Speechmatics text when word arrays are empty", () => {
+    const longText = Array.from({ length: 120 }, (_, index) => `word${index}`).join(" ")
+    const store = useTranscriptStore.getState()
+    store.addSegment(speechmaticsFinal("a", longText, 0, 1_000))
+    store.addSegment(speechmaticsFinal("b", longText, 0, 2_000))
+
+    const segments = useTranscriptStore.getState().segments
+    expect(segments).toHaveLength(2)
+    expect(segments[0].text.split(/\s+/)).toHaveLength(120)
+    expect(segments[1].text.split(/\s+/)).toHaveLength(120)
+  })
 })

@@ -1,6 +1,6 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crossbeam_channel::Receiver;
 use futures_util::{SinkExt, Stream, StreamExt};
@@ -27,6 +27,12 @@ const MAX_UTTERANCE_WORDS: usize = 40;
 /// Bounded wait for `EndOfTranscript`/`Close` after `EndOfStream` — a half-open
 /// TCP connection must not hang the finishing phase forever.
 const FINISH_DRAIN_TIMEOUT: Duration = Duration::from_secs(15);
+
+fn finish_wait_duration(deadline: Option<Instant>, now: Instant) -> Duration {
+    deadline.map_or(FINISH_DRAIN_TIMEOUT, |deadline| {
+        deadline.saturating_duration_since(now)
+    })
+}
 
 #[derive(Debug, Deserialize, Default)]
 struct Metadata {
@@ -359,6 +365,7 @@ impl SpeechmaticsClient {
         &self,
         audio_rx: Receiver<Vec<i16>>,
         event_tx: mpsc::Sender<TranscriptEvent>,
+        connection_health: crate::reconnect::ConnectionHealth,
     ) -> Result<(), SttError> {
         let stream = open_speechmatics_stream(&self.config.api_key).await?;
         let (mut write, mut read) = stream.split();
@@ -371,11 +378,13 @@ impl SpeechmaticsClient {
 
         wait_for_recognition_started(&mut read).await?;
         let _ = event_tx.send(TranscriptEvent::Connected).await;
+        connection_health.mark_connected();
 
         let (audio_tx, mut audio_commands) = mpsc::channel::<AudioCommand>(64);
         let audio_reader = spawn_audio_reader(audio_rx, audio_tx, self.cancelled.clone());
 
         let mut finishing = false;
+        let mut finish_deadline = None;
         let mut utterance = Utterance::default();
         loop {
             tokio::select! {
@@ -384,6 +393,7 @@ impl SpeechmaticsClient {
                         .await.map_err(|error| SttError::SendError(error.to_string()))?,
                     Some(AudioCommand::Finish(last_seq_no)) => {
                         finishing = true;
+                        finish_deadline = Some(Instant::now() + FINISH_DRAIN_TIMEOUT);
                         let end = serde_json::json!({"message": "EndOfStream", "last_seq_no": last_seq_no});
                         write.send(Message::Text(end.to_string().into())).await
                             .map_err(|error| SttError::SendError(error.to_string()))?;
@@ -397,7 +407,10 @@ impl SpeechmaticsClient {
                 // cleanly when finishing (or errors when not).
                 frame = async {
                     if finishing {
-                        tokio::time::timeout(FINISH_DRAIN_TIMEOUT, read.next())
+                        tokio::time::timeout(
+                            finish_wait_duration(finish_deadline, Instant::now()),
+                            read.next(),
+                        )
                             .await
                             .unwrap_or(None)
                     } else {
@@ -458,8 +471,11 @@ impl SpeechmaticsClient {
             if self.cancelled.load(Ordering::SeqCst) {
                 return Ok(());
             }
-            let connection_started = std::time::Instant::now();
-            match self.try_connect(audio_rx.clone(), event_tx.clone()).await {
+            let connection_health = crate::reconnect::ConnectionHealth::default();
+            match self
+                .try_connect(audio_rx.clone(), event_tx.clone(), connection_health.clone())
+                .await
+            {
                 Ok(()) => return Ok(()),
                 Err(error @ (SttError::ParseError(_) | SttError::ApiKeyMissing)) => {
                     return Err(error)
@@ -470,7 +486,7 @@ impl SpeechmaticsClient {
                     // the retry limit.
                     attempts = crate::reconnect::track_reconnect_attempt(
                         attempts,
-                        connection_started.elapsed(),
+                        connection_health.uptime(),
                     );
                     if attempts >= MAX_RECONNECT_ATTEMPTS {
                         return Err(error);
@@ -504,6 +520,19 @@ impl SttProvider for SpeechmaticsClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn finish_wait_uses_one_deadline_across_intermediate_frames() {
+        let start = std::time::Instant::now();
+        let deadline = start + FINISH_DRAIN_TIMEOUT;
+        let later = start + Duration::from_secs(5);
+
+        assert_eq!(finish_wait_duration(Some(deadline), start), FINISH_DRAIN_TIMEOUT);
+        assert_eq!(
+            finish_wait_duration(Some(deadline), later),
+            Duration::from_secs(10)
+        );
+    }
 
     #[test]
     fn start_payload_uses_live_pcm_and_language() {

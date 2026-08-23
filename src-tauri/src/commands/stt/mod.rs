@@ -244,6 +244,7 @@ pub async fn start_transcription(
         let mut last_partial_semantic_at = Instant::now()
             .checked_sub(PARTIAL_SEMANTIC_DEBOUNCE)
             .unwrap_or_else(Instant::now);
+        let mut transcript_connection_open = true;
 
         while let Some(event) = event_rx.recv().await {
             if !evt_active.load(Ordering::SeqCst) {
@@ -252,6 +253,9 @@ pub async fn start_transcription(
 
             match event {
                 TranscriptEvent::Partial { transcript, words } => {
+                    if !transcript_connection_open {
+                        continue;
+                    }
                     if !transcript.is_empty() {
                         let seq = transcript_seq.fetch_add(1, Ordering::Relaxed) + 1;
                         let t0 = std::time::Instant::now();
@@ -351,6 +355,9 @@ pub async fn start_transcription(
                     confidence,
                     speech_final,
                 } => {
+                    if !transcript_connection_open {
+                        continue;
+                    }
                     if !transcript.is_empty() {
                         let seq = transcript_seq.fetch_add(1, Ordering::Relaxed) + 1;
                         let t0 = std::time::Instant::now();
@@ -565,14 +572,17 @@ pub async fn start_transcription(
                     let _ = event_app.emit("stt_speech_started", ());
                 }
                 TranscriptEvent::Error(msg) => {
+                    transcript_connection_open = false;
                     log::error!("[STT] Error: {msg}");
                     let _ = event_app.emit("stt_error", msg);
                 }
                 TranscriptEvent::Connected => {
+                    transcript_connection_open = true;
                     log::info!("[STT] Connected");
                     let _ = event_app.emit("stt_connected", ());
                 }
                 TranscriptEvent::Disconnected => {
+                    transcript_connection_open = false;
                     log::warn!("[STT] Disconnected");
                     let _ = event_app.emit("stt_disconnected", ());
                 }

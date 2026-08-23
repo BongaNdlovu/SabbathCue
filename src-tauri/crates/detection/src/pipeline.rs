@@ -321,8 +321,11 @@ impl DetectionPipeline {
             let key = (fts.book_number, fts.chapter, fts.verse);
             // Quote evidence already has its own calibrated ordering. Keep
             // concept reranking for paraphrase/event candidates only.
-            let has_quote_evidence = overlap_confidence
-                .is_some_and(|score| score >= QUOTE_OVERLAP_FIRE_CONFIDENCE)
+            // Any verified overlap (min fraction/run/matched) is lexical quote
+            // evidence. Requiring fire-tier 0.90 here left the 2026-08-23
+            // John 3:16 tail (0.78) and Ephesians 3:20 paraphrase (0.86) with
+            // has_lexical_quote=false, so presentation Rejected them.
+            let has_quote_evidence = overlap_confidence.is_some()
                 || exact_quote_confidence(&exact_phrase_keys, fts).is_some()
                 || (exact_phrase_keys.len() <= 1
                     && short_quote_confidence(text, &fts.text).is_some());
@@ -2204,6 +2207,109 @@ mod tests {
             expected > distractor,
             "complete verse overlap {expected} must outrank embedded verse {distractor}"
         );
+    }
+
+    fn trailing_words(text: &str, max_words: usize) -> String {
+        let words: Vec<&str> = text.split_whitespace().collect();
+        let start = words.len().saturating_sub(max_words);
+        words[start..].join(" ")
+    }
+
+    // 2026-08-23 live session: Soniox finals of these quotations were clamped
+    // to the last 40 words before hybrid search (`LIVE_DETECTION_WINDOW_WORDS`).
+    const SESSION_JOHN_316_SPOKEN: &str = "For God so loved the world that He gave His only \
+         begotten Son, that who shall ever believe in Him should not perish, but have \
+         everlasting life.";
+    const JOHN_316_KJV: &str = "For God so loved the world, that he gave his only begotten \
+         Son, that whosoever believeth in him should not perish, but have everlasting life.";
+    const SESSION_PSALM_23_SPOKEN: &str =
+        "The Lord is my shepherd; I shall not want; He maketh me lie down green pastures.";
+    const PSALM_23_1_KJV: &str = "The Lord is my shepherd; I shall not want.";
+    const SESSION_EPH_320_SPOKEN: &str = "Now to him who is able to do immeasurably more and \
+         know that we ask or imagine according to his power, that is at work within us.";
+    const EPH_320_KJV: &str = "Now unto him that is able to do exceeding abundantly above all \
+         that we ask or think, according to the power that worketh in us,";
+
+    fn quotation_grant_for(
+        fragment: &str,
+        verse: &str,
+        book: i32,
+        chapter: i32,
+        verse_n: i32,
+    ) -> crate::PresentationGrant {
+        let mut pipeline = DetectionPipeline::new();
+        let fts = Bm25Result {
+            book_number: book,
+            book_name: "Session".to_string(),
+            chapter,
+            verse: verse_n,
+            rank: -20.0,
+            is_broad_match: false,
+            is_phrase_match: false,
+            text: verse.to_string(),
+        };
+        let results = pipeline.process_hybrid_with_fts(fragment, std::slice::from_ref(&fts));
+        assert!(
+            !results.is_empty(),
+            "hybrid must retrieve the spoken verse from {fragment:?}"
+        );
+        let detection = &results[0].detection;
+        crate::decide_presentation(&crate::PresentationEvidence {
+            job: crate::DetectionJob::Quotation,
+            source_is_direct: false,
+            is_chapter_only: false,
+            is_fuzzy_book: false,
+            is_complete_citation: false,
+            is_final_utterance: true,
+            has_lexical_quote: detection.has_lexical_quote,
+            quote_coverage: detection.quote_coverage,
+            candidate_margin: 1.0,
+            independent_final_count: 1,
+            automation_live_enabled: true,
+        })
+    }
+
+    #[test]
+    fn session_john_316_full_spoken_quote_reaches_fire_overlap() {
+        let overlap = quote_overlap_confidence(SESSION_JOHN_316_SPOKEN, JOHN_316_KJV);
+        assert!(
+            overlap.is_some_and(|score| score >= QUOTE_OVERLAP_FIRE_CONFIDENCE),
+            "full spoken John 3:16 must reach fire overlap, got {overlap:?}"
+        );
+    }
+
+    #[test]
+    fn session_john_316_twelve_word_tail_still_has_quote_overlap() {
+        let window = trailing_words(SESSION_JOHN_316_SPOKEN, 12);
+        let overlap = quote_overlap_confidence(&window, JOHN_316_KJV);
+        assert!(
+            overlap.is_some(),
+            "even the 12-word tail of John 3:16 must count as quote overlap, got {overlap:?} for {window:?}"
+        );
+    }
+
+    #[test]
+    fn session_john_316_twelve_word_window_is_live_authorized() {
+        let window = trailing_words(SESSION_JOHN_316_SPOKEN, 12);
+        let grant = quotation_grant_for(&window, JOHN_316_KJV, 43, 3, 16);
+        assert_eq!(grant.decision, crate::PresentationDecision::LiveAuthorized);
+        assert!(grant.may_preview());
+        assert!(grant.may_go_live());
+    }
+
+    #[test]
+    fn session_psalm_23_spoken_quote_is_live_authorized() {
+        let grant = quotation_grant_for(SESSION_PSALM_23_SPOKEN, PSALM_23_1_KJV, 19, 23, 1);
+        assert_eq!(grant.decision, crate::PresentationDecision::LiveAuthorized);
+        assert!(grant.may_preview());
+    }
+
+    #[test]
+    fn session_ephesians_3_20_paraphrase_is_live_authorized() {
+        let grant = quotation_grant_for(SESSION_EPH_320_SPOKEN, EPH_320_KJV, 49, 3, 20);
+        assert_eq!(grant.decision, crate::PresentationDecision::LiveAuthorized);
+        assert!(grant.may_preview());
+        assert!(grant.may_go_live());
     }
 
     #[test]

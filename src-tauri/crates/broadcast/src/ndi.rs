@@ -373,6 +373,17 @@ fn ndi_runtime_release(destroy: NdiDestroyFn) {
     }
 }
 
+fn acquire_runtime_for_source(
+    source_name: &str,
+    initialize: NdiInitializeFn,
+) -> Result<CString, NdiError> {
+    // Validate the name before acquiring the process-global runtime. A Rust
+    // string can contain an interior NUL even though the NDI C API cannot.
+    let name = CString::new(source_name).map_err(|_| NdiError::EmptySourceName)?;
+    ndi_runtime_acquire(initialize)?;
+    Ok(name)
+}
+
 impl ActiveNdiSession {
     #[expect(
         clippy::needless_pass_by_value,
@@ -412,9 +423,7 @@ impl ActiveNdiSession {
         // SAFETY: initialize_fn is a valid function pointer loaded from the NDI
         // library; the global runtime is reference-counted so concurrent
         // sessions never destroy it under each other.
-        ndi_runtime_acquire(initialize_fn)?;
-
-        let name = CString::new(source_name.clone()).map_err(|_| NdiError::EmptySourceName)?;
+        let name = acquire_runtime_for_source(&source_name, initialize_fn)?;
         let create = NdiSendCreate {
             p_ndi_name: name.as_ptr(),
             p_groups: std::ptr::null(),
@@ -607,6 +616,10 @@ fn load_symbol<'a, T>(
 mod tests {
     use super::*;
 
+    unsafe extern "C" fn test_ndi_initialize() -> bool {
+        true
+    }
+
     #[test]
     fn resolution_dimensions_are_correct() {
         assert_eq!(NdiResolution::R720p.dimensions(), (1280, 720));
@@ -709,5 +722,23 @@ mod tests {
         let transparent = [200u8, 150, 100, 0];
         convert_rgba_to_bgra_into(&transparent, &mut dst, NdiAlphaMode::PremultipliedAlpha);
         assert_eq!(dst, [0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn invalid_source_name_does_not_acquire_global_runtime() {
+        let before = *NDI_RUNTIME_USERS
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+        let result = acquire_runtime_for_source("invalid\0source", test_ndi_initialize);
+
+        assert!(matches!(result, Err(NdiError::EmptySourceName)));
+        assert_eq!(
+            *NDI_RUNTIME_USERS
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+            before,
+            "invalid source names must fail before runtime acquisition"
+        );
     }
 }

@@ -199,15 +199,20 @@ fn decide_citation(evidence: &PresentationEvidence) -> PresentationDecision {
 
 fn decide_quotation(evidence: &PresentationEvidence) -> PresentationDecision {
     let lexical_ok = evidence.has_lexical_quote
-        && evidence.quote_coverage + f64::EPSILON >= LEXICAL_QUOTE_MIN_COVERAGE
-        && evidence.candidate_margin + f64::EPSILON >= QUOTATION_MIN_MARGIN;
+        && evidence.quote_coverage + f64::EPSILON >= LEXICAL_QUOTE_MIN_COVERAGE;
     let confirmed =
         lexical_ok && (evidence.is_final_utterance || evidence.independent_final_count >= 2);
 
     if !confirmed {
         return PresentationDecision::Reject;
     }
-    if evidence.automation_live_enabled {
+    // A zero margin means two verses are tied, not that the quote is fake.
+    // Live 2026-08-23 dropped the Ephesians 3:20 final (candidates=2,
+    // semantic_none) because margin 0 failed the same Reject gate as
+    // "no lexical quote". Keep the winner on preview; auto-live still
+    // requires a unique enough top hit.
+    let unique_enough = evidence.candidate_margin + f64::EPSILON >= QUOTATION_MIN_MARGIN;
+    if evidence.automation_live_enabled && unique_enough {
         PresentationDecision::LiveAuthorized
     } else {
         PresentationDecision::PreviewAuthorized
@@ -466,5 +471,54 @@ mod tests {
         assert!(grant.may_preview());
         assert!(grant.may_go_live());
         assert!(!grant.may_start_reading());
+    }
+
+    #[test]
+    fn tied_quotation_candidates_still_preview() {
+        // Live 2026-08-23 Eph 3:20 final: candidates=2 then semantic_none.
+        // A zero margin must not delete a verified quotation from the board.
+        let evidence = PresentationEvidence {
+            job: DetectionJob::Quotation,
+            source_is_direct: false,
+            is_chapter_only: false,
+            is_fuzzy_book: false,
+            is_complete_citation: false,
+            is_final_utterance: true,
+            has_lexical_quote: true,
+            quote_coverage: 0.86,
+            candidate_margin: 0.0,
+            independent_final_count: 1,
+            automation_live_enabled: true,
+        };
+        let grant = decide_presentation(&evidence);
+        assert!(
+            grant.may_preview(),
+            "tied verified quotations must still preview, got {:?}",
+            grant.decision
+        );
+    }
+
+    #[test]
+    fn paraphrase_overlap_below_fire_still_previews_when_lexical() {
+        let evidence = PresentationEvidence {
+            job: DetectionJob::Quotation,
+            source_is_direct: false,
+            is_chapter_only: false,
+            is_fuzzy_book: false,
+            is_complete_citation: false,
+            is_final_utterance: true,
+            has_lexical_quote: true,
+            quote_coverage: 0.78,
+            candidate_margin: 1.0,
+            independent_final_count: 1,
+            automation_live_enabled: true,
+        };
+        let grant = decide_presentation(&evidence);
+        assert!(
+            grant.may_preview(),
+            "overlap-verified paraphrase must preview, got {:?}",
+            grant.decision
+        );
+        assert!(grant.may_go_live());
     }
 }

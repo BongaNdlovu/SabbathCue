@@ -253,6 +253,14 @@ export const transcriptionActions = {
 export async function handleTranscriptFinalPayload(
   payload: TranscriptPartialPayload
 ): Promise<void> {
+  const transcriptStore = useTranscriptStore.getState()
+  if (
+    transcriptStore.connectionStatus === "error" ||
+    transcriptStore.connectionStatus === "disconnected"
+  ) {
+    return
+  }
+
   recordWorkflowTrace("transcription.final", "Final transcript received", {
     ...traceTranscriptDetails({
       text: payload.text,
@@ -262,7 +270,6 @@ export async function handleTranscriptFinalPayload(
     }),
   })
 
-  const transcriptStore = useTranscriptStore.getState()
   transcriptStore.setPartial("")
   transcriptStore.addSegment({
     id: crypto.randomUUID(),

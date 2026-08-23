@@ -44,6 +44,12 @@ async function loadModules() {
   }
 }
 
+async function loadFinalHandlerModules() {
+  const modules = await loadModules()
+  modules.useTranscriptStore.getState().setConnectionStatus("connected")
+  return modules
+}
+
 describe("use-transcription", () => {
   beforeEach(() => {
     mockInvoke.mockReset()
@@ -486,7 +492,7 @@ describe("use-transcription", () => {
       vi.useFakeTimers()
       vi.setSystemTime(1_000)
       const { useTranscriptStore, handleTranscriptFinalPayload } =
-        await loadModules()
+        await loadFinalHandlerModules()
 
       await handleTranscriptFinalPayload({
         text: "The first part of the sentence",
@@ -517,7 +523,7 @@ describe("use-transcription", () => {
       vi.useFakeTimers()
       vi.setSystemTime(1_000)
       const { useTranscriptStore, handleTranscriptFinalPayload } =
-        await loadModules()
+        await loadFinalHandlerModules()
 
       await handleTranscriptFinalPayload({
         text: "First thought.",
@@ -543,7 +549,7 @@ describe("use-transcription", () => {
       vi.useFakeTimers()
       vi.setSystemTime(1_000)
       const { useTranscriptStore, handleTranscriptFinalPayload } =
-        await loadModules()
+        await loadFinalHandlerModules()
 
       for (const provider of ["deepgram", "soniox"] as const) {
         await handleTranscriptFinalPayload({
@@ -569,7 +575,7 @@ describe("use-transcription", () => {
 
     it("stores final transcript segments and invokes hymn voice control", async () => {
       const { useTranscriptStore, handleTranscriptFinalPayload } =
-        await loadModules()
+        await loadFinalHandlerModules()
       useTranscriptStore.getState().setPartial("hymn")
 
       await handleTranscriptFinalPayload({
@@ -590,13 +596,28 @@ describe("use-transcription", () => {
       expect(handleHymnVoiceControlMock).toHaveBeenCalledWith("hymn 12")
     })
 
+    it("ignores a final transcript received after disconnection", async () => {
+      const { useTranscriptStore, handleTranscriptFinalPayload } =
+        await loadFinalHandlerModules()
+      useTranscriptStore.getState().setConnectionStatus("disconnected")
+
+      await handleTranscriptFinalPayload({
+        text: "late stale final",
+        is_final: true,
+        confidence: 0.95,
+        words: [],
+      })
+
+      expect(useTranscriptStore.getState().segments).toEqual([])
+    })
+
     it("stores and handles queue commands while Bible mode is off", async () => {
       handleQueueItemVoiceControlMock.mockReturnValue(true)
       const {
         useSettingsStore,
         useTranscriptStore,
         handleTranscriptFinalPayload,
-      } = await loadModules()
+      } = await loadFinalHandlerModules()
       useSettingsStore.getState().setBibleDetectionEnabled(false)
 
       await handleTranscriptFinalPayload({
@@ -617,7 +638,7 @@ describe("use-transcription", () => {
     })
 
     it("invokes hymn voice control for Adventist hymnal cue variants", async () => {
-      const { handleTranscriptFinalPayload } = await loadModules()
+      const { handleTranscriptFinalPayload } = await loadFinalHandlerModules()
 
       for (const text of [
         "SDA hymn 100",

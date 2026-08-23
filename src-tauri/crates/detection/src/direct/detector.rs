@@ -463,7 +463,7 @@ enum TranslationPhraseClass {
     Imperative,
     /// Starts with "in …" ("in the message") — equally at home inside prose.
     Prepositional,
-    /// A bare translation name ("good news", "king james version").
+    /// A translation name ("good news", "king james version").
     Name,
 }
 
@@ -487,10 +487,8 @@ const TRANSLATION_REQUEST_VERBS: &[&str] = &[
     "give", "read", "switch", "show", "want", "need", "can", "could", "use", "back", "let", "lets",
 ];
 
-/// Lead-in words allowed before a bare translation-name phrase with no
-/// trailing words ("I need the new living translation").
 const TRANSLATION_NAME_LEAD_INS: &[&str] = &[
-    "i", "we", "you", "the", "a", "an", "please", "me", "my", "our", "need", "want", "give", "use",
+    "i", "we", "you", "the", "a", "an", "please", "me", "my", "our", "need", "want",
 ];
 
 /// Tokenize an utterance for command matching: lowercase words stripped of
@@ -514,9 +512,8 @@ fn normalized_command_tokens(text: &str) -> Vec<String> {
 /// - Imperative phrases may be followed by a short tail ("read in niv please").
 /// - Prepositional phrases ("in the message") must start the utterance or be
 ///   accompanied by a request verb — "faith in the message" is prose.
-/// - Bare names ("good news") must end the utterance (optionally after polite
-///   lead-ins like "I need the …") or be accompanied by a request verb —
-///   "the good news of the gospel" is prose.
+/// - Translation names stay close to the utterance; the ambiguous bare
+///   "good news" phrase requires a request verb when it has lead-in prose.
 fn find_translation_command_in(tokens: &[String]) -> Option<&'static str> {
     let has_request_verb = tokens
         .iter()
@@ -540,11 +537,14 @@ fn find_translation_command_in(tokens: &[String]) -> Option<&'static str> {
                     (start == 0 && trailing <= 2) || (has_request_verb && trailing <= 4)
                 }
                 TranslationPhraseClass::Name => {
+                    let bare_good_news = *pattern == "good news";
                     trailing == 0
                         && (lead.is_empty()
-                            || lead
-                                .iter()
-                                .all(|token| TRANSLATION_NAME_LEAD_INS.contains(&token.as_str())))
+                            || (!bare_good_news
+                                && lead.iter().all(|token| {
+                                    TRANSLATION_NAME_LEAD_INS.contains(&token.as_str())
+                                }))
+                            || (bare_good_news && has_request_verb))
                         || (has_request_verb && trailing <= 2)
                 }
             };
@@ -2280,6 +2280,7 @@ mod tests {
         // suppressed semantic detection (and could switch the translation)
         // for every sentence that mentions it.
         for prose in [
+            "the good news",
             "the good news of the gospel is for everyone",
             "share the good news with the whole world",
             "we carry the good news into all the earth",

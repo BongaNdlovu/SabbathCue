@@ -167,9 +167,14 @@ impl SonioxClient {
                 break;
             }
 
-            let connection_started = std::time::Instant::now();
+            let connection_health = crate::reconnect::ConnectionHealth::default();
             match self
-                .try_connect(audio_rx.clone(), event_tx.clone(), self.cancelled.clone())
+                .try_connect(
+                    audio_rx.clone(),
+                    event_tx.clone(),
+                    self.cancelled.clone(),
+                    connection_health.clone(),
+                )
                 .await
             {
                 Ok(()) => break,
@@ -186,7 +191,7 @@ impl SonioxClient {
                     // the retry limit.
                     attempts = crate::reconnect::track_reconnect_attempt(
                         attempts,
-                        connection_started.elapsed(),
+                        connection_health.uptime(),
                     );
                     log::warn!(
                         "SonioxClient: connection error (attempt {attempts}/{MAX_RECONNECT_ATTEMPTS}): {error}"
@@ -211,6 +216,7 @@ impl SonioxClient {
         audio_rx: Receiver<Vec<i16>>,
         event_tx: mpsc::Sender<TranscriptEvent>,
         cancelled: Arc<AtomicBool>,
+        connection_health: crate::reconnect::ConnectionHealth,
     ) -> Result<(), SttError> {
         let (ws_stream, _response) = tokio_tungstenite::connect_async(SONIOX_RT_URL)
             .await
@@ -218,6 +224,7 @@ impl SonioxClient {
 
         log::info!("SonioxClient: connected to Soniox real-time API");
         let _ = event_tx.send(TranscriptEvent::Connected).await;
+        connection_health.mark_connected();
 
         let (mut write, mut read) = ws_stream.split();
 

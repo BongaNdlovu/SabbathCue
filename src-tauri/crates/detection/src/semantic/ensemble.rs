@@ -157,11 +157,9 @@ impl EnsembleSearcher {
         k: usize,
         _strategy_name: &str,
     ) -> Result<Vec<(i64, f64)>, DetectionError> {
-        // Key the cache on the normalized token multiset (sorted words) so
-        // rolling transcript windows that contain the same words in a
-        // different order — or differ only by punctuation/spacing — still
-        // hit. The raw-text key missed on nearly every window variation,
-        // which is exactly the repetition pattern live speech produces.
+        // Embeddings are order-sensitive. Cache only the exact text input so
+        // a reordered rolling window cannot reuse another window's vector
+        // search results.
         let key = cache_key(text);
         if let Some((_embedding, results)) = self.cache.get(&key) {
             return Ok(results.iter().map(|r| (r.verse_id, r.similarity)).collect());
@@ -178,16 +176,10 @@ impl EnsembleSearcher {
     }
 }
 
-/// Normalized cache key: lowercase alphanumeric tokens, sorted and joined.
-/// Same word multiset ⇒ same embedding input as far as retrieval is concerned.
+/// Cache key for an embedding input. The exact text is part of the key because
+/// token order and punctuation can affect the embedding and retrieval result.
 fn cache_key(text: &str) -> String {
-    let mut tokens: Vec<String> = text
-        .split(|c: char| !c.is_alphanumeric())
-        .filter(|w| !w.is_empty())
-        .map(str::to_lowercase)
-        .collect();
-    tokens.sort_unstable();
-    tokens.join(" ")
+    text.to_string()
 }
 
 impl Default for EnsembleSearcher {
@@ -271,6 +263,7 @@ fn extract_concepts(text: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::semantic::index::SearchResult;
 
     #[test]
     fn test_extract_concepts() {
@@ -308,12 +301,54 @@ mod tests {
     }
 
     #[test]
-    fn cache_key_is_order_and_punctuation_insensitive() {
-        // Rolling windows re-emit the same words with different boundaries and
-        // ordering; the cache must treat those as the same retrieval input.
-        assert_eq!(cache_key("Grace, mercy! peace."), cache_key("peace grace mercy"));
-        assert_eq!(cache_key("  John   3:16  "), cache_key("3 16 john"));
-        // Distinct word sets stay distinct.
+    fn cache_key_preserves_order_and_punctuation() {
+        // Embedding models consume token order, so a permutation is a distinct
+        // retrieval input even when it has the same word multiset.
+        assert_ne!(cache_key("Grace, mercy! peace."), cache_key("peace grace mercy"));
+        assert_ne!(cache_key("  John   3:16  "), cache_key("3 16 john"));
         assert_ne!(cache_key("love of God"), cache_key("fear of God"));
+    }
+
+    struct OrderSensitiveEmbedder;
+
+    impl TextEmbedder for OrderSensitiveEmbedder {
+        fn embed(&self, text: &str) -> Result<Vec<f32>, DetectionError> {
+            Ok(vec![f32::from(text.bytes().next().unwrap_or_default())])
+        }
+
+        fn dimension(&self) -> usize {
+            1
+        }
+    }
+
+    struct EchoIndex;
+
+    impl VectorIndex for EchoIndex {
+        fn search(&self, query: &[f32], _k: usize) -> Result<Vec<SearchResult>, DetectionError> {
+            Ok(vec![SearchResult {
+                verse_id: if query[0] < 110.0 { 14_643 } else { 14_644 },
+                similarity: 1.0,
+            }])
+        }
+
+        fn len(&self) -> usize {
+            1
+        }
+    }
+
+    #[test]
+    fn cache_does_not_reuse_results_for_reordered_text() {
+        let mut searcher = EnsembleSearcher::new();
+        let embedder = OrderSensitiveEmbedder;
+        let index = EchoIndex;
+
+        let first = searcher
+            .run_strategy("grace mercy peace", &embedder, &index, 1, "test")
+            .unwrap();
+        let reordered = searcher
+            .run_strategy("peace grace mercy", &embedder, &index, 1, "test")
+            .unwrap();
+
+        assert_ne!(first, reordered, "reordered text must be embedded and searched independently");
     }
 }

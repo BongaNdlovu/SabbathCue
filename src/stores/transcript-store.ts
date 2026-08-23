@@ -12,6 +12,11 @@ export const SPEECHMATICS_COALESCE_GAP_MS = 4_000
  */
 export const MAX_COALESCED_SEGMENT_WORDS = 200
 
+function transcriptWordCount(text: string): number {
+  const trimmed = text.trim()
+  return trimmed === "" ? 0 : trimmed.split(/\s+/).length
+}
+
 type ConnectionStatus = "disconnected" | "connecting" | "connected" | "error"
 export type TranscriptionIssueKind =
   | "missing_api_key"
@@ -57,6 +62,13 @@ export const useTranscriptStore = create<TranscriptState>((set) => ({
     set((state) => {
       const previous = state.segments.at(-1)
       const gapMs = previous ? segment.timestamp - previous.timestamp : -1
+      const previousWordCount = previous
+        ? Math.max(previous.words.length, transcriptWordCount(previous.text))
+        : 0
+      const segmentWordCount = Math.max(
+        segment.words.length,
+        transcriptWordCount(segment.text),
+      )
       const coalesceSpeechmatics =
         previous?.provider === "speechmatics" &&
         segment.provider === "speechmatics" &&
@@ -64,12 +76,12 @@ export const useTranscriptStore = create<TranscriptState>((set) => ({
         gapMs <= SPEECHMATICS_COALESCE_GAP_MS &&
         // Cap the merged size so continuous preaching splits into bounded
         // segments instead of one ever-growing one.
-        previous.words.length + segment.words.length <=
+        previousWordCount + segmentWordCount <=
           MAX_COALESCED_SEGMENT_WORDS
 
       if (previous && coalesceSpeechmatics) {
-        const previousWeight = Math.max(1, previous.words.length)
-        const segmentWeight = Math.max(1, segment.words.length)
+        const previousWeight = Math.max(1, previousWordCount)
+        const segmentWeight = Math.max(1, segmentWordCount)
         const merged: TranscriptSegment = {
           ...segment,
           id: previous.id,

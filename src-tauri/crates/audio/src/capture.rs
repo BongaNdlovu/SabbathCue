@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -13,7 +13,8 @@ use crate::types::{read_gain, AudioConfig, AudioFrame, GainHandle};
 /// Holds a live audio capture stream.
 /// Dropping this struct (or calling `stop`) will end the capture.
 pub struct AudioCapture {
-    stream: Stream,
+    _stream: Stream,
+    dropped_frames: Arc<AtomicU64>,
 }
 
 impl std::fmt::Debug for AudioCapture {
@@ -25,7 +26,16 @@ impl std::fmt::Debug for AudioCapture {
 impl AudioCapture {
     /// Stop the audio capture, consuming the struct.
     pub fn stop(self) {
-        drop(self.stream);
+        drop(self);
+    }
+}
+
+impl Drop for AudioCapture {
+    fn drop(&mut self) {
+        let dropped = self.dropped_frames.load(Ordering::Relaxed);
+        if dropped > 0 {
+            log::warn!("[AUDIO] Dropped {dropped} capture frame(s) because the consumer stalled");
+        }
     }
 }
 
@@ -108,6 +118,7 @@ pub fn start(
 
     let target_sample_rate: u32 = 16_000;
     let stream_config: StreamConfig = supported_config.into();
+    let dropped_frames = Arc::new(AtomicU64::new(0));
 
     // Build a fresh err callback per match arm. cpal takes the callback by
     // value, and our closure captures `Arc<AtomicBool>` so each arm needs
@@ -128,6 +139,7 @@ pub fn start(
                 source_sample_rate,
                 target_sample_rate,
                 gain_handle.clone(),
+                dropped_frames.clone(),
             );
             device.build_input_stream(
                 &stream_config,
@@ -145,6 +157,7 @@ pub fn start(
                 source_sample_rate,
                 target_sample_rate,
                 gain_handle.clone(),
+                dropped_frames.clone(),
             );
             device.build_input_stream(
                 &stream_config,
@@ -184,6 +197,7 @@ pub fn start(
                 source_sample_rate,
                 target_sample_rate,
                 gain_handle.clone(),
+                dropped_frames.clone(),
             );
             device.build_input_stream(
                 &stream_config,
@@ -222,7 +236,10 @@ pub fn start(
         .play()
         .map_err(|e| AudioError::StreamError(format!("Failed to start stream: {e}")))?;
 
-    Ok(AudioCapture { stream })
+    Ok(AudioCapture {
+        _stream: stream,
+        dropped_frames,
+    })
 }
 
 struct AudioProcessor {
@@ -237,10 +254,17 @@ struct AudioProcessor {
     /// exceed the callback deadline and produce an audible click or dropout.
     scratch_i16: Vec<i16>,
     scratch_f32: Vec<f32>,
+    dropped_frames: Arc<AtomicU64>,
 }
 
 impl AudioProcessor {
-    fn new(source_channels: usize, source_rate: u32, target_rate: u32, gain: GainHandle) -> Self {
+    fn new(
+        source_channels: usize,
+        source_rate: u32,
+        target_rate: u32,
+        gain: GainHandle,
+        dropped_frames: Arc<AtomicU64>,
+    ) -> Self {
         Self {
             source_channels,
             source_rate,
@@ -250,6 +274,7 @@ impl AudioProcessor {
             pending_samples: Vec::new(),
             scratch_i16: Vec::new(),
             scratch_f32: Vec::new(),
+            dropped_frames,
         }
     }
 
@@ -327,22 +352,10 @@ impl AudioProcessor {
         };
 
         // try_send never blocks, but it can fail when the consumer stalls or
-        // is gone. Log from a detached thread: the logger can lock/flush I/O
-        // and must not run on the real-time audio thread.
-        if let Err(error) = sender.try_send(frame) {
-            let message = match error {
-                crossbeam_channel::TrySendError::Full(_) => {
-                    "[AUDIO] Dropped audio frame because capture channel is full".to_string()
-                }
-                crossbeam_channel::TrySendError::Disconnected(_) => {
-                    "[AUDIO] Dropped audio frame because capture channel is disconnected"
-                        .to_string()
-                }
-            };
-            std::thread::Builder::new()
-                .name("audio-drop-log".into())
-                .spawn(move || log::warn!("{message}"))
-                .ok();
+        // is gone. Record telemetry with a lock-free increment; logging is
+        // deferred to AudioCapture::drop on the non-realtime owner thread.
+        if sender.try_send(frame).is_err() {
+            self.dropped_frames.fetch_add(1, Ordering::Relaxed);
         }
     }
 }
@@ -433,6 +446,7 @@ impl LinearResampler {
 mod tests {
     use super::*;
     use crate::types::{new_gain_handle, set_gain};
+    use std::sync::atomic::AtomicU64;
 
     #[test]
     fn streaming_resampler_matches_single_pass_across_callback_boundaries() {
@@ -455,7 +469,13 @@ mod tests {
     #[test]
     fn downmix_carries_incomplete_frame_between_callbacks() {
         let (sender, receiver) = crossbeam_channel::bounded(4);
-        let mut processor = AudioProcessor::new(2, 16_000, 16_000, new_gain_handle(1.0));
+        let mut processor = AudioProcessor::new(
+            2,
+            16_000,
+            16_000,
+            new_gain_handle(1.0),
+            Arc::new(AtomicU64::new(0)),
+        );
 
         processor.process_i16_and_send(&[10], &sender);
         assert!(receiver.try_recv().is_err());
@@ -470,7 +490,13 @@ mod tests {
     fn processor_reads_live_gain_updates() {
         let (sender, receiver) = crossbeam_channel::bounded(4);
         let gain = new_gain_handle(1.0);
-        let mut processor = AudioProcessor::new(1, 16_000, 16_000, gain.clone());
+        let mut processor = AudioProcessor::new(
+            1,
+            16_000,
+            16_000,
+            gain.clone(),
+            Arc::new(AtomicU64::new(0)),
+        );
 
         processor.process_i16_and_send(&[100], &sender);
         assert_eq!(receiver.recv().expect("first frame").samples, vec![100]);
@@ -478,5 +504,24 @@ mod tests {
         set_gain(&gain, 2.0);
         processor.process_i16_and_send(&[100], &sender);
         assert_eq!(receiver.recv().expect("second frame").samples, vec![200]);
+    }
+
+    #[test]
+    fn full_output_queue_records_drop_for_non_realtime_reporting() {
+        let (sender, receiver) = crossbeam_channel::bounded(1);
+        let dropped = Arc::new(AtomicU64::new(0));
+        let mut processor = AudioProcessor::new(
+            1,
+            16_000,
+            16_000,
+            new_gain_handle(1.0),
+            dropped.clone(),
+        );
+
+        processor.process_i16_and_send(&[100], &sender);
+        processor.process_i16_and_send(&[200], &sender);
+
+        assert_eq!(dropped.load(Ordering::Relaxed), 1);
+        assert_eq!(receiver.recv().expect("first frame").samples, vec![100]);
     }
 }

@@ -96,9 +96,14 @@ impl DeepgramClient {
                 break;
             }
 
-            let connection_started = std::time::Instant::now();
+            let connection_health = crate::reconnect::ConnectionHealth::default();
             match self
-                .try_connect(audio_rx.clone(), event_tx.clone(), cancelled.clone())
+                .try_connect(
+                    audio_rx.clone(),
+                    event_tx.clone(),
+                    cancelled.clone(),
+                    connection_health.clone(),
+                )
                 .await
             {
                 Ok(()) => {
@@ -113,7 +118,7 @@ impl DeepgramClient {
                     // whole sermon used to kill streaming permanently).
                     attempts = crate::reconnect::track_reconnect_attempt(
                         attempts,
-                        connection_started.elapsed(),
+                        connection_health.uptime(),
                     );
                     log::warn!(
                         "DeepgramClient: connection error (attempt {attempts}/{MAX_RECONNECT_ATTEMPTS}): {e}",
@@ -139,6 +144,7 @@ impl DeepgramClient {
         audio_rx: Receiver<Vec<i16>>,
         event_tx: mpsc::Sender<TranscriptEvent>,
         cancelled: Arc<AtomicBool>,
+        connection_health: crate::reconnect::ConnectionHealth,
     ) -> Result<(), SttError> {
         let url = self.build_url()?;
 
@@ -160,6 +166,7 @@ impl DeepgramClient {
 
         log::info!("DeepgramClient: connected to Deepgram");
         let _ = event_tx.send(TranscriptEvent::Connected).await;
+        connection_health.mark_connected();
 
         let (mut write, mut read) = ws_stream.split();
 

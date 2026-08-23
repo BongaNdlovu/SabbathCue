@@ -72,7 +72,14 @@ pub(crate) const LIVE_SEMANTIC_MIN_CONFIDENCE: f64 = 0.70;
 
 /// Maximum trailing words of the rolling transcript window fed to live
 /// semantic + FTS5 detection.
-pub(crate) const LIVE_DETECTION_WINDOW_WORDS: usize = 12;
+///
+/// Must fit a spoken verse, not a clause. John 3:16 is ~27 words; Ephesians
+/// 3:20 is ~28. At 12 words the 2026-08-23 session kept only
+/// "shall ever believe in Him should not perish, but have everlasting life."
+/// — overlap 0.78, below fire, so authorize rejected the quotation and Desire
+/// of Ages p.419 (40-word EGW window) replaced it. `trim_to_sentence_start`
+/// already drops the previous sentence, which was the original reason for 12.
+pub(crate) const LIVE_DETECTION_WINDOW_WORDS: usize = 40;
 
 /// How long an identical direct reference stays suppressed after being emitted.
 ///
@@ -165,13 +172,10 @@ impl RecentDirectEmissions {
 
 /// Maximum trailing words of the rolling window fed to live EGW quote matching.
 ///
-/// Deliberately wider than `LIVE_DETECTION_WINDOW_WORDS`: Bible verses are
-/// short and a tight window keeps vector search off adjacent sentences, but an
-/// EGW paragraph sentence runs 25-40 words. At 12 words the shared run with the
-/// spoken quote tops out around 5, which scores in the cued-hint band (75-80%)
-/// and never reaches the fire (6) or auto-queue (8) tiers. On 2026-08-04 a
-/// verbatim Great Controversy quote scored 75-80% for this reason while
-/// keyword-floored Bible hits sat at 88% and buried it.
+/// Same width as the Bible verse window: both need a full spoken sentence
+/// (25–40 words). Adjacent-sentence pollution is handled by
+/// `trim_to_sentence_start` on the Bible path; EGW run-matching ignores
+/// non-matching leading words, so it does not trim.
 pub(crate) const LIVE_EGW_QUOTE_WINDOW_WORDS: usize = 40;
 
 /// Clear the rolling detection window after this much silence between finals.
@@ -951,12 +955,11 @@ mod tests {
     }
 
     #[test]
-    fn egw_quote_window_keeps_a_quote_the_bible_window_truncates() {
+    fn egw_quote_window_keeps_a_full_sentence() {
         // The 2026-08-04 Great Controversy quote as it arrived across STT
-        // finals. The 12-word Bible window keeps only the tail, so the shared
-        // run with the paragraph topped out at 5 (cued-hint band, 75-80%).
-        // The wider EGW window keeps the whole sentence, which the harness
-        // scores at run=9 -> 92% auto-queue.
+        // finals. Bible and EGW windows are both verse/sentence-length (40)
+        // so a 32-word spoken sentence is kept whole; EGW still uses this
+        // window for paragraph run-matching.
         let joined = [
             "And then there's Ellen White's quote that says",
             "Fearful is the issue to which the world is to be brought",
@@ -969,8 +972,8 @@ mod tests {
         let egw_window = clamp_to_recent_words(&joined, LIVE_EGW_QUOTE_WINDOW_WORDS);
 
         assert!(
-            !bible_window.contains("Fearful is the issue"),
-            "bible window should still be tight: {bible_window}"
+            bible_window.contains("Fearful is the issue"),
+            "bible window must keep a sentence-length quotation: {bible_window}"
         );
         assert!(
             egw_window.contains("Fearful is the issue"),
@@ -979,6 +982,37 @@ mod tests {
         assert!(
             egw_window.contains("commandment of God"),
             "egw window must retain the tail of the quote: {egw_window}"
+        );
+    }
+
+    #[test]
+    fn session_john_316_quotation_fits_in_live_bible_window() {
+        // 2026-08-23 14:02:00 final was 146 chars / ~27 words, but the worker
+        // logged words=12. The opening is the lexical identity of John 3:16.
+        let spoken = "For God so loved the world that He gave His only begotten Son, that who shall ever believe in Him should not perish, but have everlasting life.";
+        let window = clamp_to_recent_words(spoken, LIVE_DETECTION_WINDOW_WORDS);
+        assert!(
+            window.contains("loved the world"),
+            "live Bible window must retain the John 3:16 opening, got {window:?}"
+        );
+        assert!(
+            window.contains("everlasting life"),
+            "live Bible window must retain the John 3:16 close, got {window:?}"
+        );
+    }
+
+    #[test]
+    fn session_psalm_23_quotation_keeps_the_lord_in_live_bible_window() {
+        let spoken =
+            "The Lord is my shepherd; I shall not want; He maketh me lie down green pastures.";
+        let window = clamp_to_recent_words(spoken, LIVE_DETECTION_WINDOW_WORDS);
+        assert!(
+            window.to_ascii_lowercase().contains("lord"),
+            "Psalm 23:1 identity is 'The Lord'; 12-word clamp dropped it: {window:?}"
+        );
+        assert!(
+            window.to_ascii_lowercase().contains("shepherd"),
+            "live Bible window must retain shepherd, got {window:?}"
         );
     }
 
