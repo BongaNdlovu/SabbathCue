@@ -1,3 +1,4 @@
+import { detectionKey } from "@/stores/detection-store"
 import { EyeIcon, PlayIcon, PlusIcon, RadarIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -121,9 +122,9 @@ export function LatestDetectionBar({ className }: { className?: string }) {
 
       {recent.length > 0 ? (
         <div className="min-h-0 flex-1 overflow-y-auto">
-          {recent.map((detection, index) => (
+          {recent.map((detection) => (
             <LiveDetectionRow
-              key={`${detection.verse_ref}-${index}`}
+              key={detectionKey(detection)}
               detection={detection}
             />
           ))}

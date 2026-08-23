@@ -1,5 +1,7 @@
+use std::collections::HashMap;
 use std::ffi::{c_void, CString};
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
 use libloading::{Library, Symbol};
 use serde::{Deserialize, Serialize};
@@ -155,23 +157,50 @@ fn validate_frame_dimensions(
 }
 
 /// Convert `rgba` into the BGRA byte layout NDI expects, writing into `dst`
-/// (which must be the same length as `rgba`). Alpha is forced to 255 for opaque mode.
+/// (which must be the same length as `rgba`). Alpha is forced to 255 for
+/// opaque mode; premultiplied mode scales RGB by the alpha (rounded), so the
+/// stream carries true premultiplied data — receivers compositing with
+/// straight-alpha math previously saw bright fringes because the mode was
+/// byte-identical to straight alpha.
 fn convert_rgba_to_bgra_into(rgba: &[u8], dst: &mut [u8], alpha_mode: NdiAlphaMode) {
     for (idx, px) in rgba.chunks_exact(4).enumerate() {
         let offset = idx * 4;
-        dst[offset] = px[2];
-        dst[offset + 1] = px[1];
-        dst[offset + 2] = px[0];
-        dst[offset + 3] = match alpha_mode {
-            NdiAlphaMode::NoneOpaque => 255,
-            NdiAlphaMode::StraightAlpha | NdiAlphaMode::PremultipliedAlpha => px[3],
-        };
+        let alpha = px[3];
+        match alpha_mode {
+            NdiAlphaMode::NoneOpaque => {
+                dst[offset] = px[2];
+                dst[offset + 1] = px[1];
+                dst[offset + 2] = px[0];
+                dst[offset + 3] = 255;
+            }
+            NdiAlphaMode::StraightAlpha => {
+                dst[offset] = px[2];
+                dst[offset + 1] = px[1];
+                dst[offset + 2] = px[0];
+                dst[offset + 3] = alpha;
+            }
+            NdiAlphaMode::PremultipliedAlpha => {
+                dst[offset] = premultiply_component(px[2], alpha);
+                dst[offset + 1] = premultiply_component(px[1], alpha);
+                dst[offset + 2] = premultiply_component(px[0], alpha);
+                dst[offset + 3] = alpha;
+            }
+        }
+    }
+}
+
+/// `round(component * alpha / 255)` for one premultiplied channel.
+#[inline]
+fn premultiply_component(component: u8, alpha: u8) -> u8 {
+    #[expect(clippy::cast_possible_truncation, reason = "bounded to 255 by construction")]
+    {
+        ((u32::from(component) * u32::from(alpha) + 127) / 255) as u8
     }
 }
 
 #[derive(Default)]
 pub struct NdiRuntime {
-    sessions: std::collections::HashMap<String, ActiveNdiSession>,
+    sessions: HashMap<String, Arc<Mutex<ActiveNdiSession>>>,
 }
 
 impl std::fmt::Debug for NdiRuntime {
@@ -216,7 +245,8 @@ impl NdiRuntime {
             info.height,
             info.fps
         );
-        self.sessions.insert(session_id, session);
+        self.sessions
+            .insert(session_id, Arc::new(Mutex::new(session)));
         Ok(info)
     }
 
@@ -234,20 +264,52 @@ impl NdiRuntime {
     }
 
     pub fn current_info(&self, session_id: &str) -> Option<NdiSessionInfo> {
-        self.sessions.get(session_id).map(|s| s.info.clone())
+        self.sessions.get(session_id).map(|session| {
+            session
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .info
+                .clone()
+        })
+    }
+
+    /// A clonable handle to one session, so a frame send locks only that
+    /// session's mutex instead of the runtime-wide one — "main" and "alt"
+    /// outputs no longer queue behind each other's full-frame conversion +
+    /// network submit, and start/stop/status stay responsive during sends.
+    pub fn session_handle(&self, session_id: &str) -> Option<NdiSessionHandle> {
+        self.sessions
+            .get(session_id)
+            .map(|session| NdiSessionHandle(Arc::clone(session)))
     }
 
     pub fn send_frame_rgba(
-        &mut self,
+        &self,
         session_id: &str,
         width: u32,
         height: u32,
         rgba_data: &[u8],
     ) -> Result<(), NdiError> {
-        let session = self
-            .sessions
-            .get_mut(session_id)
-            .ok_or(NdiError::SessionNotActive)?;
+        self.session_handle(session_id)
+            .ok_or(NdiError::SessionNotActive)?
+            .send_frame_rgba(width, height, rgba_data)
+    }
+}
+
+/// Shared handle to a single active NDI session.
+pub struct NdiSessionHandle(Arc<Mutex<ActiveNdiSession>>);
+
+impl NdiSessionHandle {
+    pub fn send_frame_rgba(
+        &self,
+        width: u32,
+        height: u32,
+        rgba_data: &[u8],
+    ) -> Result<(), NdiError> {
+        let mut session = self
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         session.send_frame_rgba(width, height, rgba_data)
     }
 }
@@ -272,6 +334,44 @@ unsafe impl Sync for ActiveNdiSession {}
 // SAFETY: NdiRuntime is stored behind Mutex and only mutated under lock.
 unsafe impl Send for NdiRuntime {}
 unsafe impl Sync for NdiRuntime {}
+
+/// Process-global NDI runtime lifetime.
+///
+/// `NDIlib_initialize`/`NDIlib_destroy` manage the *global* NDI runtime, not
+/// a per-sender one: calling destroy while any other session's sender is
+/// still alive is undefined behaviour per the NDI SDK. Reference-count the
+/// runtime so it is initialized once and destroyed only when the last
+/// session drops — two concurrent sessions ("main" + "alt") previously
+/// tore the runtime down under each other on stop/restart.
+static NDI_RUNTIME_USERS: Mutex<usize> = Mutex::new(0);
+
+fn ndi_runtime_acquire(initialize: NdiInitializeFn) -> Result<(), NdiError> {
+    let mut users = NDI_RUNTIME_USERS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if *users == 0 {
+        // SAFETY: function pointer loaded from the NDI library; first user
+        // boots the global runtime.
+        if !unsafe { initialize() } {
+            return Err(NdiError::InitializeFailed);
+        }
+    }
+    *users += 1;
+    Ok(())
+}
+
+fn ndi_runtime_release(destroy: NdiDestroyFn) {
+    let mut users = NDI_RUNTIME_USERS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if *users > 0 {
+        *users -= 1;
+        if *users == 0 {
+            // SAFETY: last session is gone; safe to tear down the runtime.
+            unsafe { destroy() };
+        }
+    }
+}
 
 impl ActiveNdiSession {
     #[expect(
@@ -309,10 +409,10 @@ impl ActiveNdiSession {
             "NDIlib_send_send_video_v2",
         )?;
 
-        // SAFETY: initialize_fn is a valid function pointer loaded from the NDI library
-        if !unsafe { initialize_fn() } {
-            return Err(NdiError::InitializeFailed);
-        }
+        // SAFETY: initialize_fn is a valid function pointer loaded from the NDI
+        // library; the global runtime is reference-counted so concurrent
+        // sessions never destroy it under each other.
+        ndi_runtime_acquire(initialize_fn)?;
 
         let name = CString::new(source_name.clone()).map_err(|_| NdiError::EmptySourceName)?;
         let create = NdiSendCreate {
@@ -328,8 +428,8 @@ impl ActiveNdiSession {
         let create_ptr = std::ptr::from_ref(&create);
         let sender = unsafe { send_create_fn(create_ptr) };
         if sender.is_null() {
-            // SAFETY: NDI was initialized successfully above, so ndi_destroy is safe to call
-            unsafe { ndi_destroy_fn() };
+            // Release our runtime reference: the session never came alive.
+            ndi_runtime_release(ndi_destroy_fn);
             return Err(NdiError::SenderCreateFailed);
         }
 
@@ -390,8 +490,12 @@ impl ActiveNdiSession {
             xres: width as i32,
             yres: height as i32,
             fourcc: u32::from_le_bytes(*b"BGRA"),
+            // fps*1000/1000 transmits exactly the configured rate. The
+            // previous /1001 denominator silently transmitted NTSC pull-down
+            // rates (24 fps → 23.976) that contradicted the operator-facing
+            // status (24/30/60).
             frame_rate_n: (self.info.fps * 1000) as i32,
-            frame_rate_d: 1001,
+            frame_rate_d: 1000,
             picture_aspect_ratio: (width as f32) / (height as f32),
             frame_format_type: 1, // NDIlib_frame_format_type_progressive
             timecode: i64::MAX,   // NDIlib_send_timecode_synthesize
@@ -429,8 +533,10 @@ impl Drop for ActiveNdiSession {
         let sender = self.sender;
         unsafe {
             (self.send_destroy)(sender);
-            (self.ndi_destroy)();
         }
+        // Release the global runtime reference; the runtime itself is only
+        // destroyed when the last session drops.
+        ndi_runtime_release(self.ndi_destroy);
     }
 }
 
@@ -575,8 +681,33 @@ mod tests {
 
         convert_rgba_to_bgra_into(&rgba, &mut dst, NdiAlphaMode::StraightAlpha);
         assert_eq!(dst, [30, 20, 10, 40]);
+    }
+
+    #[test]
+    fn premultiplied_mode_scales_rgb_by_alpha() {
+        // Premultiplied output must differ from straight alpha whenever
+        // alpha < 255: rgb' = round(rgb * a / 255). The two modes were
+        // previously byte-identical (dead enum variant).
+        let rgba = [10u8, 20, 30, 40];
+        let mut dst = [0u8; 4];
 
         convert_rgba_to_bgra_into(&rgba, &mut dst, NdiAlphaMode::PremultipliedAlpha);
-        assert_eq!(dst, [30, 20, 10, 40]);
+        assert_eq!(dst, [5, 3, 2, 40], "30*40/255≈4.7→5, 20*40/255≈3.1→3, 10*40/255≈1.6→2");
+
+        let straight = {
+            let mut out = [0u8; 4];
+            convert_rgba_to_bgra_into(&rgba, &mut out, NdiAlphaMode::StraightAlpha);
+            out
+        };
+        assert_ne!(dst, straight, "premultiplied must not equal straight at alpha<255");
+
+        // Full alpha is a no-op; zero alpha blacks the pixel.
+        let opaque = [200u8, 150, 100, 255];
+        convert_rgba_to_bgra_into(&opaque, &mut dst, NdiAlphaMode::PremultipliedAlpha);
+        assert_eq!(dst, [100, 150, 200, 255]);
+
+        let transparent = [200u8, 150, 100, 0];
+        convert_rgba_to_bgra_into(&transparent, &mut dst, NdiAlphaMode::PremultipliedAlpha);
+        assert_eq!(dst, [0, 0, 0, 0]);
     }
 }

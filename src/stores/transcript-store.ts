@@ -4,6 +4,13 @@ import type { SttProvider } from "@/stores/settings-store"
 
 const MAX_TRANSCRIPT_SEGMENTS = 100
 export const SPEECHMATICS_COALESCE_GAP_MS = 4_000
+/**
+ * Word budget for one coalesced Speechmatics segment. Continuous preaching
+ * produces finals less than the coalesce gap apart, which used to merge the
+ * whole sermon into ONE unbounded segment — the 100-segment cap never
+ * applied (the list stayed length 1) and text/words grew forever.
+ */
+export const MAX_COALESCED_SEGMENT_WORDS = 200
 
 type ConnectionStatus = "disconnected" | "connecting" | "connected" | "error"
 export type TranscriptionIssueKind =
@@ -54,7 +61,11 @@ export const useTranscriptStore = create<TranscriptState>((set) => ({
         previous?.provider === "speechmatics" &&
         segment.provider === "speechmatics" &&
         gapMs >= 0 &&
-        gapMs <= SPEECHMATICS_COALESCE_GAP_MS
+        gapMs <= SPEECHMATICS_COALESCE_GAP_MS &&
+        // Cap the merged size so continuous preaching splits into bounded
+        // segments instead of one ever-growing one.
+        previous.words.length + segment.words.length <=
+          MAX_COALESCED_SEGMENT_WORDS
 
       if (previous && coalesceSpeechmatics) {
         const previousWeight = Math.max(1, previous.words.length)

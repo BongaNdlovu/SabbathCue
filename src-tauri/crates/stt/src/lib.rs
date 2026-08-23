@@ -25,6 +25,7 @@ pub mod deepgram;
 pub mod error;
 pub mod keyterms;
 pub mod provider;
+pub mod reconnect;
 pub mod rest;
 pub mod soniox;
 pub mod speechmatics;

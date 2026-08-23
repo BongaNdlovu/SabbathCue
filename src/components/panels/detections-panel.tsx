@@ -22,6 +22,7 @@ import {
   buildDetectionContextStack,
   buildHeldReferenceCandidates,
   useDetectionStore,
+  detectionKey,
   type DetectionContextEntry,
   type HeldReferenceCandidate,
 } from "@/stores/detection-store"
@@ -386,8 +387,8 @@ function HeldReferencesPanel({
           {candidates.length}
         </span>
       </div>
-      {candidates.map(({ detection, reason }, index) => (
-        <div key={`${detection.verse_ref}-${index}`}>
+      {candidates.map(({ detection, reason }) => (
+        <div key={detectionKey(detection)}>
           <div className="mx-3 rounded-t border border-b-0 border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[0.5625rem] font-medium text-amber-700 uppercase dark:text-amber-300">
             {reason}
           </div>
@@ -502,9 +503,9 @@ export function DetectionsPanel({ className }: { className?: string }) {
               Recent trusted detections
             </div>
           )}
-          {trustedDetections.map((detection, i) => (
+          {trustedDetections.map((detection) => (
             <DetectionCard
-              key={`${detection.verse_ref}-${i}`}
+              key={detectionKey(detection)}
               detection={detection}
             />
           ))}

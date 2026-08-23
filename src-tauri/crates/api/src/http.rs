@@ -233,7 +233,8 @@ async fn health_handler() -> impl IntoResponse {
     })
 }
 
-fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+/// Length-safe, content-independent comparison for shared secrets.
+pub(crate) fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     if a.len() != b.len() {
         return false;
     }
@@ -293,7 +294,9 @@ async fn control_handler<S: CommandSink + 'static>(
     headers: HeaderMap,
     Json(request): Json<ControlRequest>,
 ) -> impl IntoResponse {
-    let token = state.token.read().await;
+    // Clone-and-drop: holding the read guard across dispatch coupled token
+    // rotation (write lock) to dispatch latency.
+    let token = state.token.read().await.clone();
     if !bearer_authorized(&headers, &token) {
         return (
             StatusCode::UNAUTHORIZED,

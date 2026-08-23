@@ -151,7 +151,7 @@ impl BibleDb {
         let mut stmt = conn.prepare(
             "SELECT id, book_number, book_title, chapter, chapter_title, paragraph, page, page_paragraph, text \
              FROM egw_paragraphs \
-             WHERE book_number = ?1 AND page = ?2 AND page_paragraph = ?3 AND page > 0",
+             WHERE book_number = ?1 AND page = ?2 AND page_paragraph = ?3 AND page > 0 AND page_paragraph > 0",
         )?;
         let mut rows = stmt.query_map(
             rusqlite::params![book_number, page, page_paragraph],
@@ -378,7 +378,7 @@ mod tests {
              INSERT INTO egw_books (book_number, title, abbreviation, chapter_count) VALUES (2, 'Hidden Legacy Book', 'HLB', 1);\
              INSERT INTO egw_paragraphs (book_id, book_number, book_title, chapter, chapter_title, paragraph, page, page_paragraph, text) VALUES (1, 1, 'Patriarchs and Prophets', 1, 'Why Was Sin Permitted?', 1, 29, 1, 'God is love.');\
              INSERT INTO egw_paragraphs (book_id, book_number, book_title, chapter, chapter_title, paragraph, page, page_paragraph, text) VALUES (1, 1, 'Patriarchs and Prophets', 1, 'Why Was Sin Permitted?', 2, 29, 2, 'The history of the great conflict.');\
-             INSERT INTO egw_paragraphs (book_id, book_number, book_title, chapter, chapter_title, paragraph, page, page_paragraph, text) VALUES (2, 2, 'Hidden Legacy Book', 1, 'Legacy', 1, 0, 0, 'This unresolved EGW paragraph should stay hidden.');\
+             INSERT INTO egw_paragraphs (book_id, book_number, book_title, chapter, chapter_title, paragraph, page, page_paragraph, text) VALUES (2, 2, 'Hidden Legacy Book', 1, 'Legacy', 1, 0, 0, 'This unresolved EGW paragraph should stay hidden.');             INSERT INTO egw_paragraphs (book_id, book_number, book_title, chapter, chapter_title, paragraph, page, page_paragraph, text) VALUES (2, 2, 'Hidden Legacy Book', 1, 'Legacy', 2, 30, 0, 'Page-resolved but paragraph-unresolved row must also stay hidden.');\
              CREATE VIRTUAL TABLE egw_paragraphs_fts USING fts5(text, content='egw_paragraphs', content_rowid='id', tokenize='unicode61');\
              INSERT INTO egw_paragraphs_fts(rowid, text) SELECT id, text FROM egw_paragraphs;",
         )
@@ -427,6 +427,15 @@ mod tests {
         let paras = db.get_egw_page(1, 29).unwrap();
         assert_eq!(paras.len(), 2);
         assert_eq!(paras[1].page_paragraph, 2);
+    }
+
+    #[test]
+    fn page_lookup_hides_zero_page_paragraph_rows() {
+        // A row with page > 0 but page_paragraph = 0 cannot resolve to a
+        // printed paragraph; every sibling query hides such rows and this
+        // accessor must too (it previously returned them).
+        let db = test_db();
+        assert!(db.get_egw_paragraph_by_page(2, 30, 0).unwrap().is_none());
     }
 
     #[test]

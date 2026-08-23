@@ -186,6 +186,26 @@ impl BibleDb {
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 
+    /// Whether the translation with this ID exists and is unlocked (not
+    /// copyrighted and fully downloaded). Missing IDs count as locked.
+    ///
+    /// This is the single choke point for the copyright policy: the live BM25
+    /// path already enforces `is_copyrighted = 0 AND is_downloaded = 1` in
+    /// SQL (see `run_fts_query`), so direct lookups must not bypass it.
+    pub fn translation_unlocked(&self, translation_id: i64) -> Result<bool, BibleError> {
+        let conn = self.conn()?;
+        let mut stmt = conn.prepare(
+            "SELECT is_copyrighted, is_downloaded FROM translations WHERE id = ?1",
+        )?;
+        let mut rows = stmt.query_map(rusqlite::params![translation_id], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?))
+        })?;
+        Ok(matches!(
+            rows.next(),
+            Some(Ok((copyrighted, downloaded))) if copyrighted == 0 && downloaded == 1
+        ))
+    }
+
     pub fn list_translations(&self) -> Result<Vec<Translation>, BibleError> {
         let conn = self.conn()?;
         let mut stmt = conn.prepare(

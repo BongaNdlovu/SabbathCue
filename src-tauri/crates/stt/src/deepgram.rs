@@ -17,6 +17,12 @@ use crate::types::{SttConfig, TranscriptEvent, Word};
 
 const MAX_RECONNECT_ATTEMPTS: u32 = 5;
 const RECONNECT_DELAY: Duration = Duration::from_secs(1);
+/// Bounded window to drain the server-flushed final transcripts after the
+/// audio source ends on a clean stop.
+const CLEAN_SHUTDOWN_DRAIN: Duration = Duration::from_secs(5);
+/// Shorter drain window on error paths — the read side usually errors out on
+/// its own, and reconnect latency matters during a live service.
+const ERROR_SHUTDOWN_DRAIN: Duration = Duration::from_secs(1);
 /// Batch up to 40ms of audio before sending (at 16kHz, that is 640 samples).
 /// This keeps Deepgram behaving like live captions instead of delayed dictation.
 const BATCH_SAMPLES: usize = 640;
@@ -57,11 +63,14 @@ impl DeepgramClient {
             q.append_pair("endpointing", DEEPGRAM_ENDPOINTING_MS);
             q.append_pair("utterance_end_ms", DEEPGRAM_UTTERANCE_END_MS);
             q.append_pair("vad_events", "true");
-            append_deepgram_keyterms(&mut q, self.config.language.as_deref());
-            log::info!(
-                "Deepgram keyterm boosting: {} keyterms added",
-                deepgram_keyterms(self.config.language.as_deref()).len()
-            );
+            // Build the keyterm list once and reuse it for both the query and
+            // the log line — the previous code rebuilt the ~160-term list a
+            // second time purely to count it for logging.
+            let keyterms = deepgram_keyterms(self.config.language.as_deref());
+            for term in &keyterms {
+                q.append_pair("keyterm", term);
+            }
+            log::info!("Deepgram keyterm boosting: {} keyterms added", keyterms.len());
         }
 
         log::info!("Deepgram WebSocket endpoint: {}", redact_ws_url_query(&url));
@@ -87,6 +96,7 @@ impl DeepgramClient {
                 break;
             }
 
+            let connection_started = std::time::Instant::now();
             match self
                 .try_connect(audio_rx.clone(), event_tx.clone(), cancelled.clone())
                 .await
@@ -97,7 +107,14 @@ impl DeepgramClient {
                     break;
                 }
                 Err(e) => {
-                    attempts += 1;
+                    // A connection that stayed up for a healthy stretch earns
+                    // a fresh budget: only rapid back-to-back failures exhaust
+                    // the retry limit (five transient drops spread over a
+                    // whole sermon used to kill streaming permanently).
+                    attempts = crate::reconnect::track_reconnect_attempt(
+                        attempts,
+                        connection_started.elapsed(),
+                    );
                     log::warn!(
                         "DeepgramClient: connection error (attempt {attempts}/{MAX_RECONNECT_ATTEMPTS}): {e}",
                     );
@@ -174,10 +191,17 @@ impl DeepgramClient {
         }
         let (ws_tx, mut ws_rx) = tokio::sync::mpsc::channel::<WsCommand>(64);
 
+        // Set when this connection attempt is over: abort() cannot stop a
+        // spawn_blocking task, so the reader needs a flag to stop consuming
+        // frames from the shared crossbeam channel — otherwise it kept
+        // stealing audio from the next connection's reader.
+        let reader_stop = Arc::new(AtomicBool::new(false));
+
         // Part 1: Blocking thread reads audio from crossbeam channel
         let mut audio_reader = {
             let ws_tx = ws_tx.clone();
             let cancelled = send_cancelled.clone();
+            let reader_stop = reader_stop.clone();
             tokio::task::spawn_blocking(move || {
                 let mut batch_buf: Vec<u8> = Vec::with_capacity(BATCH_SAMPLES * 2);
                 let batch_byte_threshold = BATCH_SAMPLES * 2;
@@ -185,7 +209,7 @@ impl DeepgramClient {
                 let keepalive_interval = Duration::from_secs(5);
 
                 loop {
-                    if cancelled.load(Ordering::SeqCst) {
+                    if cancelled.load(Ordering::SeqCst) || reader_stop.load(Ordering::SeqCst) {
                         let _ = ws_tx.blocking_send(WsCommand::Close);
                         break;
                     }
@@ -270,12 +294,15 @@ impl DeepgramClient {
         });
 
         // Receiver task: reads text frames and parses Deepgram JSON.
+        // A retained clone lets the shutdown path emit Disconnected after the
+        // receiver task owns the original.
+        let shutdown_event_tx = event_tx.clone();
         let mut receiver = tokio::spawn(async move {
             while let Some(msg_result) = read.next().await {
-                if recv_cancelled.load(Ordering::SeqCst) {
-                    break;
-                }
-
+                // Do NOT break on cancel here: messages already buffered by
+                // the server still contain the final transcripts of the
+                // session, and the writer's CloseStream makes read.next()
+                // return None once the server is done.
                 match msg_result {
                     Ok(Message::Text(text)) => {
                         if let Err(e) = parse_and_send(&text, &event_tx).await {
@@ -318,17 +345,40 @@ impl DeepgramClient {
 
         // Return promptly when any connection side finishes. On errors, this lets the outer
         // reconnect loop run instead of waiting for audio capture to stop.
-        tokio::select! {
-            _ = &mut audio_reader => {}
-            _ = &mut ws_writer => {}
-            _ = &mut receiver => {}
+        let audio_ended_normally = tokio::select! {
+            _ = &mut audio_reader => true,
+            _ = &mut ws_writer => false,
+            _ = &mut receiver => false,
+        };
+
+        // Stop the blocking reader from consuming any more frames from the
+        // shared audio channel (abort() cannot stop spawn_blocking tasks).
+        reader_stop.store(true, Ordering::SeqCst);
+
+        // On normal audio end the reader queues WsCommand::Close, the writer
+        // sends CloseStream, and the server flushes its final Results —
+        // aborting the receiver here dropped the last utterance of every
+        // session (often the citation being read). Drain with a bounded
+        // window instead; abort only if the server goes quiet.
+        let drain_window = if audio_ended_normally {
+            CLEAN_SHUTDOWN_DRAIN
+        } else {
+            ERROR_SHUTDOWN_DRAIN
+        };
+        let drained =
+            tokio::time::timeout(drain_window, async {
+                let _ = (&mut audio_reader).await;
+                let _ = (&mut ws_writer).await;
+                let _ = (&mut receiver).await;
+            })
+            .await;
+        if drained.is_err() {
+            log::warn!("DeepgramClient: shutdown drain timed out; aborting tasks");
+            audio_reader.abort();
+            ws_writer.abort();
+            receiver.abort();
+            let _ = tokio::join!(audio_reader, ws_writer, receiver);
         }
-
-        audio_reader.abort();
-        ws_writer.abort();
-        receiver.abort();
-
-        let _ = tokio::join!(audio_reader, ws_writer, receiver);
 
         // If either side had an unexpected error, return Err so the connection loop retries.
         if send_error_flag.load(Ordering::SeqCst) || recv_error_flag.load(Ordering::SeqCst) {
@@ -337,6 +387,9 @@ impl DeepgramClient {
                 .ok()
                 .and_then(|detail| detail.clone())
                 .unwrap_or_else(|| "Connection lost unexpectedly".into());
+            // Signal the drop to the event loop like every other provider —
+            // the session ended unexpectedly, not cleanly.
+            let _ = shutdown_event_tx.send(TranscriptEvent::Disconnected).await;
             return Err(SttError::ConnectionFailed(detail));
         }
 
@@ -490,11 +543,22 @@ async fn parse_and_send(
         .map(|arr| {
             arr.iter()
                 .filter_map(|w| {
+                    // Keep words whose optional fields are missing (interim
+                    // results often omit confidence/timing); dropping the
+                    // whole word desynchronized the confidence timeline.
+                    let text = w.get("word")?.as_str()?.to_string();
                     Some(Word {
-                        text: w.get("word")?.as_str()?.to_string(),
-                        start: w.get("start")?.as_f64()?,
-                        end: w.get("end")?.as_f64()?,
-                        confidence: w.get("confidence")?.as_f64()?,
+                        text,
+                        start: w.get("start").and_then(serde_json::Value::as_f64)
+                            .unwrap_or(0.0),
+                        end: w
+                            .get("end")
+                            .and_then(serde_json::Value::as_f64)
+                            .unwrap_or(0.0),
+                        confidence: w
+                            .get("confidence")
+                            .and_then(serde_json::Value::as_f64)
+                            .unwrap_or(0.0),
                         punctuated_word: w
                             .get("punctuated_word")
                             .and_then(|p| p.as_str())
@@ -769,6 +833,40 @@ mod tests {
         let event = parse_one(r#"{"type":"Metadata","request_id":"abc"}"#).await;
 
         assert!(event.is_none());
+    }
+
+    #[tokio::test]
+    async fn words_missing_optional_fields_are_kept_with_defaults() {
+        // Interim results routinely omit confidence/timing per word; the word
+        // itself must survive so the confidence timeline stays aligned.
+        let event = parse_one(
+            r#"{
+                "type":"Results",
+                "is_final":false,
+                "channel":{
+                    "alternatives":[{
+                        "transcript":"john three sixteen",
+                        "words":[
+                            {"word":"john"},
+                            {"word":"three","start":0.4,"end":0.5},
+                            {"word":"sixteen","confidence":0.9}
+                        ]
+                    }]
+                }
+            }"#,
+        )
+        .await;
+
+        match event {
+            Some(TranscriptEvent::Partial { words, .. }) => {
+                assert_eq!(words.len(), 3, "all three words must survive");
+                assert_eq!(words[0].text, "john");
+                assert!((words[0].confidence - 0.0).abs() < f64::EPSILON);
+                assert!((words[1].start - 0.4).abs() < f64::EPSILON);
+                assert!((words[2].confidence - 0.9).abs() < f64::EPSILON);
+            }
+            other => panic!("expected partial, got {other:?}"),
+        }
     }
 }
 

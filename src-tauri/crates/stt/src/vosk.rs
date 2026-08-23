@@ -181,7 +181,10 @@ impl SttProvider for VoskProvider {
         .await;
         cancel_on_drop.cancel();
         worker::stop_writer(VOSK_LABEL, writer).await;
-        process.stop();
+        // Detached stop: joining the reader threads here deadlocked when a
+        // reader was blocked sending into a full (or consumer-less) event
+        // channel, so `start_transcription` never returned.
+        process.stop_detached();
         let _ = event_tx.send(TranscriptEvent::Disconnected).await;
         run_result
     }

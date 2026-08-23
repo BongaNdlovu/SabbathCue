@@ -21,6 +21,20 @@ fn translation_locked(translation: &Translation) -> bool {
     translation.is_copyrighted || !translation.is_downloaded
 }
 
+/// Refuse to serve verse text for locked translations. The live BM25 path
+/// already enforces this in SQL (`run_fts_query`); without the same gate on
+/// the direct lookup commands, any IPC caller could read copyrighted or
+/// not-yet-downloaded translation text by ID.
+fn ensure_translation_unlocked(db: &BibleDb, translation_id: i64) -> Result<(), String> {
+    match db.translation_unlocked(translation_id) {
+        Ok(true) => Ok(()),
+        Ok(false) => Err(format!(
+            "Translation ID {translation_id} is locked until licensing is ready"
+        )),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
 #[tauri::command]
 pub fn list_translations(state: State<'_, Mutex<AppState>>) -> Result<Vec<Translation>, String> {
     let app_state = state.lock().map_err(|e| e.to_string())?;
@@ -47,6 +61,7 @@ pub fn get_chapter(
 ) -> Result<Vec<Verse>, String> {
     let app_state = state.lock().map_err(|e| e.to_string())?;
     let db = require_bible_db(app_state.bible_db.as_ref())?;
+    ensure_translation_unlocked(db, translation_id)?;
     db.get_chapter(translation_id, book_number, chapter)
         .map_err(|e| e.to_string())
 }
@@ -61,6 +76,7 @@ pub fn get_verse(
 ) -> Result<Option<Verse>, String> {
     let app_state = state.lock().map_err(|e| e.to_string())?;
     let db = require_bible_db(app_state.bible_db.as_ref())?;
+    ensure_translation_unlocked(db, translation_id)?;
     db.get_verse(translation_id, book_number, chapter, verse)
         .map_err(|e| e.to_string())
 }
@@ -76,6 +92,7 @@ pub fn search_verses(
     let limit = bounded_limit(limit)?;
     let app_state = state.lock().map_err(|e| e.to_string())?;
     let db = require_bible_db(app_state.bible_db.as_ref())?;
+    ensure_translation_unlocked(db, translation_id)?;
     db.search_verses(&query, translation_id, limit)
         .map_err(|e| e.to_string())
 }
@@ -141,6 +158,7 @@ pub fn get_translation_verses_for_search(
 ) -> Result<Vec<VerseSearchRow>, String> {
     let app_state = state.lock().map_err(|e| e.to_string())?;
     let db = require_bible_db(app_state.bible_db.as_ref())?;
+    ensure_translation_unlocked(db, translation_id)?;
 
     db.load_translation_verses_for_search(translation_id)
         .map(|rows| {

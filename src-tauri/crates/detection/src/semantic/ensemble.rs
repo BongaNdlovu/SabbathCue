@@ -157,8 +157,13 @@ impl EnsembleSearcher {
         k: usize,
         _strategy_name: &str,
     ) -> Result<Vec<(i64, f64)>, DetectionError> {
-        // Check cache
-        if let Some((_embedding, results)) = self.cache.get(text) {
+        // Key the cache on the normalized token multiset (sorted words) so
+        // rolling transcript windows that contain the same words in a
+        // different order — or differ only by punctuation/spacing — still
+        // hit. The raw-text key missed on nearly every window variation,
+        // which is exactly the repetition pattern live speech produces.
+        let key = cache_key(text);
+        if let Some((_embedding, results)) = self.cache.get(&key) {
             return Ok(results.iter().map(|r| (r.verse_id, r.similarity)).collect());
         }
 
@@ -167,10 +172,22 @@ impl EnsembleSearcher {
 
         // Cache the results
         self.cache
-            .insert(text.to_string(), (embedding, results.clone()));
+            .insert(key, (embedding, results.clone()));
 
         Ok(results.iter().map(|r| (r.verse_id, r.similarity)).collect())
     }
+}
+
+/// Normalized cache key: lowercase alphanumeric tokens, sorted and joined.
+/// Same word multiset ⇒ same embedding input as far as retrieval is concerned.
+fn cache_key(text: &str) -> String {
+    let mut tokens: Vec<String> = text
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .map(str::to_lowercase)
+        .collect();
+    tokens.sort_unstable();
+    tokens.join(" ")
 }
 
 impl Default for EnsembleSearcher {
@@ -288,5 +305,15 @@ mod tests {
         // Original-only bar for the weighted score filter: 0.42 / 0.7 = 0.6.
         let original_only_min_sim = ENSEMBLE_THRESHOLD / ORIGINAL_WEIGHT;
         assert!((original_only_min_sim - 0.6).abs() < 1e-12);
+    }
+
+    #[test]
+    fn cache_key_is_order_and_punctuation_insensitive() {
+        // Rolling windows re-emit the same words with different boundaries and
+        // ordering; the cache must treat those as the same retrieval input.
+        assert_eq!(cache_key("Grace, mercy! peace."), cache_key("peace grace mercy"));
+        assert_eq!(cache_key("  John   3:16  "), cache_key("3 16 john"));
+        // Distinct word sets stay distinct.
+        assert_ne!(cache_key("love of God"), cache_key("fear of God"));
     }
 }

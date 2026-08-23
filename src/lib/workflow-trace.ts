@@ -43,6 +43,8 @@ export interface WorkflowTraceApi {
   entries: () => WorkflowTraceEntry[]
   clear: () => void
   exportJson: () => string
+  /** Override the cached console-trace flag without reloading the app. */
+  setFlag: (value: boolean) => void
 }
 
 declare global {
@@ -59,17 +61,30 @@ function trimText(value: string, maxLength = 180): string {
   return `${value.slice(0, maxLength - 3)}...`
 }
 
+// The trace flag is checked on every transcript partial (the highest-frequency
+// event in the app). URL parsing + a synchronous localStorage read per event
+// added avoidable main-thread work, so the result is cached after the first
+// check. `window.__SABBATHCUE_WORKFLOW_TRACE__.setFlag()` re-reads it when a
+// session flips the flag without a reload.
+let consoleTraceCache: boolean | null = null
+
 function shouldConsoleTrace(): boolean {
   if (typeof window === "undefined") return false
+  if (consoleTraceCache !== null) return consoleTraceCache
 
   const params = new URLSearchParams(window.location.search)
-  if (params.has("workflowTrace") || params.has("e2e")) return true
-
-  try {
-    return window.localStorage.getItem("sabbathcue.workflowTrace") === "1"
-  } catch {
-    return false
+  let enabled: boolean
+  if (params.has("workflowTrace") || params.has("e2e")) {
+    enabled = true
+  } else {
+    try {
+      enabled = window.localStorage.getItem("sabbathcue.workflowTrace") === "1"
+    } catch {
+      enabled = false
+    }
   }
+  consoleTraceCache = enabled
+  return enabled
 }
 
 function installWindowTraceApi(): void {
@@ -78,6 +93,9 @@ function installWindowTraceApi(): void {
     entries: getWorkflowTrace,
     clear: clearWorkflowTrace,
     exportJson: exportWorkflowTraceJson,
+    setFlag: (value: boolean) => {
+      consoleTraceCache = value
+    },
   }
 }
 

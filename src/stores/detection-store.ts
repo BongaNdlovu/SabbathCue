@@ -52,7 +52,12 @@ function sourcePriority(detection: DetectionResultWithMeta): number {
 // EGW quotes are scored on their own scale (shared-phrase length, not verse
 // cosine), so they carry their own floor. An operator lowering the Bible slider
 // for verse recall must not simultaneously open the EGW gate.
-const EGW_SEMANTIC_MIN_CONFIDENCE = 0.75
+//
+// Exported so the auto-preview workflow applies the same floor before
+// presenting a semantic EGW hit — the two gates previously disagreed
+// (workflow 0.70 vs panel 0.75), letting the live output change while the
+// detection card was hidden.
+export const EGW_SEMANTIC_MIN_CONFIDENCE = 0.75
 
 function isHiddenBySemanticSettings(detection: DetectionResult): boolean {
   if (detection.source !== "semantic") return false
@@ -257,7 +262,12 @@ function verseRefMatches(
   )
 }
 
-function detectionKey(detection: DetectionResult): string {
+/**
+ * Stable identity for one detection card. Confidence re-sorts happen on
+ * every batch, so index-based React keys reused the wrong DOM; this key is
+ * shared by the panel and the latest-detection bar.
+ */
+export function detectionKey(detection: DetectionResult): string {
   if (detection.content_type === "egw" && detection.egw_paragraph) {
     const paragraph = detection.egw_paragraph
     return `egw:${paragraph.book_number}:${paragraph.page}:${paragraph.page_paragraph}`

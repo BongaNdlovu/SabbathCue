@@ -43,7 +43,11 @@ const OVERLAP_CONFIDENCE_BOOST: f64 = 0.10;
 /// semantic confirmation rules in the presentation workflow.
 const EVENT_ANCHOR_CONFIDENCE: f64 = 0.94;
 
-const LIVE_SEMANTIC_CAP: usize = 5;
+/// Cap applied inside the hybrid pipeline before the app-layer live cap
+/// (`stt/detection.rs` `LIVE_SEMANTIC_CAP = 3`) truncates again. Named
+/// distinctly from the app-layer constant — two same-named constants with
+/// different values (5 vs 3) invited confusion.
+const LIVE_SEMANTIC_CANDIDATE_CAP: usize = 5;
 
 /// Quote-overlap verification: how much of a candidate verse's content
 /// vocabulary must appear in the spoken fragment before the overlap counts as
@@ -278,7 +282,7 @@ impl DetectionPipeline {
             let merge_started = Instant::now();
             let mut merged = self.merger.merge(vec![], semantic_detections);
             self.prioritize_spoken_book(text, &mut merged);
-            merged.truncate(LIVE_SEMANTIC_CAP);
+            merged.truncate(LIVE_SEMANTIC_CANDIDATE_CAP);
             let merge_ms = merge_started.elapsed().as_secs_f64() * 1_000.0;
             log::info!(
                 "[DETECT] path=hybrid_no_fts direct_ms=0.00 semantic_ms={semantic_ms:.2} \
@@ -429,7 +433,7 @@ impl DetectionPipeline {
         let merge_started = Instant::now();
         let mut merged = self.merger.merge(vec![], semantic_detections);
         self.prioritize_spoken_book(text, &mut merged);
-        merged.truncate(LIVE_SEMANTIC_CAP);
+        merged.truncate(LIVE_SEMANTIC_CANDIDATE_CAP);
         let merge_ms = merge_started.elapsed().as_secs_f64() * 1_000.0;
         log::info!(
             "[DETECT] path=hybrid direct_ms=0.00 semantic_ms={semantic_ms:.2} \
@@ -961,7 +965,9 @@ pub fn content_words(text: &str) -> impl Iterator<Item = String> + '_ {
 
 /// `content_words` paired with each word's byte offset in the source text.
 /// Filtering and lowercasing must stay identical to `content_words` — callers
-/// rely on the two producing the same sequence.
+/// (EGW quote runs) compare the two outputs for equality, so a divergence in
+/// case handling silently breaks matching for accented text ("SEÑOR" vs
+/// "Señor" under ASCII-only lowercasing).
 pub fn content_words_indexed(text: &str) -> impl Iterator<Item = (usize, String)> + '_ {
     text.split(|c: char| !c.is_alphanumeric())
         .filter(|word| word.len() >= QUOTE_OVERLAP_MIN_WORD_LEN)
@@ -1709,7 +1715,7 @@ mod tests {
         let results =
             pipeline.process_hybrid_with_fts("test text with many references", &fts_results);
 
-        assert_eq!(results.len(), LIVE_SEMANTIC_CAP);
+        assert_eq!(results.len(), LIVE_SEMANTIC_CANDIDATE_CAP);
     }
 
     #[test]
@@ -1789,7 +1795,7 @@ mod tests {
             &fts_results,
         );
 
-        assert_eq!(results.len(), LIVE_SEMANTIC_CAP);
+        assert_eq!(results.len(), LIVE_SEMANTIC_CANDIDATE_CAP);
         assert!(results.iter().any(|result| {
             result.detection.verse_ref.book_name == "Matthew"
                 && result.detection.verse_ref.chapter == 3
@@ -1866,7 +1872,7 @@ mod tests {
         let results =
             pipeline.process_hybrid_with_fts("a reading from the book of Exodus", &fts_results);
 
-        assert_eq!(results.len(), LIVE_SEMANTIC_CAP);
+        assert_eq!(results.len(), LIVE_SEMANTIC_CANDIDATE_CAP);
         assert_eq!(results[0].detection.verse_ref.book_number, 2);
         assert!(results
             .iter()

@@ -17,15 +17,22 @@ pub fn enumerate_devices() -> Result<Vec<DeviceInfo>, AudioError> {
         .map_err(|e| AudioError::StreamError(format!("Failed to enumerate input devices: {e}")))?;
 
     let mut devices = Vec::new();
+    let mut skipped = 0usize;
 
     for device in input_devices {
         let name = device_name(&device).unwrap_or_else(|_| "Unknown Device".to_string());
 
-        let default_config = device.default_input_config().map_err(|e| {
-            AudioError::StreamError(format!(
-                "Failed to get default config for device '{name}': {e}"
-            ))
-        })?;
+        // One faulty device (an unplugged USB mic that still enumerates is
+        // common on Windows) must not hide every healthy device from the
+        // settings UI — skip it and keep listing the rest.
+        let default_config = match device.default_input_config() {
+            Ok(config) => config,
+            Err(error) => {
+                skipped += 1;
+                log::warn!("Skipping audio device '{name}' (config query failed): {error}");
+                continue;
+            }
+        };
 
         let is_default = default_device_name.as_ref().is_some_and(|dn| dn == &name);
 
@@ -36,6 +43,10 @@ pub fn enumerate_devices() -> Result<Vec<DeviceInfo>, AudioError> {
             channels: default_config.channels(),
             is_default,
         });
+    }
+
+    if skipped > 0 {
+        log::warn!("Skipped {skipped} audio device(s) that failed their config query");
     }
 
     if devices.is_empty() {

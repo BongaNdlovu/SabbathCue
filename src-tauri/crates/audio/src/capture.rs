@@ -149,19 +149,29 @@ pub fn start(
             device.build_input_stream(
                 &stream_config,
                 move |data: &[f32], _: &cpal::InputCallbackInfo| {
-                    // Convert f32 -> i16
+                    // Convert f32 -> i16 into the reused scratch buffer: the
+                    // real-time callback must not allocate.
                     #[expect(
                         clippy::cast_possible_truncation,
                         reason = "clamped f32 to i16 range is intentional for audio conversion"
                     )]
-                    let i16_data: Vec<i16> = data
-                        .iter()
-                        .map(|&s| {
+                    {
+                        processor.scratch_f32.clear();
+                        processor.scratch_f32.extend_from_slice(data);
+                        processor.scratch_i16.clear();
+                        processor
+                            .scratch_i16
+                            .reserve(processor.scratch_f32.len());
+                        for &s in &processor.scratch_f32 {
                             let clamped = s.clamp(-1.0, 1.0);
-                            (clamped * f32::from(i16::MAX)) as i16
-                        })
-                        .collect();
-                    processor.process_i16_and_send(&i16_data, &sender);
+                            processor
+                                .scratch_i16
+                                .push((clamped * f32::from(i16::MAX)) as i16);
+                        }
+                        let i16_data = std::mem::take(&mut processor.scratch_i16);
+                        processor.process_i16_and_send(&i16_data, &sender);
+                        processor.scratch_i16 = i16_data;
+                    }
                 },
                 make_err_fn(),
                 None,
@@ -178,16 +188,23 @@ pub fn start(
             device.build_input_stream(
                 &stream_config,
                 move |data: &[u16], _: &cpal::InputCallbackInfo| {
-                    // Convert u16 -> i16 (u16 midpoint is 32768)
+                    // Convert u16 -> i16 (u16 midpoint is 32768) into the
+                    // reused scratch buffer: the real-time callback must not
+                    // allocate.
                     #[expect(
                         clippy::cast_possible_truncation,
                         reason = "u16-to-i16 offset conversion is intentional for audio"
                     )]
-                    let i16_data: Vec<i16> = data
-                        .iter()
-                        .map(|&s| (i32::from(s) - 32768) as i16)
-                        .collect();
-                    processor.process_i16_and_send(&i16_data, &sender);
+                    {
+                        processor.scratch_i16.clear();
+                        processor.scratch_i16.reserve(data.len());
+                        for &s in data {
+                            processor.scratch_i16.push((i32::from(s) - 32768) as i16);
+                        }
+                        let i16_data = std::mem::take(&mut processor.scratch_i16);
+                        processor.process_i16_and_send(&i16_data, &sender);
+                        processor.scratch_i16 = i16_data;
+                    }
                 },
                 make_err_fn(),
                 None,
@@ -215,6 +232,11 @@ struct AudioProcessor {
     gain: GainHandle,
     resampler: LinearResampler,
     pending_samples: Vec<i16>,
+    /// Reused across callbacks so the real-time audio thread never allocates.
+    /// cpal callbacks run on the OS audio thread; a heap allocation there can
+    /// exceed the callback deadline and produce an audible click or dropout.
+    scratch_i16: Vec<i16>,
+    scratch_f32: Vec<f32>,
 }
 
 impl AudioProcessor {
@@ -226,6 +248,8 @@ impl AudioProcessor {
             gain,
             resampler: LinearResampler::new(source_rate, target_rate),
             pending_samples: Vec::new(),
+            scratch_i16: Vec::new(),
+            scratch_f32: Vec::new(),
         }
     }
 
@@ -248,38 +272,45 @@ impl AudioProcessor {
         let input_samples = if self.pending_samples.is_empty() {
             samples
         } else {
-            combined_samples = self
-                .pending_samples
-                .iter()
-                .chain(samples.iter())
-                .copied()
-                .collect::<Vec<_>>();
+            // Reuse the pending buffer itself as scratch: chain the new
+            // samples behind what is already buffered instead of building a
+            // fresh Vec every callback.
+            self.pending_samples.extend_from_slice(samples);
+            combined_samples = std::mem::take(&mut self.pending_samples);
             combined_samples.as_slice()
         };
         let frames = input_samples.chunks_exact(self.source_channels);
-        let remainder = frames.remainder().to_vec();
+        let remainder = frames.remainder();
         let gain = read_gain(&self.gain);
 
-        let gained: Vec<i16> = frames
-            .map(|frame| {
+        // Reuse the pending buffer as the output scratch so a steady stream
+        // of callbacks performs no heap allocation on the audio thread.
+        let gained = &mut self.pending_samples;
+        gained.clear();
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "audio sample conversions are intentionally truncating"
+        )]
+        {
+            gained.extend(frames.map(|frame| {
                 let sum: i32 = frame.iter().map(|&s| i32::from(s)).sum();
                 let mono = sum / self.source_channels as i32;
-                #[expect(
-                    clippy::cast_possible_truncation,
-                    reason = "clamped audio sample intentionally narrows to i16"
-                )]
-                {
-                    ((mono as f32) * gain).clamp(f32::from(i16::MIN), f32::from(i16::MAX)) as i16
-                }
-            })
-            .collect();
-        self.pending_samples = remainder;
+                ((mono as f32) * gain).clamp(f32::from(i16::MIN), f32::from(i16::MAX)) as i16
+            }));
+        }
 
         let processed = if self.source_rate == self.target_rate {
-            gained
+            std::mem::take(gained)
         } else {
-            self.resampler.resample(&gained)
+            self.resampler.resample(gained)
         };
+
+        // Stash whatever trailing samples belong to the next callback
+        // (`remainder` is a suffix of `input_samples`; when no complete frame
+        // existed this callback it is the whole input).
+        self.pending_samples.clear();
+        self.pending_samples.extend_from_slice(remainder);
+        self.pending_samples.shrink_to(16_384);
 
         if processed.is_empty() {
             return;
@@ -295,17 +326,23 @@ impl AudioProcessor {
             timestamp_ms,
         };
 
+        // try_send never blocks, but it can fail when the consumer stalls or
+        // is gone. Log from a detached thread: the logger can lock/flush I/O
+        // and must not run on the real-time audio thread.
         if let Err(error) = sender.try_send(frame) {
-            match error {
+            let message = match error {
                 crossbeam_channel::TrySendError::Full(_) => {
-                    log::warn!("[AUDIO] Dropped audio frame because capture channel is full");
+                    "[AUDIO] Dropped audio frame because capture channel is full".to_string()
                 }
                 crossbeam_channel::TrySendError::Disconnected(_) => {
-                    log::warn!(
-                        "[AUDIO] Dropped audio frame because capture channel is disconnected"
-                    );
+                    "[AUDIO] Dropped audio frame because capture channel is disconnected"
+                        .to_string()
                 }
-            }
+            };
+            std::thread::Builder::new()
+                .name("audio-drop-log".into())
+                .spawn(move || log::warn!("{message}"))
+                .ok();
         }
     }
 }

@@ -102,11 +102,24 @@ impl DeepgramRestClient {
                             .map(|arr| {
                                 arr.iter()
                                     .filter_map(|w| {
+                                        // Keep words whose optional fields are
+                                        // missing; dropping the whole word
+                                        // desynchronized the confidence timeline.
+                                        let text = w.get("word")?.as_str()?.to_string();
                                         Some(Word {
-                                            text: w.get("word")?.as_str()?.to_string(),
-                                            start: w.get("start")?.as_f64()?,
-                                            end: w.get("end")?.as_f64()?,
-                                            confidence: w.get("confidence")?.as_f64()?,
+                                            text,
+                                            start: w
+                                                .get("start")
+                                                .and_then(serde_json::Value::as_f64)
+                                                .unwrap_or(0.0),
+                                            end: w
+                                                .get("end")
+                                                .and_then(serde_json::Value::as_f64)
+                                                .unwrap_or(0.0),
+                                            confidence: w
+                                                .get("confidence")
+                                                .and_then(serde_json::Value::as_f64)
+                                                .unwrap_or(0.0),
                                             punctuated_word: w
                                                 .get("punctuated_word")
                                                 .and_then(|p| p.as_str())

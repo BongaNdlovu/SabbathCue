@@ -559,6 +559,29 @@ impl ReadingMode {
             }
         }
 
+        // Re-readings: preachers routinely jump BACK a verse or two ("as we
+        // saw in the previous verse…"). The forward-only checks above never
+        // matched those, so reading mode sat on the wrong verse until it
+        // timed out. Scan backward up to two verses; only accept when the
+        // accumulated transcript matches that verse better than the current
+        // one, so re-mentioning the current verse's own words can't trigger.
+        for back in 1..=2 {
+            if let Some(back_idx) = self.current_index.checked_sub(back) {
+                let candidate = &self.verses[back_idx];
+                let back_overlap =
+                    word_overlap(&transcript_words, &candidate.words, candidate.word_count);
+                if back_overlap < MIN_WORD_OVERLAP {
+                    continue;
+                }
+                let current = &self.verses[self.current_index];
+                let current_overlap =
+                    word_overlap(&transcript_words, &current.words, current.word_count);
+                if back_overlap > current_overlap {
+                    return self.advance_to(back_idx);
+                }
+            }
+        }
+
         None
     }
 
@@ -1124,6 +1147,39 @@ mod tests {
         let r = rm.check_transcript("three four");
         assert!(r.is_none());
         assert_eq!(rm.current_verse(), Some(1));
+    }
+
+    #[test]
+    fn re_reading_the_previous_verse_moves_backward() {
+        let mut rm = ReadingMode::new();
+        rm.start(44, "Acts", 15, 29, sample_verses());
+        // Establish verse 29 as current (staying on it returns None, which is
+        // fine — only the position matters).
+        let _ = rm.check_transcript("that ye abstain from meats offered to idols and from blood");
+        assert_eq!(rm.current_verse(), Some(29));
+
+        // The preacher then jumps back and reads verse 28 again. The fresh
+        // fragment matches verse 28 strongly while the accumulated buffer
+        // still carries verse-29 wording, so backward matching must fire.
+        let r = rm.check_transcript(
+            "as we saw in the previous verse it seemed good to the Holy Ghost and to us to lay upon you no greater burden than these necessary things",
+        );
+        assert!(r.is_some(), "backward re-read should advance to verse 28");
+        let advance = r.unwrap();
+        assert_eq!(advance.verse, 28);
+        assert_eq!(advance.reference, "Acts 15:28");
+    }
+
+    #[test]
+    fn re_mentioning_current_verse_words_does_not_move_backward() {
+        let mut rm = ReadingMode::new();
+        rm.start(44, "Acts", 15, 28, sample_verses());
+        // Commentary that merely re-mentions verse 28's own words: the
+        // current verse matches at least as well as any earlier verse, so
+        // no backward move may happen.
+        let r = rm.check_transcript("it seemed good to the Holy Ghost to lay upon you no greater burden than these necessary things");
+        assert!(r.is_none());
+        assert_eq!(rm.current_verse(), Some(28));
     }
 
     #[test]

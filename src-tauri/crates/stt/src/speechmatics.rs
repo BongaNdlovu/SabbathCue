@@ -24,6 +24,9 @@ const SENTENCE_ENDINGS: [char; 3] = ['.', '!', '?'];
 /// Commit an utterance without terminal punctuation once it reaches this many
 /// words, so detection never stalls on a long unpunctuated run.
 const MAX_UTTERANCE_WORDS: usize = 40;
+/// Bounded wait for `EndOfTranscript`/`Close` after `EndOfStream` — a half-open
+/// TCP connection must not hang the finishing phase forever.
+const FINISH_DRAIN_TIMEOUT: Duration = Duration::from_secs(15);
 
 #[derive(Debug, Deserialize, Default)]
 struct Metadata {
@@ -289,7 +292,10 @@ impl Utterance {
 #[expect(clippy::cast_precision_loss, reason = "word counts stay small")]
 fn average_confidence(words: &[Word]) -> f64 {
     if words.is_empty() {
-        return 1.0;
+        // Provider-neutral default (the Vosk worker uses the same value);
+        // claiming 1.0 made identical downstream gates behave differently
+        // per provider.
+        return crate::reconnect::UNSCORED_FINAL_CONFIDENCE;
     }
     words.iter().map(|word| word.confidence).sum::<f64>() / words.len() as f64
 }
@@ -384,7 +390,20 @@ impl SpeechmaticsClient {
                     }
                     None => break,
                 },
-                frame = read.next() => match frame {
+                // While finishing, bound the wait for the server's
+                // EndOfTranscript/Close — a half-open (black-holed)
+                // connection otherwise hangs the provider forever.
+                // The timeout maps to `None`, which ends the session
+                // cleanly when finishing (or errors when not).
+                frame = async {
+                    if finishing {
+                        tokio::time::timeout(FINISH_DRAIN_TIMEOUT, read.next())
+                            .await
+                            .unwrap_or(None)
+                    } else {
+                        read.next().await
+                    }
+                } => match frame {
                     Some(Ok(Message::Text(text))) => {
                         let (events, ended) = parse_response(&text, &mut utterance)?;
                         for event in events {
@@ -434,18 +453,25 @@ impl SpeechmaticsClient {
         if self.config.api_key.trim().is_empty() {
             return Err(SttError::ApiKeyMissing);
         }
-        let mut attempts = 0;
+        let mut attempts: u32 = 0;
         loop {
             if self.cancelled.load(Ordering::SeqCst) {
                 return Ok(());
             }
+            let connection_started = std::time::Instant::now();
             match self.try_connect(audio_rx.clone(), event_tx.clone()).await {
                 Ok(()) => return Ok(()),
                 Err(error @ (SttError::ParseError(_) | SttError::ApiKeyMissing)) => {
                     return Err(error)
                 }
                 Err(error) => {
-                    attempts += 1;
+                    // A connection that stayed up for a healthy stretch earns
+                    // a fresh budget: only rapid back-to-back failures exhaust
+                    // the retry limit.
+                    attempts = crate::reconnect::track_reconnect_attempt(
+                        attempts,
+                        connection_started.elapsed(),
+                    );
                     if attempts >= MAX_RECONNECT_ATTEMPTS {
                         return Err(error);
                     }

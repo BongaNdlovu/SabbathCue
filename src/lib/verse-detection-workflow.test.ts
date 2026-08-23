@@ -372,6 +372,48 @@ describe("verse detection workflow", () => {
     )
   })
 
+  it("does not auto-preview semantic EGW below the shared panel floor", () => {
+    // The detections panel hides semantic EGW below max(threshold, 0.75);
+    // the workflow previously presented anything above the plain 0.70
+    // threshold, so the live output could change while the detection card
+    // was hidden. Both gates must agree.
+    useSettingsStore.setState({
+      autoMode: true,
+      confidenceThreshold: 0.85,
+      semanticDetectionEnabled: true,
+      semanticConfidenceThreshold: 0.7,
+    })
+
+    const egw = makeDetection({
+      content_type: "egw",
+      verse_ref: "Patriarchs and Prophets p.322 par.1",
+      book_name: "Patriarchs and Prophets",
+      book_number: 1,
+      chapter: 322,
+      verse: 1,
+      confidence: 0.72,
+      source: "semantic",
+      auto_queued: false,
+      authorization: "preview-authorized",
+      egw_paragraph: {
+        id: 1,
+        book_number: 1,
+        book_title: "Patriarchs and Prophets",
+        chapter: 1,
+        chapter_title: "Why Was Sin Permitted?",
+        paragraph: 1,
+        page: 322,
+        page_paragraph: 1,
+        text: "Adam and Eve at their creation had a knowledge of the law of God.",
+      },
+    })
+    void handleVerseDetections([egw])
+
+    expect(useBroadcastStore.getState().liveItem).toBeNull()
+    expect(useBroadcastStore.getState().previewItem).toBeNull()
+    expect(useDetectionStore.getState().detections).toHaveLength(0)
+  })
+
   it("previews an authorized quotation without starting reading mode", async () => {
     await handleVerseDetections([
       makeDetection({

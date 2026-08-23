@@ -153,7 +153,10 @@ export const useQueueStore = create<QueueState>()(
       const existing = get().items[duplicateIndex]
       if (existing) {
         get().flashItem(existing.id)
-        if (!item.is_chapter_only) get().setActive(duplicateIndex)
+        // A re-detected duplicate must NOT move the operator's active
+        // selection: the speaker re-citing an earlier verse silently jumped
+        // the queue cursor, so the next "next" presented the wrong slide.
+        // (The store's own model: appends never shift activeIndex.)
       }
       return "duplicate"
     }
@@ -302,25 +305,36 @@ export const useQueueStore = create<QueueState>()(
           )
         },
       )
-      // Fallback: same book, any chapter (book-only detection guessed chapter 1)
+      // Fallback: same book, chapter-only placeholder whose chapter is the
+      // default 1 (book-only detection guessed it). Matching a placeholder
+      // with a real spoken chapter ("John 10" + later "John 3:16") produced
+      // a verse whose chapter and text disagreed.
       if (idx === -1) {
         idx = state.items.findIndex(
           (i) => {
             const iv = getVerseFromItem(i)
             return (
               i.is_chapter_only &&
-              iv?.book_number === bookNumber
+              iv?.book_number === bookNumber &&
+              iv.chapter === 1
             )
           },
         )
       }
       if (idx === -1) return state
-      found = true
       const items = [...state.items]
       const item = { ...items[idx] }
       const itemVerse = getVerseFromItem(item)
       if (!itemVerse || item.presentation.kind !== "scripture") return state
-      const updatedVerse = { ...itemVerse, verse, text: verseText }
+      found = true
+      // Adopt the newly spoken chapter along with the verse and text so the
+      // updated item is internally consistent.
+      const updatedVerse = {
+        ...itemVerse,
+        chapter,
+        verse,
+        text: verseText,
+      }
       item.presentation = {
         ...item.presentation,
         verse: updatedVerse,

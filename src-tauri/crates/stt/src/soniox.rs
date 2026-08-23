@@ -16,6 +16,11 @@ use crate::types::{SttConfig, TranscriptEvent};
 const SONIOX_RT_URL: &str = "wss://stt-rt.soniox.com/transcribe-websocket";
 const MAX_RECONNECT_ATTEMPTS: u32 = 5;
 const RECONNECT_DELAY: Duration = Duration::from_secs(1);
+/// Bounded window to drain the server-flushed final tokens after the audio
+/// source ends on a clean stop.
+const CLEAN_SHUTDOWN_DRAIN: Duration = Duration::from_secs(5);
+/// Shorter drain window on error paths.
+const ERROR_SHUTDOWN_DRAIN: Duration = Duration::from_secs(1);
 const BATCH_SAMPLES: usize = 800;
 pub const SONIOX_MODEL: &str = "stt-rt-v5";
 
@@ -105,16 +110,16 @@ pub(crate) fn parse_token_response(
     // suppress it as a repeat); the later endpoint Final was then dropped as
     // duplicate_final, so John 1:1 never live-authorized (2026-08-21).
     if endpoint {
-        let committed = if finalized_text.trim().is_empty() {
-            partial_transcript
-        } else {
-            finalized_text.clone()
-        };
+        // The endpoint Final must commit the trailing non-final tokens too:
+        // [final "John three sixteen", partial "amen", <end>] ends an
+        // utterance whose transcript is "John three sixteen amen" — dropping
+        // the partials here erased spoken words from the session.
+        let committed = partial_transcript;
         if !committed.trim().is_empty() {
             events.push(TranscriptEvent::Final {
                 transcript: committed,
                 words: vec![],
-                confidence: 1.0,
+                confidence: crate::reconnect::UNSCORED_FINAL_CONFIDENCE,
                 speech_final: true,
             });
         }
@@ -156,12 +161,13 @@ impl SonioxClient {
             return Err(SttError::ApiKeyMissing);
         }
 
-        let mut attempts = 0;
+        let mut attempts: u32 = 0;
         loop {
             if self.cancelled.load(Ordering::SeqCst) {
                 break;
             }
 
+            let connection_started = std::time::Instant::now();
             match self
                 .try_connect(audio_rx.clone(), event_tx.clone(), self.cancelled.clone())
                 .await
@@ -175,7 +181,13 @@ impl SonioxClient {
                         return Err(error);
                     }
 
-                    attempts += 1;
+                    // A connection that stayed up for a healthy stretch earns
+                    // a fresh budget: only rapid back-to-back failures exhaust
+                    // the retry limit.
+                    attempts = crate::reconnect::track_reconnect_attempt(
+                        attempts,
+                        connection_started.elapsed(),
+                    );
                     log::warn!(
                         "SonioxClient: connection error (attempt {attempts}/{MAX_RECONNECT_ATTEMPTS}): {error}"
                     );
@@ -221,15 +233,21 @@ impl SonioxClient {
         let error_detail = Arc::new(Mutex::new(None::<String>));
         let (ws_tx, mut ws_rx) = mpsc::channel::<WsCommand>(64);
 
+        // Set when this connection attempt is over: abort() cannot stop a
+        // spawn_blocking task, so the reader needs a flag to stop consuming
+        // frames from the shared crossbeam channel.
+        let reader_stop = Arc::new(AtomicBool::new(false));
+
         let mut audio_reader = {
             let ws_tx = ws_tx.clone();
             let cancelled = cancelled.clone();
+            let reader_stop = reader_stop.clone();
             tokio::task::spawn_blocking(move || {
                 let mut batch_buf = Vec::with_capacity(BATCH_SAMPLES * 2);
                 let batch_byte_threshold = BATCH_SAMPLES * 2;
 
                 loop {
-                    if cancelled.load(Ordering::SeqCst) {
+                    if cancelled.load(Ordering::SeqCst) || reader_stop.load(Ordering::SeqCst) {
                         let _ = ws_tx.blocking_send(WsCommand::Close);
                         break;
                     }
@@ -295,12 +313,18 @@ impl SonioxClient {
         let recv_error_detail = error_detail.clone();
         let recv_event_tx = event_tx.clone();
         let finalized_text = Arc::new(Mutex::new(String::new()));
+        // Soniox re-ships the whole accumulated utterance on every token
+        // packet, so consecutive Partial events usually carry identical text.
+        // Forwarding each one flooded the pipeline with duplicate work
+        // (detection jobs, frontend store writes). Suppress an identical
+        // Partial that directly follows the same text; Finals and all other
+        // events always pass through.
+        let mut last_partial_text = String::new();
         let mut receiver = tokio::spawn(async move {
             while let Some(msg_result) = read.next().await {
-                if recv_cancelled.load(Ordering::SeqCst) {
-                    break;
-                }
-
+                // Do NOT break on cancel here: buffered server messages still
+                // carry the final tokens of the session, and the writer's
+                // close makes read.next() return None once the server is done.
                 match msg_result {
                     Ok(Message::Text(text)) => {
                         let parsed: SonioxResponse = match serde_json::from_str(&text) {
@@ -330,6 +354,23 @@ impl SonioxClient {
                         };
 
                         for event in events {
+                            let duplicated = match &event {
+                                TranscriptEvent::Partial { transcript, .. } => {
+                                    let dup = *transcript == last_partial_text;
+                                    if !dup {
+                                        last_partial_text.clone_from(transcript);
+                                    }
+                                    dup
+                                }
+                                TranscriptEvent::Final { .. } | TranscriptEvent::UtteranceEnd => {
+                                    last_partial_text.clear();
+                                    false
+                                }
+                                _ => false,
+                            };
+                            if duplicated {
+                                continue;
+                            }
                             if recv_event_tx.send(event).await.is_err() {
                                 return;
                             }
@@ -365,15 +406,38 @@ impl SonioxClient {
             }
         });
 
-        tokio::select! {
-            _ = &mut audio_reader => {}
-            _ = &mut ws_writer => {}
-            _ = &mut receiver => {}
-        }
+        let audio_ended_normally = tokio::select! {
+            _ = &mut audio_reader => true,
+            _ = &mut ws_writer => false,
+            _ = &mut receiver => false,
+        };
 
-        audio_reader.abort();
-        ws_writer.abort();
-        receiver.abort();
+        // Stop the blocking reader from stealing further frames from the
+        // shared audio channel (abort() cannot stop spawn_blocking tasks).
+        reader_stop.store(true, Ordering::SeqCst);
+
+        // On normal audio end the reader queues WsCommand::Close and the
+        // writer closes the socket; the server flushes remaining tokens.
+        // Aborting the receiver dropped those finals — drain with a bounded
+        // window instead; abort only if the server goes quiet.
+        let drain_window = if audio_ended_normally {
+            CLEAN_SHUTDOWN_DRAIN
+        } else {
+            ERROR_SHUTDOWN_DRAIN
+        };
+        let drained = tokio::time::timeout(drain_window, async {
+            let _ = (&mut audio_reader).await;
+            let _ = (&mut ws_writer).await;
+            let _ = (&mut receiver).await;
+        })
+        .await;
+        if drained.is_err() {
+            log::warn!("SonioxClient: shutdown drain timed out; aborting tasks");
+            audio_reader.abort();
+            ws_writer.abort();
+            receiver.abort();
+            let _ = tokio::join!(audio_reader, ws_writer, receiver);
+        }
 
         if fatal_server_error_flag.load(Ordering::SeqCst) {
             let detail = error_detail
@@ -560,6 +624,57 @@ mod tests {
             "a pre-endpoint Final would swallow the real utterance-end Final"
         );
         assert_eq!(finalized, "John chapter 1 verse 1");
+    }
+
+    #[test]
+    fn endpoint_final_commits_trailing_non_final_tokens() {
+        // [final "John three sixteen", partial "amen", <end>] ends an
+        // utterance whose transcript includes the trailing words — the old
+        // endpoint branch cloned `finalized_text` only and erased "amen".
+        let mut finalized = String::new();
+        let events = parse_token_response(
+            &SonioxResponse {
+                tokens: vec![
+                    SonioxToken {
+                        text: "John three sixteen".into(),
+                        is_final: true,
+                    },
+                    SonioxToken {
+                        text: " amen".into(),
+                        is_final: false,
+                    },
+                    SonioxToken {
+                        text: "<end>".into(),
+                        is_final: true,
+                    },
+                ],
+                error_code: None,
+                error_message: None,
+            },
+            &mut finalized,
+        )
+        .unwrap();
+
+        match events.first() {
+            Some(TranscriptEvent::Final {
+                transcript,
+                speech_final,
+                confidence,
+                ..
+            }) => {
+                assert_eq!(transcript, "John three sixteen amen");
+                assert!(*speech_final);
+                assert!(
+                    (confidence - crate::reconnect::UNSCORED_FINAL_CONFIDENCE).abs()
+                        < f64::EPSILON,
+                    "unscored finals must use the shared provider-neutral default"
+                );
+            }
+            other => panic!("expected a speech-final event, got {other:?}"),
+        }
+        assert!(events
+            .iter()
+            .any(|event| matches!(event, TranscriptEvent::UtteranceEnd)));
     }
 
     #[test]

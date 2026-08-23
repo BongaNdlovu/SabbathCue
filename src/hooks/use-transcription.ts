@@ -238,10 +238,15 @@ export const transcriptionActions = {
       return
     }
 
-    useTranscriptStore.setState({
-      segments: previousSegments,
-      currentPartial: previousPartial,
-    })
+    // Restore the pre-restart transcript without clobbering anything newer
+    // that arrived while the restart was in flight — a blind setState
+    // previously overwrote finals and partials that landed during the
+    // restart. Each field is restored only when its current value is empty.
+    useTranscriptStore.setState((state) => ({
+      segments: state.segments.length === 0 ? previousSegments : state.segments,
+      currentPartial:
+        state.currentPartial === "" ? previousPartial : state.currentPartial,
+    }))
   },
 }
 
@@ -315,7 +320,18 @@ export function useTranscriptionEventBridge() {
     })
   })
   useTauriEvent("stt_speech_started", () => {
+    // Only show the synthetic hint while actually transcribing, and clear it
+    // after a short window: VAD starts without recognized words (coughs,
+    // noise) otherwise left a fake "Speech detected..." partial pulsing next
+    // to an idle state indefinitely.
+    if (!useTranscriptStore.getState().isTranscribing) return
     useTranscriptStore.getState().setPartial("Speech detected...")
+    window.setTimeout(() => {
+      const transcript = useTranscriptStore.getState()
+      if (transcript.currentPartial === "Speech detected...") {
+        transcript.setPartial("")
+      }
+    }, 3_000)
   })
 
   // Audio source lifecycle: when the OS device disappears (mic unplugged,
@@ -349,9 +365,22 @@ export function useTranscriptionEventBridge() {
         }),
       }
     )
+    // A partial that arrives after an error/disconnect must not resurrect a
+    // ghost "live" line or wipe the persistent error card — the only visible
+    // error UI while idle.
+    if (!useTranscriptStore.getState().isTranscribing) return
     const transcript = useTranscriptStore.getState()
-    transcript.clearIssue()
-    transcript.setPartial(payload.text)
+    // Single write, skipped entirely when nothing visible would change
+    // (providers frequently re-emit identical partial text).
+    if (
+      transcript.currentPartial !== payload.text ||
+      transcript.lastIssue !== null
+    ) {
+      useTranscriptStore.setState({
+        currentPartial: payload.text,
+        lastIssue: null,
+      })
+    }
   })
 
   useTauriEvent<TranscriptPartialPayload>("transcript_final", (payload) => {

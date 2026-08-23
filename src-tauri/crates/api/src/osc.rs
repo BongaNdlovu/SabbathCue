@@ -14,6 +14,10 @@ use crate::error::CommandError;
 pub struct OscConfig {
     pub port: u16,
     pub host: String,
+    /// Remote-control token, required for parity with the HTTP API (which
+    /// refuses to start unauthenticated). Every OSC message must carry the
+    /// token as its first string argument.
+    pub token: Option<String>,
 }
 
 impl Default for OscConfig {
@@ -21,6 +25,7 @@ impl Default for OscConfig {
         Self {
             port: 8000,
             host: "127.0.0.1".into(),
+            token: None,
         }
     }
 }
@@ -69,10 +74,6 @@ pub struct OscStartResult {
 /// # Errors
 ///
 /// Returns `CommandError::DispatchFailed` if the UDP socket cannot bind.
-#[expect(
-    clippy::needless_pass_by_value,
-    reason = "OscConfig is consumed to move fields into the spawned thread"
-)]
 pub fn start_osc_listener<S>(
     config: OscConfig,
     sink: Arc<S>,
@@ -80,6 +81,20 @@ pub fn start_osc_listener<S>(
 where
     S: CommandSink + 'static,
 {
+    // Parity with the HTTP API (http.rs refuses an empty token): the OSC
+    // surface dispatches the identical command set, so it must not run
+    // unauthenticated — any local process could otherwise control the live
+    // output with a single UDP packet.
+    let Some(token) = config
+        .token
+        .filter(|token| !token.trim().is_empty())
+        .map(|token| token.trim().to_string())
+    else {
+        return Err(CommandError::DispatchFailed(
+            "OSC token is required (refusing to start unauthenticated)".to_string(),
+        ));
+    };
+
     let bind_addr = format!("{}:{}", config.host, config.port);
 
     let socket = UdpSocket::bind(&bind_addr).map_err(|e| {
@@ -101,7 +116,11 @@ where
         .spawn(move || {
             log::info!("OSC listener started on {bind_addr} (port {bound_port})");
 
-            let mut buf = [0u8; 4096];
+            // 64 KiB: OSC bundles carrying many messages (or large string
+            // arguments) exceed the old 4096-byte buffer and were silently
+            // truncated — the listener reported "running" while commands in
+            // the dropped tail never arrived.
+            let mut buf = vec![0u8; 65_536];
 
             while thread_active.load(Ordering::SeqCst) {
                 let (size, _src) = match socket.recv_from(&mut buf) {
@@ -114,10 +133,20 @@ where
                         continue;
                     }
                     Err(e) => {
-                        log::debug!("OSC recv error: {e}");
+                        // Persistent receive errors (e.g. WSAECONNRESET storms
+                        // on Windows UDP) must be visible: an operator seeing
+                        // "OSC running" while no commands arrive needs the
+                        // failure surfaced, not buried in debug logs.
+                        log::warn!("OSC recv error: {e}");
                         continue;
                     }
                 };
+                if size == buf.len() {
+                    log::warn!(
+                        "OSC datagram may be truncated (exactly {} bytes received)",
+                        buf.len()
+                    );
+                }
 
                 let packet = match rosc::decoder::decode_udp(&buf[..size]) {
                     Ok((_rest, packet)) => packet,
@@ -127,7 +156,7 @@ where
                     }
                 };
 
-                handle_packet(&packet, &*sink);
+                handle_packet(&packet, &*sink, &token);
             }
 
             log::info!("OSC listener stopped");
@@ -144,20 +173,36 @@ where
 }
 
 /// Recursively handle an OSC packet (messages and bundles).
-fn handle_packet(packet: &OscPacket, sink: &dyn CommandSink) {
+fn handle_packet(packet: &OscPacket, sink: &dyn CommandSink, token: &str) {
     match packet {
-        OscPacket::Message(msg) => handle_message(msg, sink),
+        OscPacket::Message(msg) => handle_message(msg, sink, token),
         OscPacket::Bundle(bundle) => {
             for content in &bundle.content {
-                handle_packet(content, sink);
+                handle_packet(content, sink, token);
             }
         }
     }
 }
 
 /// Parse a single OSC message and dispatch the resulting command.
-fn handle_message(msg: &OscMessage, sink: &dyn CommandSink) {
-    match parse_osc(&msg.addr, &msg.args) {
+///
+/// The first argument must be the shared remote-control token (OSC has no
+/// header equivalent of HTTP's bearer token). Authorized messages have the
+/// token stripped before parsing so the command grammar is unchanged.
+fn handle_message(msg: &OscMessage, sink: &dyn CommandSink, token: &str) {
+    let mut args = msg.args.iter();
+    let authorized = matches!(args.next(), Some(rosc::OscType::String(provided))
+        if crate::http::constant_time_eq(provided.as_bytes(), token.as_bytes()));
+    if !authorized {
+        log::warn!(
+            "OSC message rejected: missing or invalid token for {}",
+            msg.addr
+        );
+        return;
+    }
+    let rest: Vec<rosc::OscType> = args.cloned().collect();
+
+    match parse_osc(&msg.addr, &rest) {
         Ok(cmd) => {
             log::debug!("OSC command: {cmd}");
             if let Err(e) = CommandDispatcher::dispatch(&cmd, sink) {
@@ -203,13 +248,39 @@ mod tests {
         }
     }
 
+    const TEST_TOKEN: &str = "test-remote-token";
+
+    fn authed_config(port: u16) -> OscConfig {
+        OscConfig {
+            port,
+            host: "127.0.0.1".into(),
+            token: Some(TEST_TOKEN.to_string()),
+        }
+    }
+
+    fn authed_message(addr: &str) -> OscMessage {
+        OscMessage {
+            addr: addr.into(),
+            args: vec![rosc::OscType::String(TEST_TOKEN.to_string())],
+        }
+    }
+
+    #[test]
+    fn refuses_to_start_without_a_token() {
+        let sink = Arc::new(MockSink::new());
+        let config = OscConfig {
+            port: 0,
+            host: "127.0.0.1".into(),
+            token: None,
+        };
+        let result = start_osc_listener(config, sink);
+        assert!(result.is_err(), "OSC must refuse to start unauthenticated");
+    }
+
     #[test]
     fn osc_listener_binds_and_stops() {
         let sink = Arc::new(MockSink::new());
-        let config = OscConfig {
-            port: 0, // OS assigns a free port
-            host: "127.0.0.1".into(),
-        };
+        let config = authed_config(0);
 
         let mut result = start_osc_listener(config, sink).expect("should bind");
         assert!(result.bound_port > 0);
@@ -222,20 +293,14 @@ mod tests {
     #[test]
     fn osc_listener_receives_and_dispatches() {
         let sink = Arc::new(MockSink::new());
-        let config = OscConfig {
-            port: 0,
-            host: "127.0.0.1".into(),
-        };
+        let config = authed_config(0);
 
         let result = start_osc_listener(config, sink.clone()).expect("should bind");
         let port = result.bound_port;
 
-        // Send an OSC message to the listener
+        // Send an authenticated OSC message to the listener
         let send_socket = UdpSocket::bind("127.0.0.1:0").unwrap();
-        let msg = rosc::OscMessage {
-            addr: "/sabbathcue/next".into(),
-            args: vec![],
-        };
+        let msg = authed_message("/sabbathcue/next");
         let packet = rosc::OscPacket::Message(msg);
         let encoded = rosc::encoder::encode(&packet).unwrap();
         send_socket
@@ -256,16 +321,43 @@ mod tests {
     }
 
     #[test]
+    fn osc_listener_rejects_unauthenticated_datagram() {
+        let sink = Arc::new(MockSink::new());
+        let config = authed_config(0);
+
+        let result = start_osc_listener(config, sink.clone()).expect("should bind");
+        let port = result.bound_port;
+
+        let send_socket = UdpSocket::bind("127.0.0.1:0").unwrap();
+        let msg = OscMessage {
+            addr: "/sabbathcue/hide".into(),
+            args: vec![], // no token
+        };
+        let packet = OscPacket::Message(msg);
+        let encoded = rosc::encoder::encode(&packet).unwrap();
+        send_socket
+            .send_to(&encoded, format!("127.0.0.1:{port}"))
+            .unwrap();
+        std::thread::sleep(Duration::from_millis(200));
+
+        assert_eq!(
+            sink.command_count(),
+            0,
+            "an unauthenticated UDP packet must not reach the command dispatcher"
+        );
+
+        let mut handle = result.handle;
+        handle.stop();
+    }
+
+    #[test]
     fn osc_listener_port_conflict_returns_error() {
         // Bind a port first
         let blocker = UdpSocket::bind("127.0.0.1:0").unwrap();
         let port = blocker.local_addr().unwrap().port();
 
         let sink = Arc::new(MockSink::new());
-        let config = OscConfig {
-            port,
-            host: "127.0.0.1".into(),
-        };
+        let config = authed_config(port);
 
         let result = start_osc_listener(config, sink);
         assert!(result.is_err(), "Should fail when port is already in use");
@@ -274,22 +366,35 @@ mod tests {
     #[test]
     fn handle_message_dispatches_next() {
         let sink = MockSink::new();
-        let msg = OscMessage {
+        let msg = authed_message("/sabbathcue/next");
+        handle_message(&msg, &sink, TEST_TOKEN);
+        assert_eq!(sink.command_count(), 1);
+    }
+
+    #[test]
+    fn handle_message_rejects_wrong_or_missing_token() {
+        let sink = MockSink::new();
+
+        let wrong = OscMessage {
+            addr: "/sabbathcue/next".into(),
+            args: vec![rosc::OscType::String("wrong-token".into())],
+        };
+        handle_message(&wrong, &sink, TEST_TOKEN);
+        assert_eq!(sink.command_count(), 0, "wrong token must be rejected");
+
+        let missing = OscMessage {
             addr: "/sabbathcue/next".into(),
             args: vec![],
         };
-        handle_message(&msg, &sink);
-        assert_eq!(sink.command_count(), 1);
+        handle_message(&missing, &sink, TEST_TOKEN);
+        assert_eq!(sink.command_count(), 0, "missing token must be rejected");
     }
 
     #[test]
     fn handle_message_ignores_unknown_address() {
         let sink = MockSink::new();
-        let msg = OscMessage {
-            addr: "/foo/bar".into(),
-            args: vec![],
-        };
-        handle_message(&msg, &sink);
+        let msg = authed_message("/foo/bar");
+        handle_message(&msg, &sink, TEST_TOKEN);
         assert_eq!(sink.command_count(), 0);
     }
 
@@ -302,17 +407,11 @@ mod tests {
                 fractional: 0,
             },
             content: vec![
-                OscPacket::Message(OscMessage {
-                    addr: "/sabbathcue/next".into(),
-                    args: vec![],
-                }),
-                OscPacket::Message(OscMessage {
-                    addr: "/sabbathcue/prev".into(),
-                    args: vec![],
-                }),
+                OscPacket::Message(authed_message("/sabbathcue/next")),
+                OscPacket::Message(authed_message("/sabbathcue/prev")),
             ],
         });
-        handle_packet(&bundle, &sink);
+        handle_packet(&bundle, &sink, TEST_TOKEN);
         assert_eq!(sink.command_count(), 2);
     }
 }

@@ -93,9 +93,17 @@ pub async fn start_osc(
         return Err("OSC listener is already running".into());
     }
 
+    // Source the shared remote-control token (same secret as the HTTP API)
+    // so the OSC surface authenticates like HTTP does.
+    let token = (|| -> Result<String, String> {
+        secrets::ensure_remote_http_token_exists()?;
+        secrets::get_remote_http_token()
+    })()?;
+
     let config = OscConfig {
         port: valid_port(port, 8000)?,
         host: "127.0.0.1".into(),
+        token: Some(token),
     };
 
     let sink = Arc::new(TauriSink { app });
@@ -112,17 +120,25 @@ pub async fn start_osc(
 /// Stop the OSC listener.
 #[tauri::command]
 pub async fn stop_osc(state: State<'_, Mutex<OscRuntime>>) -> Result<(), String> {
-    let mut runtime = state.lock().map_err(|e| e.to_string())?;
-
-    match runtime.handle.take() {
-        Some(mut handle) => {
-            handle.stop();
-            runtime.bound_port = None;
-            log::info!("OSC listener stopped");
-            Ok(())
+    let mut handle = {
+        let mut runtime = state.lock().map_err(|e| e.to_string())?;
+        match runtime.handle.take() {
+            Some(handle) => {
+                runtime.bound_port = None;
+                handle
+            }
+            None => return Err("OSC listener is not running".into()),
         }
-        None => Err("OSC listener is not running".into()),
-    }
+    };
+
+    // Join the listener thread off the async worker: stop() blocks up to
+    // one read-timeout (100 ms), which must not stall unrelated tasks.
+    tauri::async_runtime::spawn_blocking(move || handle.stop())
+        .await
+        .map_err(|e| e.to_string())?;
+
+    log::info!("OSC listener stopped");
+    Ok(())
 }
 
 /// Get the current OSC listener status.

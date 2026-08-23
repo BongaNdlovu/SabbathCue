@@ -273,4 +273,37 @@ mod tests {
             "scaffolding must not splice fragments ({interrupted_len} vs {spliced_len})"
         );
     }
+
+    #[test]
+    fn accented_capitals_still_match_across_case() {
+        // content_words (spoken) and content_words_indexed (paragraph) must
+        // lowercase identically, including non-ASCII capitals — the shipped
+        // Spanish/French EGW content contains "Señor"/"Él"-style words and
+        // STT emits all-caps stretches. The >=4-byte content-word filter
+        // drops "el/es/mi/me", so the full shared run is exactly these four.
+        let paragraph = "El Señor es mi pastor; nada me faltará. Él me hace descansar en lugares de descanso.";
+        let spoken_all_caps = "EL SEÑOR ES MI PASTOR NADA ME FALTARÁ";
+
+        let run = longest_shared_content_run(spoken_all_caps, paragraph);
+        assert_eq!(
+            run.len, 4,
+            "all-caps accented speech must match mixed-case accented text (señor/pastor/nada/faltará)"
+        );
+    }
+
+    #[test]
+    fn content_words_and_indexed_sequences_stay_identical() {
+        for text in [
+            "El Señor es mi pastor",
+            "EL SEÑOR ES MI PASTOR",
+            "Él me hace descansar",
+            "plain ascii text only",
+        ] {
+            let plain: Vec<String> = content_words(text).collect();
+            let indexed: Vec<String> = content_words_indexed(text)
+                .map(|(_, word)| word)
+                .collect();
+            assert_eq!(plain, indexed, "sequences diverged for {text:?}");
+        }
+    }
 }

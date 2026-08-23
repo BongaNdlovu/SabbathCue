@@ -453,6 +453,122 @@ fn is_valid_reference(reference: &VerseRef) -> bool {
         .is_none_or(|end| end >= reference.verse_start && end <= i32::from(max_verse))
 }
 
+/// How a translation-command phrase may appear in an utterance. Substring
+/// matching let ordinary sermon prose act as a command ("the good news of the
+/// gospel" switched to GNT and suppressed semantic detection), so each phrase
+/// class carries its own disambiguation rule.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TranslationPhraseClass {
+    /// Starts with a request verb ("give me niv", "read in esv").
+    Imperative,
+    /// Starts with "in …" ("in the message") — equally at home inside prose.
+    Prepositional,
+    /// A bare translation name ("good news", "king james version").
+    Name,
+}
+
+fn translation_phrase_class(pattern: &str) -> TranslationPhraseClass {
+    if pattern.starts_with("in ") {
+        TranslationPhraseClass::Prepositional
+    } else if ["give", "read", "switch", "show", "can", "back"]
+        .iter()
+        .any(|verb| pattern.starts_with(verb))
+    {
+        TranslationPhraseClass::Imperative
+    } else {
+        TranslationPhraseClass::Name
+    }
+}
+
+/// Request verbs that mark an utterance as an instruction to the app rather
+/// than sermon prose. A translation phrase only acts as a command when one of
+/// these is spoken or the phrase stands (nearly) alone.
+const TRANSLATION_REQUEST_VERBS: &[&str] = &[
+    "give", "read", "switch", "show", "want", "need", "can", "could", "use", "back", "let", "lets",
+];
+
+/// Lead-in words allowed before a bare translation-name phrase with no
+/// trailing words ("I need the new living translation").
+const TRANSLATION_NAME_LEAD_INS: &[&str] = &[
+    "i", "we", "you", "the", "a", "an", "please", "me", "my", "our", "need", "want", "give", "use",
+];
+
+/// Tokenize an utterance for command matching: lowercase words stripped of
+/// edge punctuation, so "niv." equals "niv" and substring hits inside words
+/// ("johnson" containing "john") are impossible.
+fn normalized_command_tokens(text: &str) -> Vec<String> {
+    text.to_lowercase()
+        .split_whitespace()
+        .map(|word| {
+            word.trim_matches(|character: char| !character.is_alphanumeric())
+                .to_string()
+        })
+        .filter(|word| !word.is_empty())
+        .collect()
+}
+
+/// Find a translation switching command in the token stream.
+///
+/// Phrases must match on whole words, and each class carries an
+/// anti-false-positive rule:
+/// - Imperative phrases may be followed by a short tail ("read in niv please").
+/// - Prepositional phrases ("in the message") must start the utterance or be
+///   accompanied by a request verb — "faith in the message" is prose.
+/// - Bare names ("good news") must end the utterance (optionally after polite
+///   lead-ins like "I need the …") or be accompanied by a request verb —
+///   "the good news of the gospel" is prose.
+fn find_translation_command_in(tokens: &[String]) -> Option<&'static str> {
+    let has_request_verb = tokens
+        .iter()
+        .any(|token| TRANSLATION_REQUEST_VERBS.contains(&token.as_str()));
+    'commands: for (pattern, abbrev) in TRANSLATION_COMMANDS {
+        let phrase: Vec<&str> = pattern.split_whitespace().collect();
+        if phrase.is_empty() || tokens.len() < phrase.len() {
+            continue;
+        }
+        for start in 0..=(tokens.len() - phrase.len()) {
+            if tokens[start..start + phrase.len()] != phrase[..] {
+                continue;
+            }
+            let trailing = tokens.len() - start - phrase.len();
+            let lead = &tokens[..start];
+            let allowed = match translation_phrase_class(pattern) {
+                TranslationPhraseClass::Imperative => {
+                    has_request_verb || trailing <= 3
+                }
+                TranslationPhraseClass::Prepositional => {
+                    (start == 0 && trailing <= 2) || (has_request_verb && trailing <= 4)
+                }
+                TranslationPhraseClass::Name => {
+                    trailing == 0
+                        && (lead.is_empty()
+                            || lead
+                                .iter()
+                                .all(|token| TRANSLATION_NAME_LEAD_INS.contains(&token.as_str())))
+                        || (has_request_verb && trailing <= 2)
+                }
+            };
+            if allowed {
+                return Some(abbrev);
+            }
+            continue 'commands;
+        }
+    }
+    None
+}
+
+/// Match a whole-word command phrase from `patterns`, requiring the utterance
+/// to be close to the phrase itself so prose cannot trip lifecycle commands
+/// ("we should stop listening to the world" must not stop transcription).
+fn matches_short_command_phrase(tokens: &[String], patterns: &[&str]) -> bool {
+    patterns.iter().any(|pattern| {
+        let phrase: Vec<&str> = pattern.split_whitespace().collect();
+        !phrase.is_empty()
+            && tokens.len() <= phrase.len() + 3
+            && tokens.windows(phrase.len()).any(|window| *window == phrase[..])
+    })
+}
+
 /// True when the text immediately following a book match begins with
 /// reference-like content: a colon, a chapter/verse number (digit or spoken),
 /// or the words "chapter"/"verse". Used to gate abbreviation/alias and fuzzy
@@ -667,25 +783,39 @@ pub fn is_voice_command_utterance(text: &str) -> bool {
     if is_hymn_or_song_number_command(text) || is_queue_item_number_command(text) {
         return true;
     }
-    let lower = text.to_lowercase();
-    if TRANSLATION_COMMANDS
-        .iter()
-        .any(|(phrase, _)| lower.contains(phrase))
-    {
+    let tokens = normalized_command_tokens(text);
+    if find_translation_command_in(&tokens).is_some() {
         return true;
     }
-    is_navigation_command(&lower)
+    is_navigation_command_tokens(&tokens)
 }
 
 /// Reading-navigation phrases: directional moves ("next"/"previous"/"go back"
-/// a verse or chapter) and moves within "the same/this chapter".
-fn is_navigation_command(lower: &str) -> bool {
-    let directional =
-        lower.contains("next") || lower.contains("previous") || lower.contains("go back");
-    if directional && (lower.contains("verse") || lower.contains("chapter")) {
+/// a verse or chapter) and moves within "the same/this chapter". Token-based
+/// and length-capped so narration ("in the next verse we see the love of
+/// God") is not mistaken for a navigation command.
+fn is_navigation_command_tokens(tokens: &[String]) -> bool {
+    if tokens.len() > 8 {
+        return false;
+    }
+    let has_phrase = |phrase: &[&str]| {
+        !phrase.is_empty()
+            && tokens.len() >= phrase.len()
+            && tokens.windows(phrase.len()).any(|window| window == phrase)
+    };
+    let has_word = |word: &str| tokens.iter().any(|token| token == word);
+
+    if has_phrase(&["next", "verse"])
+        || has_phrase(&["next", "chapter"])
+        || has_phrase(&["previous", "verse"])
+        || has_phrase(&["previous", "chapter"])
+    {
         return true;
     }
-    (lower.contains("same chapter") || lower.contains("this chapter")) && lower.contains("verse")
+    if has_phrase(&["go", "back"]) && (has_word("verse") || has_word("chapter")) {
+        return true;
+    }
+    (has_phrase(&["same", "chapter"]) || has_phrase(&["this", "chapter"])) && has_word("verse")
 }
 
 fn hymn_command_number_end(tokens: &[&str], start: usize) -> Option<usize> {
@@ -906,28 +1036,29 @@ impl DirectDetector {
     /// Check if the transcript contains a translation switching command.
     /// Returns the translation abbreviation if found (e.g., "NIV", "ESV").
     ///
-    /// Matches both full phrases ("new international version") and bare
-    /// abbreviations ("NIV", "AMP") as standalone words.
+    /// Matches whole-word phrases with per-class disambiguation (see
+    /// [`find_translation_command_in`]) plus bare abbreviations ("niv") that
+    /// are either alone in the utterance or paired with a request verb —
+    /// "the net result" must not switch to NET.
     pub fn detect_translation_command(&self, text: &str) -> Option<String> {
-        let lower = text.to_lowercase();
-
-        // First check full phrases (higher confidence)
-        for (pattern, abbrev) in TRANSLATION_COMMANDS {
-            if lower.contains(pattern) {
-                log::info!("[DET-DIRECT] Translation command detected: {abbrev}");
-                return Some((*abbrev).to_string());
-            }
+        let tokens = normalized_command_tokens(text);
+        if let Some(abbrev) = find_translation_command_in(&tokens) {
+            log::info!("[DET-DIRECT] Translation command detected: {abbrev}");
+            return Some(abbrev.to_string());
         }
 
-        // Then check bare abbreviations as standalone words
-        // Split into words and check each against known abbreviations
-        let words: Vec<&str> = lower
-            .split_whitespace()
-            .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric()))
-            .collect();
-
-        for word in &words {
-            let matched = match *word {
+        // Bare abbreviations as standalone words, gated the same way: a
+        // lone abbreviation ("niv") or one accompanying a request verb
+        // ("read john 3:16 in niv") is a command; prose ("the net result
+        // of this") is not.
+        let has_request_verb = tokens
+            .iter()
+            .any(|token| TRANSLATION_REQUEST_VERBS.contains(&token.as_str()));
+        if tokens.len() > 2 && !has_request_verb {
+            return None;
+        }
+        for word in &tokens {
+            let matched = match word.as_str() {
                 "niv" => Some("NIV"),
                 "esv" => Some("ESV"),
                 "nasb" => Some("NASB"),
@@ -950,7 +1081,7 @@ impl DirectDetector {
             };
             if let Some(abbrev) = matched {
                 log::info!("[DET-DIRECT] Translation abbreviation detected: {abbrev}");
-                return Some((*abbrev).to_string());
+                return Some(abbrev.to_string());
             }
         }
 
@@ -962,21 +1093,19 @@ impl DirectDetector {
     /// Stop can be acted on by the running transcription pipeline. Start is
     /// only detectable while a pipeline is already listening; waking from a
     /// fully stopped state requires a separate always-listening command path.
+    ///
+    /// The command must appear on whole words and the utterance must be close
+    /// to the bare command — "we should stop listening to the world" is
+    /// sermon prose, not an instruction to stop transcribing.
     pub fn detect_stt_voice_command(&self, text: &str) -> Option<SttVoiceCommand> {
-        let lower = text.to_lowercase();
+        let tokens = normalized_command_tokens(text);
 
-        if STT_STOP_COMMANDS
-            .iter()
-            .any(|pattern| lower.contains(pattern))
-        {
+        if matches_short_command_phrase(&tokens, STT_STOP_COMMANDS) {
             log::info!("[DET-DIRECT] STT stop voice command detected");
             return Some(SttVoiceCommand::Stop);
         }
 
-        if STT_START_COMMANDS
-            .iter()
-            .any(|pattern| lower.contains(pattern))
-        {
+        if matches_short_command_phrase(&tokens, STT_START_COMMANDS) {
             log::info!("[DET-DIRECT] STT start voice command detected");
             return Some(SttVoiceCommand::Start);
         }
@@ -2142,6 +2271,124 @@ mod tests {
             "item one in our discussion is faith"
         ));
         assert!(!is_voice_command_utterance("the first item is prayer"));
+    }
+
+    #[test]
+    fn sermon_prose_containing_good_news_stays_eligible_for_semantic_detection() {
+        // "good news" is a GNT translation trigger phrase, but it is also the
+        // most common phrase in evangelical preaching. Substring matching
+        // suppressed semantic detection (and could switch the translation)
+        // for every sentence that mentions it.
+        for prose in [
+            "the good news of the gospel is for everyone",
+            "share the good news with the whole world",
+            "we carry the good news into all the earth",
+            "good news for everyone who believes",
+            "this is such good news for us today church",
+        ] {
+            assert!(
+                !is_voice_command_utterance(prose),
+                "prose must stay eligible for semantic detection: {prose}"
+            );
+            let detector = DirectDetector::new();
+            assert!(
+                detector.detect_translation_command(prose).is_none(),
+                "prose must not switch translation: {prose}"
+            );
+        }
+    }
+
+    #[test]
+    fn good_news_translation_commands_still_switch() {
+        let detector = DirectDetector::new();
+        for command in [
+            "good news translation",
+            "good news bible",
+            "give me gnt",
+            "read in the good news bible",
+        ] {
+            assert!(
+                detector
+                    .detect_translation_command(command)
+                    .is_some_and(|abbrev| abbrev == "GNT"),
+                "legit GNT command must still switch: {command}"
+            );
+        }
+    }
+
+    #[test]
+    fn sermon_prose_containing_in_the_message_stays_prose() {
+        let detector = DirectDetector::new();
+        for prose in [
+            "we have faith in the message of the cross",
+            "there is power in the message preached today",
+            "in the message of the cross we find peace",
+        ] {
+            assert!(
+                detector.detect_translation_command(prose).is_none(),
+                "prose must not switch to MSG: {prose}"
+            );
+            assert!(
+                !is_voice_command_utterance(prose),
+                "prose must stay eligible for semantic detection: {prose}"
+            );
+        }
+    }
+
+    #[test]
+    fn common_words_matching_translation_abbreviations_stay_prose() {
+        let detector = DirectDetector::new();
+        // "net" is a translation abbreviation; "the net result" is prose.
+        assert!(detector
+            .detect_translation_command("the net result of this is a blessing")
+            .is_none());
+        // Bare abbreviation alone (or with a request verb) is a command.
+        assert_eq!(detector.detect_translation_command("net"), Some("NET".into()));
+        assert_eq!(
+            detector.detect_translation_command("read john 3:16 in niv"),
+            Some("NIV".into())
+        );
+    }
+
+    #[test]
+    fn stt_stop_command_requires_an_actual_command_utterance() {
+        let detector = DirectDetector::new();
+        // Sermon sentence containing the phrase "stop listening" must not
+        // halt transcription mid-sermon.
+        assert!(detector
+            .detect_stt_voice_command("we should stop listening to the world")
+            .is_none());
+        assert!(detector
+            .detect_stt_voice_command("stop listening to the voice of the enemy")
+            .is_none());
+        // Real lifecycle commands still work, including polite forms.
+        assert!(matches!(
+            detector.detect_stt_voice_command("stop transcribing"),
+            Some(SttVoiceCommand::Stop)
+        ));
+        assert!(matches!(
+            detector.detect_stt_voice_command("please stop listening"),
+            Some(SttVoiceCommand::Stop)
+        ));
+        assert!(matches!(
+            detector.detect_stt_voice_command("stop the transcription now"),
+            Some(SttVoiceCommand::Stop)
+        ));
+        assert!(matches!(
+            detector.detect_stt_voice_command("start listening"),
+            Some(SttVoiceCommand::Start)
+        ));
+    }
+
+    #[test]
+    fn narration_about_the_next_verse_is_not_a_navigation_command() {
+        // "in the next verse we see the love of God" is narration, not a
+        // "next verse" navigation command — semantic detection must run on it.
+        assert!(!is_voice_command_utterance(
+            "in the next verse we see the love of God"
+        ));
+        assert!(is_voice_command_utterance("let's go to the next verse"));
+        assert!(is_voice_command_utterance("next verse please"));
     }
 
     #[test]

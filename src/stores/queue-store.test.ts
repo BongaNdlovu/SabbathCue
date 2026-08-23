@@ -26,6 +26,30 @@ function makeItem(id: string, verse: number): QueueItem {
   }
 }
 
+function makeChapterOnlyItem(id: string, chapter: number): QueueItem {
+  return {
+    id,
+    presentation: {
+      kind: "scripture" as const,
+      verse: {
+        id: 1,
+        translation_id: 1,
+        book_number: 43,
+        book_name: "John",
+        book_abbreviation: "John",
+        chapter,
+        verse: 1,
+        text: "",
+      },
+      reference: `John ${chapter}`,
+    },
+    confidence: 0.9,
+    source: "ai-direct",
+    added_at: Date.now(),
+    is_chapter_only: true,
+  }
+}
+
 function seed(items: QueueItem[], activeIndex: number | null = null): void {
   useQueueStore.getState().addItems(items)
   if (activeIndex !== null) useQueueStore.getState().setActive(activeIndex)
@@ -140,6 +164,110 @@ describe("queue-store", () => {
     expect(useQueueStore.getState().items).toHaveLength(1)
     expect(useQueueStore.getState().highlightedId).toBe("a")
     expect(useQueueStore.getState().highlightedIds).toEqual(["a"])
+  })
+
+  it("duplicate detection flash does not move the active selection", () => {
+    useQueueStore.setState({
+      items: [makeItem("a", 16), makeItem("b", 17), makeItem("c", 18)],
+      activeIndex: 2,
+      highlightedId: null,
+      highlightedIds: [],
+    })
+
+    const result = useQueueStore.getState().addOrFlashDetectionItem(makeItem("dup", 16))
+
+    expect(result).toBe("duplicate")
+    // A re-cited duplicate must not silently jump the queue cursor.
+    expect(useQueueStore.getState().activeIndex).toBe(2)
+    expect(useQueueStore.getState().highlightedId).toBe("a")
+  })
+
+  it("updateEarlyRef fallback never mixes placeholder chapter with new verse text", () => {
+    // "turn to John 10" queues a chapter-only placeholder; a later "John
+    // 3:16" citation must NOT overwrite that placeholder with chapter 10 +
+    // John 3:16's text (mislabeled "John 3:16" that navigates to John 10:17).
+    const placeholder = makeChapterOnlyItem("p10", 10)
+    useQueueStore.setState({
+      items: [placeholder],
+      activeIndex: null,
+      highlightedId: null,
+      highlightedIds: [],
+    })
+
+    const updated = useQueueStore.getState().updateEarlyRef(
+      43,
+      3,
+      16,
+      "John 3:16",
+      "For God so loved the world...",
+    )
+
+    expect(updated).toBe(false)
+    const state = useQueueStore.getState()
+    expect(state.items).toHaveLength(1)
+    expect(state.items[0].is_chapter_only).toBe(true)
+    expect(state.items[0].presentation.kind === "scripture" &&
+      state.items[0].presentation.verse.chapter).toBe(10)
+  })
+
+  it("updateEarlyRef refines a book-only placeholder (default chapter 1)", () => {
+    useQueueStore.setState({
+      items: [makeChapterOnlyItem("p1", 1)],
+      activeIndex: null,
+      highlightedId: null,
+      highlightedIds: [],
+    })
+
+    const updated = useQueueStore.getState().updateEarlyRef(
+      43,
+      10,
+      16,
+      "John 10:16",
+      "Refined verse text",
+    )
+
+    expect(updated).toBe(true)
+    const item = useQueueStore.getState().items[0]
+    expect(item.is_chapter_only).toBe(false)
+    if (item.presentation.kind === "scripture") {
+      expect(item.presentation.verse.chapter).toBe(10)
+      expect(item.presentation.verse.verse).toBe(16)
+      expect(item.presentation.verse.text).toBe("Refined verse text")
+      expect(item.presentation.reference).toBe("John 10:16")
+    }
+  })
+
+  it("updateEarlyRef reports failure for non-scripture matches without updating", () => {
+    useQueueStore.setState({
+      items: [makeChapterOnlyItem("p1", 1)],
+      activeIndex: null,
+      highlightedId: null,
+      highlightedIds: [],
+    })
+    // Corrupt the presentation kind so the scripture guard trips.
+    const hymnPresentation = {
+      kind: "hymn" as const,
+      hymnId: "h1",
+      hymnNumber: 1,
+      hymnTitle: "Test Hymn",
+      screenId: "s1",
+      slideIndex: 0,
+      slideCount: 1,
+      reference: "Hymn 1",
+      segments: [],
+    }
+    useQueueStore.setState((state) => ({
+      items: state.items.map((item) =>
+        item.id === "p1" ? { ...item, presentation: hymnPresentation } : item,
+      ),
+    }))
+
+    const updated = useQueueStore
+      .getState()
+      .updateEarlyRef(43, 10, 16, "John 10:16", "text")
+
+    // Guard must report not-found, not success.
+    expect(updated).toBe(false)
   })
 
   it("keeps multiple duplicate queue items highlighted independently", () => {

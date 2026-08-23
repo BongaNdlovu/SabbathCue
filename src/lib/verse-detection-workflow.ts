@@ -10,7 +10,7 @@ import { bibleActions } from "@/hooks/use-bible"
 import { useBibleStore } from "@/stores/bible-store"
 import { useBroadcastLiveStore } from "@/stores/broadcast/live-store"
 import { useBroadcastOutputIssueStore } from "@/stores/broadcast/output-issue-store"
-import { useDetectionStore } from "@/stores/detection-store"
+import { EGW_SEMANTIC_MIN_CONFIDENCE, useDetectionStore } from "@/stores/detection-store"
 import { useQueueStore } from "@/stores/queue-store"
 import { useSettingsStore } from "@/stores/settings-store"
 import {
@@ -203,11 +203,23 @@ function detectionAllowedBySettings(
   ) {
     return false
   }
-  return (
-    detection.source !== "semantic" ||
-    (settings.semanticDetectionEnabled &&
-      detection.confidence >= settings.semanticConfidenceThreshold)
-  )
+  if (detection.source !== "semantic") {
+    return true
+  }
+  if (!settings.semanticDetectionEnabled) {
+    return false
+  }
+  // Same floor the detections panel applies (isHiddenBySemanticSettings):
+  // a semantic EGW hit must not change the live output while its card is
+  // filtered out of the panel.
+  const floor =
+    detection.content_type === "egw"
+      ? Math.max(
+          settings.semanticConfidenceThreshold,
+          EGW_SEMANTIC_MIN_CONFIDENCE
+        )
+      : settings.semanticConfidenceThreshold
+  return detection.confidence >= floor
 }
 
 /**
@@ -689,7 +701,12 @@ function reportDetectionBatchError(error: unknown): void {
 
 async function handleVerseDetectionsInternal(
   detections: DetectionResult[],
-  generation: number
+  generation: number,
+  // autoMode as snapshotted when the batch was enqueued. Chaining was decided
+  // from the same snapshot in handleVerseDetections; re-reading the store
+  // here let a mid-flight Manual→Auto flip run a batch unserialized (and
+  // capable of auto-living a verse) outside the chain.
+  autoModeSnapshot: boolean
 ) {
   const settings = useSettingsStore.getState()
   // Drop digit-prefix intermediates (6:3 when 6:33 is also present) before
@@ -708,12 +725,12 @@ async function handleVerseDetectionsInternal(
   const aiSuggestion = maybeMarkAiSuggestion(acceptedDetections)
   pendingAiSuggestion = aiSuggestion
 
-  const autoPreview = settings.autoMode
+  const autoPreview = autoModeSnapshot
   recordWorkflowTrace("detection.batch", "Detection batch entered workflow", {
     ...traceDetectionBatchDetails(acceptedDetections),
     incomingCount: detections.length,
     suppressedBySettings: detections.length - acceptedDetections.length,
-    autoMode: settings.autoMode,
+    autoMode: autoPreview,
     confidenceThreshold: settings.confidenceThreshold,
     semanticDetectionEnabled: settings.semanticDetectionEnabled,
     semanticConfidenceThreshold: settings.semanticConfidenceThreshold,
@@ -846,12 +863,12 @@ export function handleVerseDetections(detections: DetectionResult[]): Promise<vo
   notifyStaleBatchWaiters()
   const autoMode = useSettingsStore.getState().autoMode
   const task = autoMode
-    ? handleVerseDetectionsInternal(detections, generation)
+    ? handleVerseDetectionsInternal(detections, generation, autoMode)
     : detectionHandlingChain
         .catch((error) => {
           reportDetectionBatchError(error)
         })
-        .then(() => handleVerseDetectionsInternal(detections, generation))
+        .then(() => handleVerseDetectionsInternal(detections, generation, autoMode))
 
   const handled = task.catch((error) => {
     reportDetectionBatchError(error)

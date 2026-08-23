@@ -150,8 +150,15 @@ impl WorkerProcess {
         self.child.as_mut()
     }
 
-    pub(crate) fn stop(mut self) {
-        self.stop_inner(true);
+    /// Terminate the worker process without joining the reader threads.
+    ///
+    /// Joining can deadlock when a reader is blocked in `blocking_send` on a
+    /// full event channel (consumer gone): `start()` would never return. The
+    /// reader threads exit on their own once the channel's receivers drop and
+    /// their sends begin to fail, so the child is killed here and the threads
+    /// are left to wind down instead of being joined.
+    pub(crate) fn stop_detached(mut self) {
+        self.stop_inner(false);
     }
 
     fn stop_inner(&mut self, join_threads: bool) {

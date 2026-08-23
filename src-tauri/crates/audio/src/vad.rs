@@ -43,8 +43,6 @@ pub enum VadState {
     Silence,
     /// Speech detected. Audio IS forwarded.
     Speech,
-    /// Speech ended but within trailing window. Audio still forwarded.
-    Trailing,
 }
 
 /// Voice Activity Detector that gates audio frames.
@@ -85,18 +83,23 @@ impl Vad {
     ///
     /// During Silence: frames are buffered but not forwarded.
     /// On Speech start: the pre-buffer + current frame are flushed.
-    /// During Speech/Trailing: frames are forwarded immediately.
+    /// During Speech: frames are forwarded immediately.
     /// On transition to Silence: returns empty (audio gated).
+    ///
+    /// Thresholds form a hysteresis pair: entering Speech requires the higher
+    /// `silence_threshold`; staying in Speech accepts the lower
+    /// `frame_threshold`, so moderate-energy frames do not chop speech. (The
+    /// previous `&&` of both thresholds made the lower one dead config.)
     ///
     /// Also returns a state transition event if the state changed.
     pub fn process(&mut self, frame: &AudioFrame) -> VadResult {
         let level = meter::compute_level(&frame.samples);
-        let is_voiced =
-            level.rms >= self.config.silence_threshold && level.rms >= self.config.frame_threshold;
+        let attack_voiced = level.rms >= self.config.silence_threshold;
+        let release_voiced = level.rms >= self.config.frame_threshold;
 
         match self.state {
             VadState::Silence => {
-                if is_voiced {
+                if attack_voiced {
                     self.voice_count += 1;
                     if self.voice_count >= self.config.min_voice_frames {
                         // Transition to Speech
@@ -122,11 +125,15 @@ impl Vad {
                     self.voice_count = 0;
                 }
 
-                // Buffer frame for pre-speech capture
-                if self.pre_buffer.len() >= self.config.pre_buffer_frames {
-                    self.pre_buffer.remove(0);
+                // Buffer frame for pre-speech capture. With
+                // `pre_buffer_frames == 0` nothing is kept — the previous
+                // unconditional `remove(0)` panicked on the empty buffer.
+                if self.config.pre_buffer_frames > 0 {
+                    while self.pre_buffer.len() >= self.config.pre_buffer_frames {
+                        self.pre_buffer.remove(0);
+                    }
+                    self.pre_buffer.push(frame.clone());
                 }
-                self.pre_buffer.push(frame.clone());
 
                 VadResult {
                     frames: vec![],
@@ -153,7 +160,7 @@ impl Vad {
                     };
                 }
 
-                if is_voiced {
+                if release_voiced {
                     self.silence_count = 0;
                 } else {
                     self.silence_count += 1;
@@ -163,7 +170,7 @@ impl Vad {
                             self.utterance_frames,
                             self.pre_buffer.len(),
                         );
-                        // Transition to Silence (skip Trailing for simplicity)
+                        // Transition to Silence
                         self.state = VadState::Silence;
                         self.voice_count = 0;
                         self.silence_count = 0;
@@ -179,16 +186,6 @@ impl Vad {
                 VadResult {
                     frames: vec![frame.clone()],
                     transition: None,
-                }
-            }
-
-            VadState::Trailing => {
-                // Simplified: we go directly from Speech to Silence
-                // This state is reserved for future use
-                self.state = VadState::Silence;
-                VadResult {
-                    frames: vec![],
-                    transition: Some(VadTransition::SpeechEnded),
                 }
             }
         }
@@ -335,6 +332,62 @@ mod tests {
         let result = vad.process(&voiced_frame());
         assert_eq!(result.frames.len(), 3);
         assert_eq!(result.transition, Some(VadTransition::SpeechStarted));
+    }
+
+    #[test]
+    fn zero_pre_buffer_frames_does_not_panic() {
+        // pre_buffer_frames == 0 previously hit `remove(0)` on an empty Vec
+        // and panicked on the very first frame.
+        let config = VadConfig {
+            pre_buffer_frames: 0,
+            min_voice_frames: 2,
+            ..Default::default()
+        };
+        let mut vad = Vad::new(config);
+        for _ in 0..5 {
+            let result = vad.process(&silent_frame());
+            assert!(result.frames.is_empty());
+            assert!(result.transition.is_none());
+        }
+        // Speech still starts without a pre-buffer (flushes only the current
+        // frame).
+        let _ = vad.process(&voiced_frame());
+        let result = vad.process(&voiced_frame());
+        assert_eq!(result.transition, Some(VadTransition::SpeechStarted));
+        assert_eq!(result.frames.len(), 1);
+    }
+
+    #[test]
+    fn moderate_energy_keeps_speech_alive_but_cannot_start_it() {
+        // Between frame_threshold (0.0025) and silence_threshold (0.005):
+        // hysteresis — such frames hold an ongoing utterance open, yet are
+        // not strong enough to start one. The old `&&` gate made
+        // frame_threshold dead config.
+        let moderate = make_frame(0.003);
+
+        let mut vad = Vad::new(VadConfig {
+            min_voice_frames: 1,
+            silence_frame_count: 2,
+            ..Default::default()
+        });
+
+        // Moderate energy alone cannot start speech.
+        for _ in 0..5 {
+            vad.process(&moderate);
+        }
+        assert_eq!(vad.state(), VadState::Silence);
+
+        // Loud frame starts speech.
+        let _ = vad.process(&voiced_frame());
+        assert_eq!(vad.state(), VadState::Speech);
+
+        // Moderate frames keep speech alive (no silence accumulation).
+        let result = vad.process(&moderate);
+        assert_eq!(result.frames.len(), 1, "moderate frame must forward");
+        assert_eq!(vad.state(), VadState::Speech);
+        let result = vad.process(&moderate);
+        assert_eq!(result.frames.len(), 1);
+        assert_eq!(vad.state(), VadState::Speech, "speech must not end on moderate energy");
     }
 
     #[test]

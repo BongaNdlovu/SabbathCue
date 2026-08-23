@@ -27,19 +27,56 @@ pub struct Bm25Result {
 
 /// Common English stop words that match nearly every Bible verse.
 /// Filtering these keeps AND queries fast (~5-20ms instead of 200-1300ms).
-const STOP_WORDS: &[&str] = &[
+///
+/// Spanish / French / Portuguese function words follow the English + Afrikaans
+/// entries. The list is deliberately conservative: every word here is filtered
+/// from queries in ALL languages, so a term that doubles as meaningful English
+/// scripture vocabulary must NOT be listed (e.g. Spanish/French "son" —
+/// "Son of God"; French "or" — "gold"; Portuguese "para" stays out because
+/// "Paraná"-style proper nouns and KJV "parbar" style tokens matter more than
+/// the recall gain). Each addition only removes noise words from BM25 AND/OR
+/// tiers, so worst case for an unknown language is unchanged behavior.
+    const STOP_WORDS: &[&str] = &[
     "a", "an", "the", "and", "or", "but", "in", "on", "at", "to", "for", "of", "with", "by",
     "from", "is", "it", "not", "be", "are", "was", "were", "been", "has", "have", "had", "do",
     "does", "did", "will", "would", "shall", "should", "may", "might", "can", "could", "that",
     "this", "these", "those", "he", "she", "we", "they", "you", "i", "me", "him", "her", "us",
     "them", "my", "his", "its", "our", "your", "their", "so", "if", "as", "no", "up", "all", "am",
     "about", "into", "when", "what", "which", "who", "whom", "how", "than", "then", "now", "just",
-    "also", "very", "like", "even", "out", "there", "here", "die", "n", "en", "of", "maar", "in",
-    "op", "aan", "vir", "van", "met", "deur", "uit", "tot", "oor", "onder", "by", "na", "is",
-    "was", "wees", "het", "sal", "sou", "kan", "kon", "moet", "mag", "wil", "worden", "dit", "dat",
-    "hierdie", "daardie", "hy", "sy", "ons", "julle", "hulle", "jy", "jou", "my", "hom", "haar",
-    "hul", "syne", "se", "geen", "nie", "ook", "so", "dan", "toe", "nou", "daar", "hier", "as",
+    "also", "very", "like", "even", "out", "there", "here", "die", "n", "en", "maar",
+    "op", "aan", "vir", "van", "met", "deur", "uit", "tot", "oor", "onder", "na",
+    "wees", "het", "sal", "sou", "kan", "kon", "moet", "mag", "wil", "worden", "dit", "dat",
+    "hierdie", "daardie", "hy", "sy", "ons", "julle", "hulle", "jy", "jou", "hom", "haar",
+    "hul", "syne", "se", "geen", "nie", "ook", "dan", "toe", "nou", "daar", "hier",
     "wat", "wie", "waar", "hoe", "wanneer", "al", "alles", "elke", "almal",
+    // Spanish function words (SpaRV). Deliberately excludes words that
+    // collide with English scripture vocabulary: "son" (Son of God), "sin",
+    // (wages of sin), "sea", "real", "fin".
+    "un", "una", "unas", "unos", "y", "o", "pero", "es", "era", "eran",
+    "ser", "sido", "tiene", "tienen", "tenia", "su", "sus", "que", "como",
+    "cuando", "donde", "quien", "cual", "por", "las", "los", "les", "nos",
+    "yo", "tu", "usted", "ustedes", "muy", "tambien", "todo", "todos", "todas",
+    "este", "esta", "estos", "estas", "eso", "esa", "aquel", "aquella",
+    "desde", "hasta", "entre", "sobre", "tras", "ante", "segun",
+    // French function words (FreJND). Excludes "or" (gold) and "son",
+    // (Son); everything listed is pure grammar with no English overlap.
+    "le", "la", "une", "et", "ou", "mais", "est", "sont", "etait",
+    "etre", "ete", "ont", "avait", "ses", "sa", "qui", "quoi",
+    "comment", "quand", "pour", "par", "avec", "sans", "dans", "sur",
+    "sous", "vers", "chez", "ce", "cet", "cette", "ces", "leur",
+    "leurs", "nous", "vous", "je", "il", "elle", "ils", "elles", "ne",
+    "pas", "plus", "tres", "aussi", "si",
+    // Portuguese function words (PorBLivre). Excludes "para" (proper-noun
+    // collision risk) and "ate" (English "ate" occurs in scripture).
+    // Portuguese-only entries; words shared with the Spanish or French lists
+    // above (como, quando, onde, todo/todos/todas, ou, desde, sobre) are not
+    // repeated — the set deduplicates anyway, but one entry each keeps the
+    // list auditable.
+    "um", "uma", "uns", "umas", "e", "mas", "ele", "ela", "eles", "elas",
+    "isso", "isto", "esse", "essa", "aquele", "aquela", "seu", "sua", "seus",
+    "suas", "quem", "qual", "quais", "porque",
+    "entao", "tambem", "muito", "toda", "com",
+    "sem", "sob", "apos", "contra", "nao", "sim",
 ];
 
 static STOP_WORD_SET: OnceLock<HashSet<&str>> = OnceLock::new();
@@ -331,7 +368,10 @@ fn run_fts_query(
     }
     // `?3 IS NULL` makes the filter inert when no book was named, so hinted
     // and unhinted queries share one prepared statement and one plan.
-    let mut stmt = conn.prepare(
+    // prepare_cached keeps that statement warm across the ~24 FTS round trips
+    // a single live detection window can issue; re-preparing each time spent
+    // measurable time parsing/compiling identical SQL.
+    let mut stmt = conn.prepare_cached(
         "SELECT bm25(verses_fts) as rank, v.book_number, v.book_name, v.chapter, v.verse, v.text \
          FROM verses_fts fts \
          JOIN verses v ON v.rowid = fts.rowid \
@@ -441,7 +481,7 @@ impl BibleDb {
         if sanitized.is_empty() {
             return Ok(vec![]);
         }
-        let mut stmt = conn.prepare(
+        let mut stmt = conn.prepare_cached(
             "SELECT v.id, v.translation_id, v.book_number, v.book_name, v.book_abbreviation, v.chapter, v.verse, v.text \
              FROM verses_fts fts \
              JOIN verses v ON v.rowid = fts.rowid \
@@ -602,11 +642,18 @@ impl BibleDb {
             .conn
             .lock()
             .map_err(|e| BibleError::Internal(e.to_string()))?;
-        let pattern = format!("{query}%");
+        // Escape LIKE wildcards so "%" or "_" in the query performs a literal
+        // prefix match instead of matching every book ("%%" used to return
+        // the whole catalogue across all translations).
+        let escaped: String = query
+            .replace('\\', "\\\\")
+            .replace('%', "\\%")
+            .replace('_', "\\_");
+        let pattern = format!("{escaped}%");
         let mut stmt = conn.prepare(
             "SELECT id, translation_id, book_number, name, abbreviation, testament \
              FROM books \
-             WHERE name LIKE ?1 OR abbreviation LIKE ?1 \
+             WHERE (name LIKE ?1 ESCAPE '\\' OR abbreviation LIKE ?1 ESCAPE '\\') \
              ORDER BY book_number",
         )?;
         let rows = stmt.query_map(rusqlite::params![pattern], |row: &rusqlite::Row| {
@@ -643,12 +690,48 @@ mod tests {
                (3, 1, 40, 'Matthew', 'Matt', 24, 37, 'But as the days of Noe were, so shall also the coming of the Son of man be.'),
                (4, 1, 44, 'Acts', 'Acts', 12, 5, 'Peter therefore was kept in prison: but prayer was made without ceasing of the church unto God for him.'),
                (5, 1, 44, 'Acts', 'Acts', 16, 25, 'And at midnight Paul and Silas prayed, and sang praises unto God: and the prisoners heard them.');
-             INSERT INTO verses_fts(rowid, text) SELECT id, text FROM verses;",
+             INSERT INTO verses_fts(rowid, text) SELECT id, text FROM verses;
+             CREATE TABLE books (id INTEGER PRIMARY KEY, translation_id INTEGER, book_number INTEGER, name TEXT, abbreviation TEXT, testament TEXT);
+             INSERT INTO books VALUES
+               (1, 1, 1, 'Genesis', 'Gen', 'OT'),
+               (2, 1, 2, 'Exodus', 'Ex', 'OT');",
         )
         .unwrap();
         BibleDb {
             conn: Mutex::new(conn),
         }
+    }
+
+    #[test]
+    fn translation_unlocked_matches_the_bm25_gate() {
+        let db = fixture_db();
+        assert!(db.translation_unlocked(1).unwrap(), "KJV is unlocked");
+        assert!(
+            !db.translation_unlocked(2).unwrap(),
+            "copyrighted translation must be locked"
+        );
+        assert!(
+            !db.translation_unlocked(99).unwrap(),
+            "missing translation counts as locked"
+        );
+    }
+
+    #[test]
+    fn search_books_treats_like_wildcards_literally() {
+        let db = fixture_db();
+        // "%%" and "_" used to act as wildcards and matched every book.
+        assert!(
+            db.search_books("%%").unwrap().is_empty(),
+            "'%%' must not match every book"
+        );
+        assert!(
+            db.search_books("_").unwrap().is_empty(),
+            "'_' must not match every book"
+        );
+        // Prefix search still works, and escaped literals still match.
+        let books = db.search_books("Gen").unwrap();
+        assert_eq!(books.len(), 1);
+        assert_eq!(books[0].name, "Genesis");
     }
 
     fn bm25_with_broad_match(
@@ -1219,5 +1302,43 @@ mod tests {
     #[test]
     fn or_query_empty_on_all_stop_words() {
         assert_eq!(build_or_query("I am a the is"), String::new());
+    }
+
+    #[test]
+    fn multilingual_stop_words_never_collide_with_english_scripture_vocabulary() {
+        // The stop-word set filters queries in every language, so any added
+        // Spanish/French/Portuguese word that doubles as meaningful English
+        // scripture vocabulary would silently break English detection
+        // ("son" → Son of God, "sin" → wages of sin, "ate", "sea", "real").
+        // ("or" was already filtered by the pre-existing English list — a
+        // known upstream trade-off this change must not extend.)
+        for word in ["son", "sin", "sea", "real", "fin", "ate"] {
+            assert!(
+                !is_stop_word(word),
+                "'{word}' must stay queryable in English"
+            );
+        }
+    }
+
+    #[test]
+    fn multilingual_stop_words_cover_the_shipped_translations() {
+        // One representative pure-function word per shipped non-English
+        // translation: SpaRV (Spanish), FreJND (French), PorBLivre
+        // (Portuguese), plus the existing Afrikaans coverage.
+        for word in ["que", "les", "nao", "nie"] {
+            assert!(is_stop_word(word), "'{word}' should be filtered");
+        }
+    }
+
+    #[test]
+    fn stop_word_list_has_no_duplicate_entries() {
+        let mut seen = std::collections::HashSet::new();
+        let mut duplicates = Vec::new();
+        for word in STOP_WORDS {
+            if !seen.insert(word) {
+                duplicates.push(*word);
+            }
+        }
+        assert!(duplicates.is_empty(), "duplicate entries: {duplicates:?}");
     }
 }

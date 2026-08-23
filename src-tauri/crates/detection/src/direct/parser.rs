@@ -330,11 +330,15 @@ fn try_correction_pattern(tokens: &[Token], book_match: &BookMatch) -> Option<Ve
         return None;
     }
 
+    // Missing parts stay 0 so the detector treats the result as a partial
+    // reference (context-resolved / held for refinement). Fabricating 1 here
+    // turned mid-speech corrections like "Romans, sorry, chapter 12" into the
+    // complete citation Romans 12:1 when no verse was ever spoken.
     Some(VerseRef {
         book_number: book_match.book_number,
         book_name: book_match.book_name.clone(),
-        chapter: final_chapter.unwrap_or(1),
-        verse_start: final_verse.unwrap_or(1),
+        chapter: final_chapter.unwrap_or(0),
+        verse_start: final_verse.unwrap_or(0),
         verse_end: None,
     })
 }
@@ -1050,6 +1054,37 @@ mod tests {
     }
 
     #[test]
+    fn correction_with_only_a_chapter_does_not_fabricate_verse_one() {
+        // "Romans, sorry, chapter 12" corrects the chapter only — no verse was
+        // spoken, so the parser must leave verse_start at 0 (held for
+        // refinement by the detector), not fabricate Romans 12:1.
+        let bm = make_book_match("Romans", 45, 6);
+        let result = parse_reference("Romans sorry chapter 12", &bm).unwrap();
+        assert_eq!(result.chapter, 12);
+        assert_eq!(result.verse_start, 0, "unspoken verse must not default to 1");
+    }
+
+    #[test]
+    fn correction_with_only_a_verse_does_not_fabricate_chapter_one() {
+        let bm = make_book_match("Romans", 45, 6);
+        let result = parse_reference("Romans verse 5 sorry verse 7", &bm).unwrap();
+        assert_eq!(result.chapter, 0, "unspoken chapter must not default to 1");
+        assert_eq!(result.verse_start, 7);
+    }
+
+    #[test]
+    fn full_correction_still_resolves_both_parts() {
+        let bm = make_book_match("Romans", 45, 6);
+        let result = parse_reference("Romans chapter 3 verse 5 sorry verse 7", &bm).unwrap();
+        assert_eq!(result.chapter, 3);
+        assert_eq!(result.verse_start, 7);
+
+        let result = parse_reference("Romans verse 5 sorry chapter 3", &bm).unwrap();
+        assert_eq!(result.chapter, 3);
+        assert_eq!(result.verse_start, 5);
+    }
+
+    #[test]
     fn test_two_numbers_space_separated() {
         let bm = make_book_match("John", 43, 4);
         let text = "John 3 16 for God so loved";
@@ -1310,12 +1345,14 @@ mod tests {
 
     #[test]
     fn test_correction_chapter_only() {
-        // Pattern: "Romans chapter 8 sorry chapter 12" → Romans 12:1
+        // Pattern: "Romans chapter 8 sorry chapter 12" → Romans 12 held for
+        // verse refinement. No verse was spoken, so verse_start stays 0 —
+        // fabricating verse 1 presented a citation the speaker never made.
         let bm = make_book_match("Romans", 45, 6);
         let text = "Romans chapter 8 sorry chapter 12";
         let result = parse_reference(text, &bm).unwrap();
         assert_eq!(result.chapter, 12);
-        assert_eq!(result.verse_start, 1);
+        assert_eq!(result.verse_start, 0);
         assert_eq!(result.verse_end, None);
     }
 

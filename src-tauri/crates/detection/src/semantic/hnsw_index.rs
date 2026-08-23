@@ -1,9 +1,10 @@
 //! Brute-force cosine-similarity vector index.
 //!
-//! The scan is exhaustive, but parallel and multi-accumulator, which keeps a
-//! ~62 K x 384 corpus in the single-digit milliseconds — still cheap enough
-//! that approximate nearest-neighbour structures are not worth their recall
-//! cost.
+//! The scan is exhaustive, but parallel and multi-accumulator, which keeps the
+//! shipped corpus (~155 K x 384 q8 vectors; the module doc previously said
+//! "~62 K" from an older build) in the low tens of milliseconds — still cheap
+//! enough that approximate nearest-neighbour structures are not worth their
+//! recall cost at this size.
 //!
 //! This module is only compiled when the `vector-search` feature is enabled.
 

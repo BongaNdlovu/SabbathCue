@@ -92,7 +92,14 @@ export function PreviewPanel({ className }: { className?: string }) {
     }
   }
 
+  // Refetch the staged verse only when the translation actually changed —
+  // the effect previously ran on every mount, so switching workspaces back
+  // to Live Desk refired the fetch and overwrote a preview staged by other
+  // flows with the (possibly drifted) selectedVerse.
+  const lastTranslationIdRef = useRef(activeTranslationId)
   useEffect(() => {
+    if (lastTranslationIdRef.current === activeTranslationId) return
+    lastTranslationIdRef.current = activeTranslationId
     let cancelled = false
     if (getBroadcastLiveStore().previewItem?.kind !== "scripture") return
     const verse = useBibleStore.getState().selectedVerse

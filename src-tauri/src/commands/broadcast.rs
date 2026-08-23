@@ -449,9 +449,18 @@ pub fn push_ndi_frame(
     request: Request<'_>,
 ) -> Result<(), String> {
     let frame = ndi_raw_frame_from_request(&request)?;
-    let mut runtime = runtime.lock().map_err(|e| e.to_string())?;
-    runtime
-        .send_frame_rgba(&frame.output_id, frame.width, frame.height, frame.rgba_data)
+    // Take only a session handle and release the runtime-wide lock before
+    // the frame conversion + FFI submit: start/stop/status and the other
+    // output's sends no longer queue behind this frame.
+    let session = {
+        let runtime = runtime.lock().map_err(|e| e.to_string())?;
+        runtime.session_handle(&frame.output_id)
+    };
+    let Some(session) = session else {
+        return Err("NDI session is not active".to_string());
+    };
+    session
+        .send_frame_rgba(frame.width, frame.height, frame.rgba_data)
         .map_err(|e| e.to_string())
 }
 
