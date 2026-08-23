@@ -367,9 +367,17 @@ export function useTranscriptionEventBridge() {
     )
     // A partial that arrives after an error/disconnect must not resurrect a
     // ghost "live" line or wipe the persistent error card — the only visible
-    // error UI while idle.
-    if (!useTranscriptStore.getState().isTranscribing) return
+    // error UI while idle. Gate on connection status (set by stt_connected /
+    // stt_disconnected / error), not the start() flag: providers emit partials
+    // as soon as they connect, and the e2e replay harness drives the same
+    // event path without invoking start_transcription.
     const transcript = useTranscriptStore.getState()
+    if (
+      transcript.connectionStatus === "error" ||
+      transcript.connectionStatus === "disconnected"
+    ) {
+      return
+    }
     // Single write, skipped entirely when nothing visible would change
     // (providers frequently re-emit identical partial text).
     if (
