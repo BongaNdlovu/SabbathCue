@@ -280,6 +280,41 @@ describe("use-transcription", () => {
     })
   })
 
+  describe("late transcript events after disconnect", () => {
+    it("does not record a final that arrives after the provider disconnected", async () => {
+      const { useTranscriptStore, handleTranscriptFinalPayload } =
+        await loadModules()
+      useTranscriptStore.getState().setConnectionStatus("disconnected")
+
+      await handleTranscriptFinalPayload({
+        text: "late final after hangup",
+        is_final: true,
+        confidence: 0.9,
+        words: [],
+      })
+
+      expect(useTranscriptStore.getState().segments).toEqual([])
+    })
+
+    it("records a final after reconnect", async () => {
+      const { useTranscriptStore, handleTranscriptFinalPayload } =
+        await loadModules()
+      useTranscriptStore.getState().setConnectionStatus("disconnected")
+      useTranscriptStore.getState().setConnectionStatus("connected")
+
+      await handleTranscriptFinalPayload({
+        text: "The Lord is my shepherd I shall not want",
+        is_final: true,
+        confidence: 0.9,
+        words: [],
+      })
+
+      expect(useTranscriptStore.getState().segments.at(-1)?.text).toBe(
+        "The Lord is my shepherd I shall not want"
+      )
+    })
+  })
+
   describe("classifyTranscriptionIssue", () => {
     it("classifies auth, billing, network, and provider errors", async () => {
       const { classifyTranscriptionIssue } = await loadModules()

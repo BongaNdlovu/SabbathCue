@@ -24,6 +24,11 @@ pub(crate) struct SemanticJob {
     pub(crate) stt_confidence: f64,
     pub(crate) is_final: bool,
     pub(crate) utterance_id: u64,
+    /// Request intent detected from the wider rolling window before the
+    /// Bible query is clamped/sentence-trimmed. The query should stay tight,
+    /// but scope and presentation authorization still need to know that the
+    /// operator asked for a verse outside the active reading chapter.
+    pub(crate) request_hint: bool,
 }
 
 /// Take the latest pending semantic job from a shared slot, recovering from
@@ -68,10 +73,12 @@ pub(crate) fn enqueue_final_semantic_job(
     notify: &Arc<Notify>,
     sent_counter: &Arc<AtomicU64>,
     replaced_counter: &Arc<AtomicU64>,
+    final_watermark: &Arc<AtomicU64>,
     seq: u64,
     text: String,
     egw_text: String,
     stt_confidence: f64,
+    request_hint: bool,
 ) {
     if text.trim().is_empty() {
         return;
@@ -93,6 +100,10 @@ pub(crate) fn enqueue_final_semantic_job(
         return;
     }
 
+    // Accept the final into the watermark only after every skip gate passed:
+    // a rejected final must never invalidate its predecessor mid-flight.
+    final_watermark.fetch_max(seq, Ordering::AcqRel);
+
     let replaced = replace_semantic_job(
         job_slot,
         SemanticJob {
@@ -102,6 +113,7 @@ pub(crate) fn enqueue_final_semantic_job(
             stt_confidence,
             is_final: true,
             utterance_id: seq,
+            request_hint,
         },
         "final",
     );
@@ -134,6 +146,7 @@ pub(crate) fn enqueue_partial_semantic_job(
     text: String,
     egw_text: String,
     stt_confidence: f64,
+    request_hint: bool,
 ) {
     if text.trim().is_empty() {
         return;
@@ -155,6 +168,7 @@ pub(crate) fn enqueue_partial_semantic_job(
             stt_confidence,
             is_final: false,
             utterance_id: seq,
+            request_hint,
         },
         "partial",
     );

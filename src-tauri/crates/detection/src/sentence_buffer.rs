@@ -79,6 +79,12 @@ impl SentenceBuffer {
         Some(self.flush())
     }
 
+    /// Current accumulated character count. Used by tests as a growth gate.
+    #[cfg(test)]
+    pub(crate) fn buffered_len(&self) -> usize {
+        self.buffer.len()
+    }
+
     /// Returns true if the buffer has accumulated text.
     pub fn has_content(&self) -> bool {
         !self.buffer.is_empty()
@@ -162,5 +168,24 @@ mod tests {
         buf.append("Praise the Lord");
         let result = buf.append("for He is good!");
         assert!(result.is_some());
+    }
+
+    #[test]
+    fn performance_gate_unpunctuated_growth_flushes_on_boundary() {
+        let mut buf = SentenceBuffer::new();
+        let mut last_len = 0usize;
+        for i in 0..40 {
+            assert!(
+                buf.append(&format!("word{i}")).is_none(),
+                "unpunctuated fragments must accumulate"
+            );
+            let len = buf.buffered_len();
+            assert!(len > last_len, "buffer must grow until a sentence ends");
+            last_len = len;
+        }
+        let flushed = buf.append("amen.");
+        assert!(flushed.is_some());
+        assert_eq!(buf.buffered_len(), 0);
+        assert!(last_len < 8_192, "40 short fragments must stay a small segment");
     }
 }

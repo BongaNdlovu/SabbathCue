@@ -144,8 +144,20 @@ pub(crate) fn spoken_book_hint(transcript: &str) -> Option<i32> {
 /// the detections panel reflects what was actually spoken instead of keyword
 /// noise from BM25 matching on reference words like "chapter"/"verse".
 pub(crate) fn transcript_defers_to_direct(text: &str) -> bool {
+    if rhema_detection::is_voice_command_utterance(text) {
+        return true;
+    }
+    // "There's another verse in Exodus that talks about keeping the Sabbath"
+    // mentions a book and the word "verse", but it is a request for content,
+    // not a citation: the direct path parses no reference out of it and the
+    // semantic pass silently never runs. Live 2026-08-24 seq=222 routed such
+    // a final and then emitted nothing at all. Request phrasing therefore
+    // overrides the reference heuristic; real citations ("John chapter 3
+    // verse 16") contain no request phrasing and still defer.
+    if rhema_detection::looks_like_verse_request(text) {
+        return false;
+    }
     crate::commands::transcript_router::looks_like_complete_reference(text)
-        || rhema_detection::is_voice_command_utterance(text)
 }
 
 pub(crate) fn is_direct_reading_handoff(
@@ -473,12 +485,26 @@ pub(crate) fn filter_semantic_results_to_reading_scope(
 
 /// Apply the reading-chapter semantic filter, except when the operator is
 /// asking to leave the chapter ("go to the verse that talks about…").
+#[cfg(test)]
 pub(crate) fn apply_semantic_reading_scope(
     results: Vec<crate::commands::detection::DetectionResult>,
     scope: Option<(i32, i32)>,
     transcript: &str,
 ) -> Vec<crate::commands::detection::DetectionResult> {
-    if rhema_detection::looks_like_verse_request(transcript) {
+    apply_semantic_reading_scope_with_request_hint(results, scope, transcript, false)
+}
+
+/// Apply the reading scope while preserving request intent detected from a
+/// wider rolling window. The searchable transcript is intentionally trimmed,
+/// so relying on it alone can turn "there's a verse that says ..." into an
+/// ordinary quotation and suppress a valid result from the active chapter.
+pub(crate) fn apply_semantic_reading_scope_with_request_hint(
+    results: Vec<crate::commands::detection::DetectionResult>,
+    scope: Option<(i32, i32)>,
+    transcript: &str,
+    request_hint: bool,
+) -> Vec<crate::commands::detection::DetectionResult> {
+    if request_hint || rhema_detection::looks_like_verse_request(transcript) {
         return results;
     }
     filter_semantic_results_to_reading_scope(results, scope)

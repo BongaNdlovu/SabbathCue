@@ -58,6 +58,7 @@ pub(super) fn spawn_latest_wins_semantic_worker(
                     stt_confidence,
                     is_final,
                     utterance_id,
+                    request_hint,
                 } = job;
                 let check_seq = latest_seq.load(Ordering::Acquire);
                 if seq < check_seq {
@@ -81,6 +82,7 @@ pub(super) fn spawn_latest_wins_semantic_worker(
                         stt_confidence,
                         is_final,
                         utterance_id,
+                        request_hint,
                     );
                 })
                 .await;

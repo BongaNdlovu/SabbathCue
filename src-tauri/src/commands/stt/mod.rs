@@ -178,6 +178,11 @@ pub async fn start_transcription(
     let semantic_dropped = Arc::new(AtomicU64::new(0));
     let transcript_seq = Arc::new(AtomicU64::new(0));
     let latest_accepted_seq = Arc::new(AtomicU64::new(0));
+    // Finals must only be superseded by newer *finals*. Bumping their
+    // watermark on every partial let an arriving partial declare an
+    // in-flight final stale after ~700ms of compute (live 2026-08-24
+    // seq=183: results found, discarded at emission, verse lost).
+    let latest_final_seq = Arc::new(AtomicU64::new(0));
     let egw_cue_at_ms = Arc::new(AtomicU64::new(0));
     let egw_cue_books = load_egw_cue_books(&state);
 
@@ -185,7 +190,7 @@ pub async fn start_transcription(
         "final-semantic",
         "final",
         app.clone(),
-        latest_accepted_seq.clone(),
+        latest_final_seq.clone(),
         egw_cue_at_ms.clone(),
         final_semantic_job.clone(),
         final_semantic_notify.clone(),
@@ -228,6 +233,7 @@ pub async fn start_transcription(
     let semantic_dropped_evt = semantic_dropped.clone();
     let final_semantic_job_evt = final_semantic_job.clone();
     let final_semantic_notify_evt = final_semantic_notify.clone();
+    let final_watermark_evt = latest_final_seq.clone();
     let partial_semantic_job_evt = partial_semantic_job.clone();
     let partial_semantic_notify_evt = partial_semantic_notify.clone();
     let egw_cue_at_ms_evt = egw_cue_at_ms;
@@ -320,6 +326,8 @@ pub async fn start_transcription(
                                 let mut parts = semantic_window.iter().cloned().collect::<Vec<_>>();
                                 parts.push(transcript.clone());
                                 let joined = parts.join(" ");
+                                let request_hint =
+                                    rhema_detection::looks_like_verse_request(&joined);
                                 let semantic_text = trim_to_sentence_start(
                                     &clamp_to_recent_words(
                                         &joined,
@@ -343,6 +351,7 @@ pub async fn start_transcription(
                                     semantic_text,
                                     egw_text,
                                     confidence,
+                                    request_hint,
                                 );
                             }
                         }
@@ -461,15 +470,19 @@ pub async fn start_transcription(
                                         // this text is already the widest context
                                         // available for the EGW pass.
                                         let egw_text = semantic_text.clone();
+                                        let request_hint =
+                                            rhema_detection::looks_like_verse_request(&semantic_text);
                                         enqueue_final_semantic_job(
                                             &final_semantic_job_evt,
                                             &final_semantic_notify_evt,
                                             &semantic_sent_evt,
                                             &semantic_dropped_evt,
+                                            &final_watermark_evt,
                                             semantic_seq,
                                             semantic_text,
                                             egw_text,
                                             confidence,
+                                            request_hint,
                                         );
                                     }
                                 } else {
@@ -486,6 +499,8 @@ pub async fn start_transcription(
                                         .cloned()
                                         .collect::<Vec<_>>()
                                         .join(" ");
+                                    let request_hint =
+                                        rhema_detection::looks_like_verse_request(&joined);
                                     let semantic_text = trim_to_sentence_start(
                                         &clamp_to_recent_words(
                                             &joined,
@@ -505,10 +520,12 @@ pub async fn start_transcription(
                                         &final_semantic_notify_evt,
                                         &semantic_sent_evt,
                                         &semantic_dropped_evt,
+                                        &final_watermark_evt,
                                         seq,
                                         semantic_text,
                                         egw_text,
                                         confidence,
+                                        request_hint,
                                     );
                                 }
                             } else if semantic_detection_enabled
@@ -522,15 +539,19 @@ pub async fn start_transcription(
                                     deepgram_semantic_buffer.flush_with_seq(seq)
                                 {
                                     let egw_text = semantic_text.clone();
+                                    let request_hint =
+                                        rhema_detection::looks_like_verse_request(&semantic_text);
                                     enqueue_final_semantic_job(
                                         &final_semantic_job_evt,
                                         &final_semantic_notify_evt,
                                         &semantic_sent_evt,
                                         &semantic_dropped_evt,
+                                        &final_watermark_evt,
                                         semantic_seq,
                                         semantic_text,
                                         egw_text,
                                         confidence,
+                                        request_hint,
                                     );
                                 }
                             }
@@ -554,15 +575,19 @@ pub async fn start_transcription(
                         if !is_detection_paused(&event_app) {
                             if let Some((semantic_seq, semantic_text)) = pending {
                                 let egw_text = semantic_text.clone();
+                                let request_hint =
+                                    rhema_detection::looks_like_verse_request(&semantic_text);
                                 enqueue_final_semantic_job(
                                     &final_semantic_job_evt,
                                     &final_semantic_notify_evt,
                                     &semantic_sent_evt,
                                     &semantic_dropped_evt,
+                                    &final_watermark_evt,
                                     semantic_seq,
                                     semantic_text,
                                     egw_text,
                                     0.0,
+                                    request_hint,
                                 );
                             }
                         }

@@ -374,40 +374,92 @@ pub(crate) fn dampen_egw_for_low_stt_confidence(
 /// (live 2026-08-04: Adam/Eve law quote delayed until John 3 reading released).
 pub(crate) fn drop_egw_quotes_echoing_scripture(
     egw_results: &mut Vec<DetectionResult>,
-    bible_results: &[DetectionResult],
+    bible_survivors: &[DetectionResult],
+    bible_candidates: &[DetectionResult],
     spoken: &str,
     cue_active: bool,
-) {
+) -> Option<DetectionResult> {
     if egw_results.is_empty() {
-        return;
+        return None;
     }
     if cue_active {
-        return;
+        return None;
     }
-    let best_verse_run = bible_results
+    // Compare against *pre-floor* candidates, not just survivors: a weakly
+    // embedding mid-verse KJV fragment can fall below the semantic floor and
+    // leave zero survivors, which previously ended the check before any
+    // comparison (live 2026-08-24 seq=157: Education p.127 presented for
+    // "thy rod and thy staff, they comfort me" while Psalm 23:5 sat under
+    // the floor).
+    let best_candidate_run = bible_candidates
         .iter()
         .filter(|result| result.content_type != "egw")
         .map(|result| longest_shared_content_run(spoken, &result.verse_text).len)
         .max()
         .unwrap_or(0);
-    if best_verse_run == 0 {
-        return;
+    if best_candidate_run == 0 {
+        return None;
     }
+    let best_candidate = bible_candidates
+        .iter()
+        .find(|result| {
+            result.content_type != "egw"
+                && longest_shared_content_run(spoken, &result.verse_text).len
+                    == best_candidate_run
+        })
+        .cloned();
     egw_results.retain(|result| {
         let egw_run = longest_shared_content_run(spoken, &result.verse_text).len;
-        if egw_run <= best_verse_run {
+        if egw_run <= best_candidate_run {
             log::info!(
-                "[DET-EGW-QUOTE] Dropped {} (run={egw_run}) - scripture echo, best verse run={best_verse_run}",
+                "[DET-EGW-QUOTE] Dropped {} (run={egw_run}) - scripture echo, best verse run={best_candidate_run}",
                 result.verse_ref
             );
             return false;
         }
         true
     });
+    // The echo proof cuts both ways: the dropped paragraphs quoted the same
+    // scripture the speaker was quoting. When that scripture itself fell
+    // below the confidence floor (no survivors), re-enter it with decisive
+    // quote evidence so the operator sees the verse instead of its shadow.
+    if egw_results.is_empty()
+        && !bible_survivors
+            .iter()
+            .any(|result| result.content_type != "egw")
+    {
+        if let Some(mut verse) = best_candidate {
+            let run = longest_shared_content_run(spoken, &verse.verse_text).len;
+            if run >= EGW_SCRIPTURE_ECHO_RESCUE_MIN_RUN {
+                log::info!(
+                    "[DET-EGW-QUOTE] Rescued {0} from scripture-echo shadow (run={run})",
+                    verse.verse_ref
+                );
+                verse.has_lexical_quote = true;
+                verse.confidence = verse.confidence.max(EGW_SCRIPTURE_ECHO_RESCUE_CONFIDENCE);
+                verse.rank_score = verse.rank_score.max(EGW_SCRIPTURE_ECHO_RESCUE_CONFIDENCE);
+                // The contiguous verbatim run *is* the quote proof; grant
+                // preview directly (policy like auto-live stays downstream).
+                verse.authorization =
+                    rhema_detection::PresentationDecision::PreviewAuthorized;
+                return Some(verse);
+            }
+        }
+    }
+    None
 }
 
 /// Minimum spoken words before a quote search is worth running.
 const EGW_QUOTE_MIN_WORDS: usize = 5;
+/// Confidence granted to a verse rescued from an EGW scripture echo: the run
+/// proof showed it explains the spoken window at least as well as the dropped
+/// paragraph, so it must not re-enter below the finalize floor that hid it.
+const EGW_SCRIPTURE_ECHO_RESCUE_CONFIDENCE: f64 = 0.90;
+/// Minimum decisive run for a rescue. Content words are >=4 letters, so three
+/// contiguous matches ("staff | they | comfort") already span a full KJV
+/// subphrase; demanding more would strand every short mid-verse fragment —
+/// exactly the utterances the rescue exists for.
+const EGW_SCRIPTURE_ECHO_RESCUE_MIN_RUN: usize = 3;
 /// BM25 nominates this many candidates; run-length verification decides.
 /// Raised from 1 after live 2026-08-04: a single BM25 nominee often missed the
 /// spoken paragraph while residual John 3:16 text still dominated retrieval.
@@ -663,7 +715,7 @@ mod low_stt_dampening_tests {
         )];
         let bible = vec![bible_hit_with_text("John 3:16", spoken)];
 
-        drop_egw_quotes_echoing_scripture(&mut egw, &bible, spoken, false);
+        drop_egw_quotes_echoing_scripture(&mut egw, &bible, &bible, spoken, false);
 
         assert!(
             egw.is_empty(),
@@ -680,7 +732,7 @@ mod low_stt_dampening_tests {
         )];
         let bible = vec![bible_hit_with_text("John 3:16", spoken)];
 
-        drop_egw_quotes_echoing_scripture(&mut egw, &bible, spoken, true);
+        drop_egw_quotes_echoing_scripture(&mut egw, &bible, &bible, spoken, true);
 
         assert_eq!(
             egw.len(),
@@ -703,13 +755,67 @@ mod low_stt_dampening_tests {
             "Paul, an apostle of Jesus Christ by the commandment of God our Saviour, and Lord Jesus Christ, which is our hope;",
         )];
 
-        drop_egw_quotes_echoing_scripture(&mut egw, &bible, spoken, false);
+        drop_egw_quotes_echoing_scripture(&mut egw, &bible, &bible, spoken, false);
 
         assert_eq!(
             egw.len(),
             1,
             "a genuine Ellen White quote outruns every verse in the window"
         );
+    }
+
+    #[test]
+    fn scripture_echo_rescues_the_explaining_verse_when_no_verse_survived_the_floor() {
+        // Live 2026-08-24 seq=157: "For thy rod and thy staff they comfort
+        // me" — Psalm 23:5 fell below the semantic floor (zero survivors) so
+        // only the Education p.127 paraphrase reached the operator. With no
+        // survivors, the echo proof must rescue the explaining verse.
+        let spoken = "for thy rod and thy staff they comfort me";
+        let mut egw = vec![egw_hit_with_text(
+            "Education",
+            "The thorn in the flesh, the rod and the staff, they comfort me; the Lord disciplines those he loves.",
+        )];
+        let survivors: Vec<DetectionResult> = Vec::new();
+        let candidates = vec![bible_hit_with_text(
+            "Psalms 23:4",
+            "Yea, though I walk through the valley of the shadow of death, I will fear no evil: for thou art with me; thy rod and thy staff they comfort me.",
+        )];
+
+        let rescued =
+            drop_egw_quotes_echoing_scripture(&mut egw, &survivors, &candidates, spoken, false);
+
+        assert!(
+            egw.is_empty(),
+            "the shadowing paragraph must still be dropped"
+        );
+        let verse = rescued.expect("the explaining verse must be rescued");
+        assert_eq!(verse.verse_ref, "Psalms 23:4");
+        assert!(verse.has_lexical_quote, "rescue carries quote evidence");
+        assert!(
+            verse.confidence >= 0.90,
+            "rescue must re-enter above the finalize floor"
+        );
+    }
+
+    #[test]
+    fn scripture_echo_does_not_rescue_when_a_verse_survived() {
+        // If a Bible verse already survived finalize, the normal emit path
+        // handles it; the guard must not inject a duplicate.
+        let spoken = "for thy rod and thy staff they comfort me";
+        let mut egw = vec![egw_hit_with_text(
+            "Education",
+            "The thorn in the flesh, the rod and the staff, they comfort me; the Lord disciplines those he loves.",
+        )];
+        let survivors = vec![bible_hit_with_text(
+            "Psalms 23:4",
+            "Yea, though I walk through the valley of the shadow of death, I will fear no evil: for thou art with me; thy rod and thy staff they comfort me.",
+        )];
+        let candidates = survivors.clone();
+
+        let rescued =
+            drop_egw_quotes_echoing_scripture(&mut egw, &survivors, &candidates, spoken, false);
+
+        assert!(rescued.is_none(), "no duplicate rescue alongside a live survivor");
     }
 
     #[test]

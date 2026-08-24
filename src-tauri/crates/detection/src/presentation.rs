@@ -153,13 +153,25 @@ pub fn classify_job(
 
 pub fn looks_like_verse_request(text: &str) -> bool {
     let lower = text.to_ascii_lowercase();
+    // "There's a verse that says he leadeth me…" is the most common spoken way
+    // operators cite without naming book/chapter. Live 2026-08-24 dropped
+    // Psalm 23 finals (candidates=3..5 then semantic_none) because only the
+    // "show … verse"/"verse about" shapes were recognized, so paraphrased
+    // quotes were judged under the strict quotation contract and rejected.
     let asks = lower.contains("show")
         || lower.contains("talks about")
         || lower.contains("talk about")
+        || lower.contains("speaks about")
+        || lower.contains("speak about")
         || lower.contains("verse about")
         || lower.contains("passage about")
         || lower.contains("passage where")
         || lower.contains("verse where")
+        || lower.contains("verse that says")
+        || lower.contains("verse which says")
+        || lower.contains("verse that speaks")
+        || lower.contains("verse that tells")
+        || lower.contains("verse that mentions")
         || lower.contains("go to the verse")
         || lower.contains("go back to the verse");
     asks && (lower.contains("verse") || lower.contains("passage"))
@@ -413,9 +425,43 @@ mod tests {
         assert!(looks_like_verse_request(
             "And then let's go to the verse that talks about Paul and Silas singing in a prison."
         ));
+        assert!(looks_like_verse_request(
+            "Okay, and then there's a verse that says the Lord is my shepherd."
+        ));
+        assert!(looks_like_verse_request(
+            "there is another verse which says He leadeth me beside the still waters"
+        ));
+        assert!(looks_like_verse_request(
+            "I love the verse where Jesus calms the storm"
+        ));
         assert!(!looks_like_verse_request(
             "the Lord is my shepherd I shall not want"
         ));
+    }
+
+    #[test]
+    fn spoken_verse_that_says_paraphrase_final_is_authorized_for_preview() {
+        // Live 2026-08-24: "…a verse that says He leads me beside still
+        // waters" produced semantic candidates but emitted nothing because
+        // the request shape was unrecognized and the strict quotation
+        // contract rejected the paraphrase. As a recognized request, the
+        // same evidence authorizes preview on the final utterance.
+        let grant = decide_presentation(&PresentationEvidence {
+            job: DetectionJob::Request,
+            source_is_direct: false,
+            is_chapter_only: false,
+            is_fuzzy_book: false,
+            is_complete_citation: false,
+            is_final_utterance: true,
+            has_lexical_quote: false,
+            quote_coverage: 0.0,
+            candidate_margin: 0.04,
+            independent_final_count: 1,
+            automation_live_enabled: true,
+        });
+        assert_eq!(grant.decision, PresentationDecision::PreviewAuthorized);
+        assert!(grant.may_preview());
+        assert!(!grant.may_go_live());
     }
 
     #[test]

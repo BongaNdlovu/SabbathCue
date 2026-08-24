@@ -378,15 +378,18 @@ mod tests {
 
         // Explicit reference - direct path owns it; semantic must not enqueue
         // (so it cannot evict a pending prose job from the latest-wins slot).
+        let watermark = Arc::new(AtomicU64::new(0));
         enqueue_final_semantic_job(
             &slot,
             &notify,
             &sent,
             &replaced,
+            &watermark,
             1,
             "John chapter 8 verse 9".to_string(),
             "John chapter 8 verse 9".to_string(),
             0.9,
+            false,
         );
         assert!(
             slot.lock().unwrap().is_none(),
@@ -403,6 +406,7 @@ mod tests {
             "let's go to the next verse".to_string(),
             "let's go to the next verse".to_string(),
             0.9,
+            false,
         );
         assert!(
             slot.lock().unwrap().is_none(),
@@ -414,10 +418,12 @@ mod tests {
             &notify,
             &sent,
             &replaced,
+            &watermark,
             3,
             "one".to_string(),
             "one".to_string(),
             0.9,
+            false,
         );
         assert!(
             slot.lock().unwrap().is_none(),
@@ -430,10 +436,12 @@ mod tests {
             &notify,
             &sent,
             &replaced,
+            &watermark,
             4,
             "for God so loved the world that he gave his only begotten son".to_string(),
             "for God so loved the world that he gave his only begotten son".to_string(),
             0.73,
+            false,
         );
         assert_eq!(
             slot.lock().unwrap().as_ref().map(|job| job.seq),
@@ -756,6 +764,26 @@ mod tests {
     }
 
     #[test]
+    fn does_not_defer_when_request_phrasing_names_a_book() {
+        use crate::commands::stt::detection_logic::transcript_defers_to_direct as defers;
+
+        // Live 2026-08-24 seq=222: "another verse in Exodus, that talks about
+        // keeping the Sabbath holy" routed as a final but never ran the
+        // semantic pass — book name + the word "verse" masqueraded as a
+        // complete reference. Request phrasing must override that heuristic;
+        // the direct path parses no citation from these.
+        assert!(!defers(
+            "And then there's another verse in Exodus, that talks about keeping the Sabbath holy."
+        ));
+        assert!(!defers(
+            "there is a verse in Revelation that speaks about the new heaven and the new earth"
+        ));
+        assert!(!defers(
+            "a verse that says the Lord is my shepherd"
+        ));
+    }
+
+    #[test]
     fn live_semantic_workflow_matches_requested_speed_and_result_window() {
         assert_eq!(LIVE_SEMANTIC_CAP, 3);
         assert_eq!(SEMANTIC_WINDOW_SEGMENTS, 4);
@@ -1013,6 +1041,145 @@ mod tests {
         assert!(
             window.to_ascii_lowercase().contains("shepherd"),
             "live Bible window must retain shepherd, got {window:?}"
+        );
+    }
+
+    #[test]
+    fn performance_gate_latest_wins_queue_never_grows_past_one_job() {
+        let slot = Arc::new(Mutex::new(None));
+        let notify = Arc::new(Notify::new());
+        let sent = Arc::new(AtomicU64::new(0));
+        let replaced = Arc::new(AtomicU64::new(0));
+        let watermark = Arc::new(AtomicU64::new(0));
+        let started = std::time::Instant::now();
+
+        for seq in 1..=1_000u64 {
+            enqueue_final_semantic_job(
+                &slot,
+                &notify,
+                &sent,
+                &replaced,
+                &watermark,
+                seq,
+                "The Lord is my shepherd I shall not want".to_string(),
+                "The Lord is my shepherd I shall not want".to_string(),
+                0.9,
+                false,
+            );
+        }
+
+        let pending = take_semantic_job(&slot, "perf");
+        assert_eq!(pending.map(|job| job.seq), Some(1_000));
+        assert!(take_semantic_job(&slot, "perf").is_none());
+        assert_eq!(sent.load(Ordering::Relaxed), 1_000);
+        assert_eq!(replaced.load(Ordering::Relaxed), 999);
+        assert_eq!(
+            watermark.load(Ordering::Relaxed),
+            1_000,
+            "watermark tracks the newest accepted final"
+        );
+        assert!(
+            started.elapsed() < std::time::Duration::from_millis(750),
+            "1k latest-wins enqueues must stay cheap, took {:?}",
+            started.elapsed()
+        );
+    }
+
+    #[test]
+    fn rejected_final_does_not_advance_the_final_watermark() {
+        // Live 2026-08-24: a reference-shaped final bumped the shared
+        // watermark, invalidating the previous final's in-flight semantic
+        // work. The watermark must move only when a final is accepted.
+        let slot = Arc::new(Mutex::new(None));
+        let notify = Arc::new(Notify::new());
+        let sent = Arc::new(AtomicU64::new(0));
+        let replaced = Arc::new(AtomicU64::new(0));
+        let watermark = Arc::new(AtomicU64::new(0));
+
+        enqueue_final_semantic_job(
+            &slot,
+            &notify,
+            &sent,
+            &replaced,
+            &watermark,
+            10,
+            "The Lord is my shepherd I shall not want".to_string(),
+            String::new(),
+            0.9,
+            false,
+        );
+        assert_eq!(watermark.load(Ordering::Relaxed), 10);
+
+        // A complete-reference final must NOT advance the watermark…
+        let ref_slot = Arc::new(Mutex::new(None));
+        enqueue_final_semantic_job(
+            &ref_slot,
+            &notify,
+            &sent,
+            &replaced,
+            &watermark,
+            11,
+            "John chapter 3 verse 16".to_string(),
+            String::new(),
+            0.9,
+            false,
+        );
+        assert_eq!(
+            watermark.load(Ordering::Relaxed),
+            10,
+            "rejected final must leave its predecessor valid"
+        );
+        assert!(
+            take_semantic_job(&ref_slot, "test").is_none(),
+            "reference finals stay on the direct path"
+        );
+
+        // …and partials never touch it either.
+        enqueue_partial_semantic_job(
+            &(Arc::new(Mutex::new(None))),
+            &notify,
+            &sent,
+            &replaced,
+            12,
+            "He leads me beside still waters".to_string(),
+            String::new(),
+            0.9,
+            false,
+        );
+        assert_eq!(watermark.load(Ordering::Relaxed), 10);
+        assert_eq!(sent.load(Ordering::Relaxed), 2);
+    }
+
+    #[test]
+    fn performance_gate_transcript_window_never_exceeds_live_word_cap() {
+        let words = (0..10_000)
+            .map(|i| format!("word{i}"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let window = clamp_to_recent_words(&words, LIVE_DETECTION_WINDOW_WORDS);
+        assert_eq!(
+            window.split_whitespace().count(),
+            LIVE_DETECTION_WINDOW_WORDS
+        );
+        assert!(window.contains("word9999"));
+        assert!(!window.contains("word0"));
+    }
+
+    #[test]
+    fn performance_gate_direct_detection_latency_on_a_complete_citation() {
+        let mut detector = rhema_detection::DirectDetector::new();
+        let started = std::time::Instant::now();
+        let mut hits = 0usize;
+        for _ in 0..200 {
+            hits += detector
+                .detect("Okay, let's turn to John chapter 1, verse 8")
+                .len();
+        }
+        let elapsed = started.elapsed();
+        assert!(hits >= 200, "complete citations must keep detecting");
+        assert!(
+            elapsed < std::time::Duration::from_millis(200),
+            "200 citation detections must stay under 200ms, took {elapsed:?}"
         );
     }
 
@@ -1278,6 +1445,28 @@ mod tests {
     }
 
     #[test]
+    fn rolling_request_intent_survives_sentence_trim_for_john_one() {
+        // The semantic query is intentionally trimmed at a sentence boundary;
+        // the request marker may disappear even though it was spoken in the
+        // same rolling window. John 1:1 must still be allowed out of the
+        // currently active reading chapter in that case.
+        let joined = "there is a verse that says. In the beginning was the Word, and the Word was with God, and the Word was God";
+        let semantic_text = detection_logic::trim_to_sentence_start(joined, 6);
+        assert!(!rhema_detection::looks_like_verse_request(&semantic_text));
+
+        let results = vec![make_detection_result("John 1:1", 43, 1, 1, 0.92)];
+        let filtered = detection_logic::apply_semantic_reading_scope_with_request_hint(
+            results,
+            Some((48, 1)),
+            &semantic_text,
+            true,
+        );
+
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].verse_ref, "John 1:1");
+    }
+
+    #[test]
     fn reading_scope_filter_still_suppresses_quotation_echoes_while_reading() {
         let results = vec![make_detection_result("Acts 16:25", 44, 16, 25, 0.88)];
         let filtered = detection_logic::apply_semantic_reading_scope(
@@ -1428,6 +1617,7 @@ mod tests {
             stt_confidence: 0.5,
             is_final: true,
             utterance_id: 1,
+            request_hint: false,
         };
         let new = SemanticJob {
             seq: 2,
@@ -1436,12 +1626,41 @@ mod tests {
             stt_confidence: 0.8,
             is_final: true,
             utterance_id: 2,
+            request_hint: false,
         };
         assert!(!replace_semantic_job(&slot, old, "test"));
         assert!(replace_semantic_job(&slot, new.clone(), "test"));
 
         assert_eq!(take_semantic_job(&slot, "test"), Some(new));
         assert_eq!(take_semantic_job(&slot, "test"), None);
+    }
+
+    #[test]
+    fn semantic_job_keeps_request_intent_when_trimmed_query_loses_the_cue() {
+        let joined = "there is a verse that says. In the beginning was the Word, and the Word was with God, and the Word was God";
+        let semantic_text = detection_logic::trim_to_sentence_start(joined, 6);
+        let slot = Arc::new(Mutex::new(None));
+        let notify = Arc::new(Notify::new());
+        let sent = Arc::new(AtomicU64::new(0));
+        let replaced = Arc::new(AtomicU64::new(0));
+        let watermark = Arc::new(AtomicU64::new(0));
+
+        enqueue_final_semantic_job(
+            &slot,
+            &notify,
+            &sent,
+            &replaced,
+            &watermark,
+            1,
+            semantic_text,
+            joined.to_string(),
+            0.9,
+            true,
+        );
+
+        let job = take_semantic_job(&slot, "request-intent").expect("semantic job");
+        assert!(job.request_hint);
+        assert_eq!(job.seq, 1);
     }
 
     #[test]
@@ -1458,6 +1677,7 @@ mod tests {
                 stt_confidence: 0.4,
                 is_final: false,
                 utterance_id: 1,
+                request_hint: false,
             });
             panic!("poison semantic slot");
         });
@@ -1471,6 +1691,7 @@ mod tests {
                 stt_confidence: 0.9,
                 is_final: true,
                 utterance_id: 2,
+                request_hint: false,
             },
             "test"
         ));
@@ -1483,6 +1704,7 @@ mod tests {
                 stt_confidence: 0.9,
                 is_final: true,
                 utterance_id: 2,
+                request_hint: false,
             })
         );
     }

@@ -27,6 +27,23 @@ const MAX_UTTERANCE_WORDS: usize = 40;
 /// Bounded wait for `EndOfTranscript`/`Close` after `EndOfStream` — a half-open
 /// TCP connection must not hang the finishing phase forever.
 const FINISH_DRAIN_TIMEOUT: Duration = Duration::from_secs(15);
+/// Handshake must not block the reconnect loop if Speechmatics never sends
+/// `RecognitionStarted`.
+const RECOGNITION_START_TIMEOUT: Duration = Duration::from_secs(15);
+
+fn build_speechmatics_connect_request(
+    api_key: &str,
+) -> Result<tokio_tungstenite::tungstenite::http::Request<()>, SttError> {
+    let mut request = SPEECHMATICS_RT_URL
+        .into_client_request()
+        .map_err(|error| SttError::ConnectionFailed(error.to_string()))?;
+    request.headers_mut().insert(
+        "Authorization",
+        HeaderValue::from_str(&format!("Bearer {api_key}"))
+            .map_err(|error| SttError::ConnectionFailed(error.to_string()))?,
+    );
+    Ok(request)
+}
 
 fn finish_wait_duration(deadline: Option<Instant>, now: Instant) -> Duration {
     deadline.map_or(FINISH_DRAIN_TIMEOUT, |deadline| {
@@ -88,14 +105,7 @@ enum AudioCommand {
 async fn open_speechmatics_stream(
     api_key: &str,
 ) -> Result<WebSocketStream<MaybeTlsStream<tokio::net::TcpStream>>, SttError> {
-    let mut request = SPEECHMATICS_RT_URL
-        .into_client_request()
-        .map_err(|error| SttError::ConnectionFailed(error.to_string()))?;
-    request.headers_mut().insert(
-        "Authorization",
-        HeaderValue::from_str(&format!("Bearer {api_key}"))
-            .map_err(|error| SttError::ConnectionFailed(error.to_string()))?,
-    );
+    let request = build_speechmatics_connect_request(api_key)?;
     tokio_tungstenite::connect_async(request)
         .await
         .map(|(stream, _)| stream)
@@ -106,8 +116,18 @@ async fn wait_for_recognition_started<R>(read: &mut R) -> Result<(), SttError>
 where
     R: Stream<Item = Result<Message, tokio_tungstenite::tungstenite::Error>> + Unpin,
 {
+    wait_for_recognition_started_within(read, RECOGNITION_START_TIMEOUT).await
+}
+
+async fn wait_for_recognition_started_within<R>(
+    read: &mut R,
+    timeout: Duration,
+) -> Result<(), SttError>
+where
+    R: Stream<Item = Result<Message, tokio_tungstenite::tungstenite::Error>> + Unpin,
+{
     loop {
-        let frame = tokio::time::timeout(Duration::from_secs(15), read.next())
+        let frame = tokio::time::timeout(timeout, read.next())
             .await
             .map_err(|_| SttError::ConnectionFailed("Speechmatics startup timed out".into()))?
             .ok_or_else(|| SttError::ConnectionFailed("Speechmatics closed at startup".into()))?
@@ -630,5 +650,80 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("not_authorised"));
+    }
+
+    #[test]
+    fn connect_request_sets_bearer_authorization() {
+        let request = build_speechmatics_connect_request("secret-key").expect("request");
+        let auth = request
+            .headers()
+            .get("Authorization")
+            .expect("Authorization")
+            .to_str()
+            .expect("utf8");
+        assert_eq!(auth, "Bearer secret-key");
+        assert_eq!(request.uri().host(), Some("eu2.rt.speechmatics.com"));
+    }
+
+    #[test]
+    fn connect_request_rejects_api_key_that_cannot_be_a_header() {
+        let error = build_speechmatics_connect_request("bad\nkey")
+            .expect_err("newlines are not valid header values");
+        assert!(
+            matches!(error, SttError::ConnectionFailed(_)),
+            "handshake construction must fail closed, got {error:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn recognition_handshake_accepts_started() {
+        let mut stream = futures_util::stream::iter([Ok(Message::Text(
+            r#"{"message":"RecognitionStarted"}"#.to_string().into(),
+        ))]);
+        wait_for_recognition_started_within(&mut stream, Duration::from_millis(200))
+            .await
+            .expect("RecognitionStarted completes handshake");
+    }
+
+    #[tokio::test]
+    async fn recognition_handshake_fails_on_server_error() {
+        let mut stream = futures_util::stream::iter([Ok(Message::Text(
+            r#"{"message":"Error","type":"not_authorised","reason":"invalid key"}"#
+                .to_string()
+                .into(),
+        ))]);
+        let error = wait_for_recognition_started_within(&mut stream, Duration::from_millis(200))
+            .await
+            .expect_err("Error frame is a failed handshake");
+        assert!(error.to_string().contains("not_authorised"));
+    }
+
+    #[tokio::test]
+    async fn recognition_handshake_fails_when_socket_closes() {
+        let mut stream = futures_util::stream::empty();
+        let error = wait_for_recognition_started_within(&mut stream, Duration::from_millis(200))
+            .await
+            .expect_err("closed socket");
+        assert!(
+            error.to_string().contains("closed at startup"),
+            "got {error}"
+        );
+    }
+
+    #[tokio::test]
+    async fn recognition_handshake_times_out_when_server_is_silent() {
+        let mut stream = futures_util::stream::pending();
+        let started = Instant::now();
+        let error = wait_for_recognition_started_within(&mut stream, Duration::from_millis(40))
+            .await
+            .expect_err("silent server");
+        assert!(
+            error.to_string().contains("startup timed out"),
+            "got {error}"
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(2),
+            "timeout must not use the live 15s budget in tests"
+        );
     }
 }

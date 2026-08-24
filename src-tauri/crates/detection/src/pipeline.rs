@@ -465,6 +465,11 @@ impl DetectionPipeline {
 /// Minimum confidence for a non-broad (phrase/AND) FTS hit so verbatim
 /// phrase evidence outranks a typical vector-only guess (~0.80–0.85).
 const PHRASE_TIER_CONFIDENCE_FLOOR: f64 = 0.88;
+/// Visibility floor for request-shaped windows. Sits above the default
+/// semantic threshold (0.70) so a correct retrieval survives finalize, but
+/// below the phrase tier (0.88): requests are content queries, not verified
+/// quotes, so they must not outrank real quote evidence.
+pub const REQUEST_CANDIDATE_FLOOR: f64 = 0.74;
 /// Pure vector hits without FTS corroboration are capped. Calibration on the
 /// closing sermon showed 80–89% was ~half wrong; mid-band topical fires
 /// (Matthew 22:42 @86%, Psalms 52:9 @73%) were vector-only. Phrase/overlap
@@ -528,6 +533,16 @@ fn live_fts_candidate_confidence(
             .fold(rank_confidence, f64::max)
             .max(if ai_review_candidate { 0.70 } else { 0.0 }),
     );
+    // Request-shaped windows ("a verse that says He leads me beside still
+    // waters", "verse in Exodus that talks about the Sabbath") are content
+    // queries, not quote attestations: their narration ("there is a verse")
+    // depresses coverage metrics even when the retrieved verse is right.
+    // Give them a visibility floor above the finalize threshold so a correct
+    // retrieval cannot die before the operator ever sees it (live 2026-08-24
+    // seq=126: candidates=0 on a spoken Ephesians 3:20 paraphrase).
+    if ai_review_candidate {
+        confidence = confidence.max(REQUEST_CANDIDATE_FLOOR);
+    }
     // A phrase hit on two names (Paul, Silas) is not the prison-singing
     // scene. Keep incomplete event coverage out of the 80%+ band, but do
     // not demote verified quote evidence.

@@ -724,8 +724,30 @@ mod tests {
         assert_eq!(dst, [0, 0, 0, 0]);
     }
 
+    static NDI_TEST_LOCK: Mutex<()> = Mutex::new(());
+    static INIT_CALLS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+    static DESTROY_CALLS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+    unsafe extern "C" fn counting_init() -> bool {
+        INIT_CALLS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        true
+    }
+
+    unsafe extern "C" fn counting_destroy() {
+        DESTROY_CALLS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    unsafe extern "C" fn ok_init() -> bool {
+        true
+    }
+
+    unsafe extern "C" fn noop_destroy() {}
+
     #[test]
     fn invalid_source_name_does_not_acquire_global_runtime() {
+        let _guard = NDI_TEST_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let before = *NDI_RUNTIME_USERS
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -739,6 +761,64 @@ mod tests {
                 .unwrap_or_else(std::sync::PoisonError::into_inner),
             before,
             "invalid source names must fail before runtime acquisition"
+        );
+    }
+
+    #[test]
+    fn runtime_refcount_initialize_once_destroy_on_last_release() {
+        let _guard = NDI_TEST_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+        INIT_CALLS.store(0, std::sync::atomic::Ordering::SeqCst);
+        DESTROY_CALLS.store(0, std::sync::atomic::Ordering::SeqCst);
+
+        let before = *NDI_RUNTIME_USERS
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        assert_eq!(before, 0, "NDI tests must not leak runtime users");
+
+        ndi_runtime_acquire(counting_init).expect("first acquire");
+        ndi_runtime_acquire(counting_init).expect("second acquire");
+        assert_eq!(INIT_CALLS.load(std::sync::atomic::Ordering::SeqCst), 1);
+        assert_eq!(DESTROY_CALLS.load(std::sync::atomic::Ordering::SeqCst), 0);
+
+        ndi_runtime_release(counting_destroy);
+        assert_eq!(DESTROY_CALLS.load(std::sync::atomic::Ordering::SeqCst), 0);
+        ndi_runtime_release(counting_destroy);
+        assert_eq!(DESTROY_CALLS.load(std::sync::atomic::Ordering::SeqCst), 1);
+
+        let after = *NDI_RUNTIME_USERS
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        assert_eq!(after, 0);
+    }
+
+    #[test]
+    fn runtime_refcount_survives_concurrent_acquire_release() {
+        let _guard = NDI_TEST_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+        let before = *NDI_RUNTIME_USERS
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+        std::thread::scope(|scope| {
+            for _ in 0..32 {
+                scope.spawn(|| {
+                    ndi_runtime_acquire(ok_init).expect("acquire");
+                    ndi_runtime_release(noop_destroy);
+                });
+            }
+        });
+
+        let after = *NDI_RUNTIME_USERS
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        assert_eq!(
+            after, before,
+            "32 concurrent session lifetimes must restore the runtime refcount"
         );
     }
 }

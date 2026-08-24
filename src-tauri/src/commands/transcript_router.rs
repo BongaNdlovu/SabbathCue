@@ -755,4 +755,81 @@ mod tests {
 
         assert_eq!(route.suppress_reason.as_deref(), Some("low_confidence"));
     }
+
+    #[test]
+    fn lifecycle_reconnect_then_new_final_is_not_treated_as_stale() {
+        let mut router = TranscriptRouter::default();
+        router.route(input(
+            TranscriptEventKind::Partial,
+            "John chapter 1 verse 8",
+        ));
+        router.route(input(TranscriptEventKind::Final, "John chapter 1 verse 8"));
+
+        // A new connection speaks a different final. Duplicate suppression is
+        // by text, not by session, so a new utterance must still dispatch.
+        let after_reconnect = router.route(input(
+            TranscriptEventKind::Final,
+            "Genesis chapter 1 verse 3",
+        ));
+        assert!(after_reconnect.emit_transcript);
+        assert_eq!(
+            after_reconnect.authoritative_detection.as_deref(),
+            Some("Genesis chapter 1 verse 3")
+        );
+    }
+
+    #[test]
+    fn lifecycle_event_order_partial_then_final_keeps_one_authoritative_path() {
+        let mut router = TranscriptRouter::default();
+        let partial = router.route(input(
+            TranscriptEventKind::Partial,
+            "The Lord is my shepherd",
+        ));
+        assert!(partial.emit_transcript);
+        assert!(partial.authoritative_detection.is_none());
+
+        let fin = router.route(input(
+            TranscriptEventKind::Final,
+            "The Lord is my shepherd I shall not want",
+        ));
+        assert!(fin.emit_transcript);
+        assert_eq!(
+            fin.authoritative_detection.as_deref(),
+            Some("The Lord is my shepherd I shall not want")
+        );
+    }
+
+    #[test]
+    fn lifecycle_stale_provider_resend_of_the_same_final_is_dropped() {
+        let mut router = TranscriptRouter::default();
+        router.route(input(
+            TranscriptEventKind::Final,
+            "Now to him who is able to do immeasurably more",
+        ));
+        let stale = router.route(input(
+            TranscriptEventKind::Final,
+            "Now to him who is able to do immeasurably more",
+        ));
+        assert_eq!(stale.suppress_reason.as_deref(), Some("duplicate_final"));
+        assert!(stale.authoritative_detection.is_none());
+    }
+
+    #[test]
+    fn lifecycle_disconnect_shaped_empty_and_noise_never_dispatch() {
+        let mut router = TranscriptRouter::default();
+        assert_eq!(
+            router
+                .route(input(TranscriptEventKind::Final, "   "))
+                .suppress_reason
+                .as_deref(),
+            Some("empty")
+        );
+        assert_eq!(
+            router
+                .route(input(TranscriptEventKind::Final, "[silence]"))
+                .suppress_reason
+                .as_deref(),
+            Some("noise_label")
+        );
+    }
 }

@@ -15,11 +15,11 @@ use super::detection::{
 };
 use super::detection_jobs::finalize_live_semantic_results;
 use super::detection_logic::{
-    apply_semantic_reading_scope, choose_reading_candidate, direct_reading_candidates,
-    filter_direct_results_to_scope_if_present, live_pause_out_of_scope_bible_book,
-    should_release_stale_reading_scope, should_restart_reading, spoken_book_hint,
-    strip_reference_scaffolding, strong_out_of_scope_bible_book, DirectReadingCandidate,
-    READING_SCOPE_RELEASE_STREAK,
+    apply_semantic_reading_scope_with_request_hint, choose_reading_candidate,
+    direct_reading_candidates, filter_direct_results_to_scope_if_present,
+    live_pause_out_of_scope_bible_book, should_release_stale_reading_scope,
+    should_restart_reading, spoken_book_hint, strip_reference_scaffolding,
+    strong_out_of_scope_bible_book, DirectReadingCandidate, READING_SCOPE_RELEASE_STREAK,
 };
 use super::utils::{transcript_logging_enabled, truncate_safe};
 use crate::commands::detection::apply_presentation_grant;
@@ -69,6 +69,7 @@ fn filter_live_semantic_results_to_reading_scope(
     results: Vec<crate::commands::detection::DetectionResult>,
     semantic_min_confidence: f64,
     transcript: &str,
+    request_hint: bool,
 ) -> Vec<crate::commands::detection::DetectionResult> {
     let Some((book_number, chapter, book_name, stale_secs)) = active_reading_bible_scope(app)
     else {
@@ -128,13 +129,18 @@ fn filter_live_semantic_results_to_reading_scope(
     }
 
     let before = results.len();
-    let results = apply_semantic_reading_scope(results, Some((book_number, chapter)), transcript);
+    let results = apply_semantic_reading_scope_with_request_hint(
+        results,
+        Some((book_number, chapter)),
+        transcript,
+        request_hint,
+    );
     let suppressed = before.saturating_sub(results.len());
     if suppressed > 0 {
         log::info!(
             "[DET-SEMANTIC] Suppressed {suppressed} out-of-scope Bible result(s) while reading {book_name} {chapter}"
         );
-    } else if rhema_detection::looks_like_verse_request(transcript)
+    } else if (request_hint || rhema_detection::looks_like_verse_request(transcript))
         && results.iter().any(|result| {
             result.content_type == "bible"
                 && (result.book_number != book_number || result.chapter != chapter)
@@ -307,14 +313,11 @@ fn note_independent_finals(verse_key: &str, utterance_id: Option<u64>, is_final:
     }
 }
 
-#[expect(
-    clippy::too_many_lines,
-    reason = "authorization stamps every emitted field in one pass so grants cannot drift"
-)]
 fn authorize_emitted_results(
     results: &mut Vec<crate::commands::detection::DetectionResult>,
     detections: &[rhema_detection::Detection],
     transcript: &str,
+    request_hint: bool,
     is_final_utterance: bool,
     utterance_id: Option<u64>,
     automation_live_enabled: bool,
@@ -325,7 +328,7 @@ fn authorize_emitted_results(
                 rhema_detection::decide_presentation(&rhema_detection::PresentationEvidence {
                     job: if result.source == "direct" {
                         rhema_detection::DetectionJob::Citation
-                    } else if rhema_detection::looks_like_verse_request(transcript) {
+                    } else if request_hint || rhema_detection::looks_like_verse_request(transcript) {
                         rhema_detection::DetectionJob::Request
                     } else {
                         rhema_detection::DetectionJob::Quotation
@@ -357,15 +360,16 @@ fn authorize_emitted_results(
     }
 
     let semantic_margin = {
-        let mut semantic: Vec<f64> = detections
+        // Margin must be measured on the same numbers the operator sees.
+        // finalize_live_semantic_results boosts corroborated winners (e.g.
+        // 0.96 → 0.98) while runner-ups stay put; the pre-finalize raw
+        // candidates can be a near-tie (gap < 0.02) that demoted a dominant
+        // final to `suggestion` — live 2026-08-24: John 14:1 at 98% with two
+        // corroborating candidates emitted as suggestion-only.
+        let mut semantic: Vec<f64> = results
             .iter()
-            .filter(|detection| {
-                matches!(
-                    detection.source,
-                    rhema_detection::DetectionSource::Semantic { .. }
-                )
-            })
-            .map(|detection| detection.confidence)
+            .filter(|result| result.source.starts_with("semantic"))
+            .map(|result| result.confidence)
             .collect();
         semantic.sort_by(|a, b| b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal));
         if semantic.len() >= 2 {
@@ -398,7 +402,7 @@ fn authorize_emitted_results(
         let grant = rhema_detection::decide_presentation(&rhema_detection::PresentationEvidence {
             job: if result.source == "direct" {
                 rhema_detection::DetectionJob::Citation
-            } else if rhema_detection::looks_like_verse_request(transcript) {
+            } else if request_hint || rhema_detection::looks_like_verse_request(transcript) {
                 rhema_detection::DetectionJob::Request
             } else {
                 rhema_detection::DetectionJob::Quotation
@@ -634,8 +638,9 @@ pub(crate) fn run_direct_detection(
             &merged
                 .iter()
                 .map(|merged| merged.detection.clone())
-                .collect::<Vec<_>>(),
+            .collect::<Vec<_>>(),
             transcript,
+            false,
             is_final_transcript,
             None,
             is_automation_live_enabled(app),
@@ -675,8 +680,9 @@ pub(crate) fn run_direct_detection(
         &merged
             .iter()
             .map(|merged| merged.detection.clone())
-            .collect::<Vec<_>>(),
+        .collect::<Vec<_>>(),
         transcript,
+        false,
         is_final_transcript,
         None,
         is_automation_live_enabled(app),
@@ -736,6 +742,7 @@ pub(crate) fn run_semantic_detection(
     stt_confidence: f64,
     is_final: bool,
     utterance_id: u64,
+    request_hint: bool,
 ) {
     if !is_semantic_detection_enabled(app) {
         log::debug!("[DET-SEMANTIC] Skipping job seq={seq}; semantic detection disabled");
@@ -930,6 +937,19 @@ pub(crate) fn run_semantic_detection(
         merged.len(),
         t0.elapsed()
     );
+    // Candidate identity is the first question every live-miss investigation
+    // asks: name the top candidates here so the log answers it directly.
+    for (idx, m) in merged.iter().take(5).enumerate() {
+        log::info!(
+            "[DET-SEMANTIC] candidate[{idx}] {} {}:{}:{:?} conf={:.2} src={:?}",
+            m.detection.verse_ref.book_name,
+            m.detection.verse_ref.chapter,
+            m.detection.verse_ref.verse_start,
+            m.detection.verse_id,
+            m.detection.confidence,
+            m.detection.source
+        );
+    }
 
     // Resolve verse text from DB for merged results. Explicit EGW references
     // are handled above. EGW quote matches are appended below: BM25 nominates,
@@ -952,7 +972,12 @@ pub(crate) fn run_semantic_detection(
         results,
         semantic_min_confidence,
         transcript,
+        request_hint,
     );
+    // Snapshot before the floor: weakly-embedding verbatim quotes can fall
+    // below `semantic_min_confidence` and vanish, but the EGW scripture-echo
+    // guard still needs them to prove which verse the speaker was quoting.
+    let pre_floor_candidates = results.clone();
     let mut results = finalize_live_semantic_results(results, semantic_min_confidence);
     authorize_emitted_results(
         &mut results,
@@ -961,6 +986,7 @@ pub(crate) fn run_semantic_detection(
             .map(|merged| merged.detection.clone())
             .collect::<Vec<_>>(),
         transcript,
+        request_hint,
         is_final,
         Some(utterance_id),
         is_automation_live_enabled(app),
@@ -974,12 +1000,23 @@ pub(crate) fn run_semantic_detection(
 
     // Reuse pre-hybrid EGW quotes (already scored). Without a live cue this is
     // the fire-band path; drop scripture-echo paragraphs against Bible hits.
-    crate::commands::detection::drop_egw_quotes_echoing_scripture(
+    // When every paragraph is an echo and no verse survived the floor, the
+    // explaining verse is rescued and authorized like any other result
+    // (2026-08-24: "thy rod and thy staff" presented EGW instead of Psalm 23).
+    let rescued_verse = crate::commands::detection::drop_egw_quotes_echoing_scripture(
         &mut egw_quotes,
         &results,
+        &pre_floor_candidates,
         egw_transcript,
         false,
     );
+    if let Some(verse) = rescued_verse {
+        // The rescue was authorized from its contiguous scripture run. Do not
+        // send it through the ordinary quotation gate again: that gate uses
+        // the pre-floor detection coverage and would reject precisely the
+        // weak-fragment cases this rescue handles.
+        results.push(verse);
+    }
     // Prefer EGW first in the emit list so DET-TRACE top and any consumers that
     // take results[0] do not surface a weaker Bible hit over a stronger quote.
     if !egw_quotes.is_empty() {
@@ -1008,14 +1045,19 @@ pub(crate) fn run_semantic_detection(
         );
         return;
     }
+    // This final is about to emit: mark it as the last *successful* final so
+    // the worker's staleness gate only discards work that was genuinely
+    // superseded by newer successful output (not by mere arrival order).
+    latest_seq.fetch_max(seq, Ordering::AcqRel);
 
     for r in &results {
         log::info!(
-            "[DET-SEMANTIC] Found: {} ({:.0}% {}) auto_q={}",
+            "[DET-SEMANTIC] Found: {} ({:.0}% {}) auto_q={} auth={}",
             r.verse_ref,
             r.confidence * 100.0,
             r.source,
-            r.auto_queued
+            r.auto_queued,
+            r.authorization.as_str()
         );
     }
     if !is_bible_detection_enabled(app) {

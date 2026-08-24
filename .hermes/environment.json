@@ -1,0 +1,18 @@
+{
+  "source": "manual",
+  "recipe": {
+    "name": "SabbathCue Tauri (Rust workspace + React/Vite)",
+    "kind": "custom",
+    "bootstrap": ["bun install"],
+    "build": ["bun run typecheck", "cargo build --workspace --manifest-path src-tauri/Cargo.toml"],
+    "test": [
+      "cargo test --workspace --manifest-path src-tauri/Cargo.toml",
+      "cargo clippy --workspace --all-targets --locked --manifest-path src-tauri/Cargo.toml -- -D warnings",
+      "npx vitest --run",
+      "npm run lint"
+    ],
+    "start": "bunx vite preview --host 127.0.0.1 --port 4173 --strictPort",
+    "port": 4173,
+    "readinessPath": "/"
+  }
+}

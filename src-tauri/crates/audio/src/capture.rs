@@ -524,4 +524,39 @@ mod tests {
         assert_eq!(dropped.load(Ordering::Relaxed), 1);
         assert_eq!(receiver.recv().expect("first frame").samples, vec![100]);
     }
+
+    #[test]
+    fn dropped_frames_never_spawn_callback_threads_or_block() {
+        const FRAMES: u64 = 20_000;
+        let (sender, receiver) = crossbeam_channel::bounded(1);
+        let dropped = Arc::new(AtomicU64::new(0));
+        let mut processor = AudioProcessor::new(
+            1,
+            16_000,
+            16_000,
+            new_gain_handle(1.0),
+            dropped.clone(),
+        );
+
+        let callback_thread = std::thread::current().id();
+        let started = std::time::Instant::now();
+        for i in 0..FRAMES {
+            #[expect(clippy::cast_possible_truncation, reason = "test sample values fit i16")]
+            processor.process_i16_and_send(&[i as i16], &sender);
+            assert_eq!(
+                std::thread::current().id(),
+                callback_thread,
+                "try_send drop path must stay on the audio callback thread"
+            );
+        }
+
+        assert!(
+            started.elapsed() < std::time::Duration::from_millis(250),
+            "a full consumer must not block the callback; took {:?}",
+            started.elapsed()
+        );
+        assert_eq!(dropped.load(Ordering::Relaxed), FRAMES - 1);
+        assert_eq!(receiver.len(), 1);
+        drop(receiver);
+    }
 }

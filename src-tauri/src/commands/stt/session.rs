@@ -110,4 +110,29 @@ mod tests {
         assert!(!completed, "sleep must abandon a retired session");
         assert!(started.elapsed() < Duration::from_secs(1));
     }
+
+    #[test]
+    fn reconnect_claims_a_new_generation_and_drops_stale_fanout() {
+        let gen = generation();
+        let first = AudioSessionGuard::claim(gen.clone());
+        let second = AudioSessionGuard::claim(gen.clone());
+        let third = AudioSessionGuard::claim(gen);
+
+        assert!(!first.is_current());
+        assert!(!second.is_current());
+        assert!(third.is_current());
+    }
+
+    #[test]
+    fn stale_final_from_a_retired_session_is_detectable_by_generation() {
+        let gen = generation();
+        let live = AudioSessionGuard::claim(gen.clone());
+        assert!(live.is_current());
+
+        AudioSessionGuard::claim(gen);
+        assert!(
+            !live.is_current(),
+            "a reconnect must invalidate finals that still carry the old generation"
+        );
+    }
 }
