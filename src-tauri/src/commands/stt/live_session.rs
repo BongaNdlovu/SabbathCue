@@ -76,20 +76,23 @@ fn filter_live_semantic_results_to_reading_scope(
         return results;
     };
 
-    if should_release_stale_reading_scope(
-        &results,
-        book_number,
-        chapter,
-        stale_secs,
-        semantic_min_confidence,
-    ) {
-        log::info!(
-            "[DET-SEMANTIC] Releasing stale reading scope {book_name} {chapter} \
+    let is_verse_request = request_hint || rhema_detection::looks_like_verse_request(transcript);
+
+    if !is_verse_request {
+        if should_release_stale_reading_scope(
+            &results,
+            book_number,
+            chapter,
+            stale_secs,
+            semantic_min_confidence,
+        ) {
+            log::info!(
+                "[DET-SEMANTIC] Releasing stale reading scope {book_name} {chapter} \
              ({stale_secs}s since last verse match; out-of-scope semantic hit)"
-        );
-        pause_stale_reading_scope(app);
-        return results;
-    }
+            );
+            pause_stale_reading_scope(app);
+            return results;
+        }
 
     // Live speech often pivots passages after a phrase-length pause. Once the
     // active chapter has been quiet for that short pause, require two repeated
@@ -127,6 +130,7 @@ fn filter_live_semantic_results_to_reading_scope(
             return results;
         }
     }
+    }
 
     let before = results.len();
     let results = apply_semantic_reading_scope_with_request_hint(
@@ -140,7 +144,7 @@ fn filter_live_semantic_results_to_reading_scope(
         log::info!(
             "[DET-SEMANTIC] Suppressed {suppressed} out-of-scope Bible result(s) while reading {book_name} {chapter}"
         );
-    } else if (request_hint || rhema_detection::looks_like_verse_request(transcript))
+    } else if is_verse_request
         && results.iter().any(|result| {
             result.content_type == "bible"
                 && (result.book_number != book_number || result.chapter != chapter)

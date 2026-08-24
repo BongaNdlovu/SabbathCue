@@ -169,6 +169,12 @@ pub fn looks_like_verse_request(text: &str) -> bool {
         || lower.contains("verse where")
         || lower.contains("verse that says")
         || lower.contains("verse which says")
+        // Operators also identify a passage before quoting it: "the verse is
+        // in the book of John, which says ...". Treat that as a request even
+        // when endpointing drops the earlier "there's a verse" clause.
+        || (lower.contains("verse")
+            && lower.contains("says")
+            && (lower.contains("book of") || lower.contains("in the book")))
         || lower.contains("verse that speaks")
         || lower.contains("verse that tells")
         || lower.contains("verse that mentions")
@@ -430,6 +436,9 @@ mod tests {
         ));
         assert!(looks_like_verse_request(
             "there is another verse which says He leadeth me beside the still waters"
+        ));
+        assert!(looks_like_verse_request(
+            "the verse is in the book of John, which says In the beginning was the Word"
         ));
         assert!(looks_like_verse_request(
             "I love the verse where Jesus calms the storm"

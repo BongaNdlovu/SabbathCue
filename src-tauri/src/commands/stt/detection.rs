@@ -1467,6 +1467,24 @@ mod tests {
     }
 
     #[test]
+    fn book_qualified_request_bypasses_active_reading_scope() {
+        let transcript =
+            "the verse is in the book of John, which says In the beginning was the Word";
+        assert!(rhema_detection::looks_like_verse_request(transcript));
+
+        let results = vec![make_detection_result("John 1:1", 43, 1, 1, 0.92)];
+        let filtered = detection_logic::apply_semantic_reading_scope_with_request_hint(
+            results,
+            Some((66, 1)),
+            transcript,
+            false,
+        );
+
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].verse_ref, "John 1:1");
+    }
+
+    #[test]
     fn reading_scope_filter_still_suppresses_quotation_echoes_while_reading() {
         let results = vec![make_detection_result("Acts 16:25", 44, 16, 25, 0.88)];
         let filtered = detection_logic::apply_semantic_reading_scope(
