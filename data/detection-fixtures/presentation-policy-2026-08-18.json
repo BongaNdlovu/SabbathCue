@@ -36,9 +36,9 @@
       { "kind": "final", "utteranceId": 1003, "text": "show me the verse about Paul and Silas singing in prison" }
     ],
     "expect": {
-      "authorization": ["preview-authorized"],
+      "authorization": ["live-authorized"],
       "preview": "Acts 16:25",
-      "live": null,
+      "live": "Acts 16:25",
       "queue": [],
       "reading": null
     }
@@ -50,10 +50,10 @@
       { "kind": "final", "utteranceId": 1004, "text": "the verse about Jesus walking on water" }
     ],
     "expect": {
-      "authorization": ["preview-authorized"],
+      "authorization": ["live-authorized"],
       "preview": "Matthew 14:25",
       "previewAny": ["Matthew 14:25", "John 6:19"],
-      "live": null,
+      "live": "Matthew 14:25",
       "queue": [],
       "reading": null
     }
@@ -65,9 +65,9 @@
       { "kind": "final", "utteranceId": 1005, "text": "show the passage where Joseph is thrown into a well" }
     ],
     "expect": {
-      "authorization": ["preview-authorized"],
+      "authorization": ["live-authorized"],
       "preview": "Genesis 37:24",
-      "live": null,
+      "live": "Genesis 37:24",
       "queue": [],
       "reading": null
     }
@@ -79,10 +79,10 @@
       { "kind": "final", "utteranceId": 1006, "text": "what is the verse about the mark of the beast" }
     ],
     "expect": {
-      "authorization": ["preview-authorized"],
+      "authorization": ["live-authorized"],
       "preview": "Revelation 13:16",
       "previewAny": ["Revelation 13:16", "Revelation 13:17"],
-      "live": null,
+      "live": "Revelation 13:16",
       "queue": [],
       "reading": null
     }

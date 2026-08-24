@@ -326,6 +326,16 @@ mod tests {
             ),
             "I watched till thrones were put in place"
         );
+        assert_eq!(
+            strip_reference_scaffolding("And then there's another verse that says—"),
+            ""
+        );
+        assert_eq!(
+            strip_reference_scaffolding(
+                "there's another verse that says the Lord is my shepherd"
+            ),
+            "the Lord is my shepherd"
+        );
         // Pure reference window collapses to nothing (direct path owns it).
         assert_eq!(strip_reference_scaffolding("chapter 20 verse 12"), "");
         // Verse prose with no framing is untouched, including spelled-out

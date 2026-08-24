@@ -61,6 +61,33 @@ pub(crate) fn trim_to_sentence_start(text: &str, min_words: usize) -> String {
 /// should drive paraphrase search. Original casing of kept tokens is preserved;
 /// the displayed transcript is unaffected.
 pub(crate) fn strip_reference_scaffolding(text: &str) -> String {
+    // A request can arrive as its own final before the quoted content (for
+    // example, "there's another verse that says—"). Searching that frame
+    // alone produces an arbitrary semantic hit. Keep only the content after
+    // the request marker; an empty tail is intentionally left empty so the
+    // live worker skips the search.
+    let text = if rhema_detection::looks_like_verse_request(text) {
+        let lower = text.to_ascii_lowercase();
+        [
+            "says",
+            "talks about",
+            "talk about",
+            "speaks about",
+            "speak about",
+        ]
+        .iter()
+        .find_map(|marker| {
+            lower
+                .find(marker)
+                .map(|start| text[start + marker.len()..].trim_start_matches(|c: char| {
+                    !c.is_alphanumeric()
+                }))
+        })
+        .unwrap_or(text)
+    } else {
+        text
+    };
+
     let tokens: Vec<&str> = text.split_whitespace().collect();
     let cores: Vec<String> = tokens
         .iter()

@@ -241,7 +241,11 @@ fn decide_request(evidence: &PresentationEvidence) -> PresentationDecision {
     if evidence.is_final_utterance
         && evidence.candidate_margin + f64::EPSILON >= QUOTATION_MIN_MARGIN
     {
-        return PresentationDecision::PreviewAuthorized;
+        return if evidence.automation_live_enabled {
+            PresentationDecision::LiveAuthorized
+        } else {
+            PresentationDecision::PreviewAuthorized
+        };
     }
     PresentationDecision::Suggestion
 }
@@ -391,8 +395,8 @@ mod tests {
     }
 
     #[test]
-    fn request_never_starts_reading_mode() {
-        let evidence = PresentationEvidence {
+    fn request_may_go_live_but_never_starts_reading_mode() {
+        let mut evidence = PresentationEvidence {
             job: DetectionJob::Request,
             source_is_direct: false,
             is_chapter_only: false,
@@ -406,10 +410,16 @@ mod tests {
             automation_live_enabled: true,
         };
         let grant = decide_presentation(&evidence);
-        assert_eq!(grant.decision, PresentationDecision::PreviewAuthorized);
+        assert_eq!(grant.decision, PresentationDecision::LiveAuthorized);
         assert!(grant.may_preview());
         assert!(!grant.may_start_reading());
-        assert!(!grant.may_go_live());
+        assert!(grant.may_go_live());
+        assert!(!grant.may_auto_queue());
+
+        evidence.automation_live_enabled = false;
+        let manual_grant = decide_presentation(&evidence);
+        assert_eq!(manual_grant.decision, PresentationDecision::PreviewAuthorized);
+        assert!(!manual_grant.may_go_live());
     }
 
     #[test]
@@ -466,7 +476,7 @@ mod tests {
             quote_coverage: 0.0,
             candidate_margin: 0.04,
             independent_final_count: 1,
-            automation_live_enabled: true,
+            automation_live_enabled: false,
         });
         assert_eq!(grant.decision, PresentationDecision::PreviewAuthorized);
         assert!(grant.may_preview());
