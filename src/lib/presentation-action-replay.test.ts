@@ -136,7 +136,7 @@ function buildRequestDetection(
     has_lexical_quote: false,
     is_final_utterance: isFinal,
     utterance_id: event.utteranceId,
-    authorization: isFinal ? "preview-authorized" : "suggestion",
+    authorization: isFinal ? "live-authorized" : "suggestion",
     job: "request",
   }
 }
