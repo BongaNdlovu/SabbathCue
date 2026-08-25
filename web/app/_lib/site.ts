@@ -8,9 +8,9 @@ export const SITE = {
   legalName: "BongaNdlovu",
   tagline: "Your Pastor speaks. SabbathCue finds the verse.",
   shortDescription:
-    "Real-time AI Bible verse detection for live sermons. Free, open-source, broadcast-ready via NDI.",
+    "Real-time AI Bible and Ellen G. White verse detection for live sermons. Offline-first, voice-controlled, broadcast-ready via NDI and HDMI projector.",
   description:
-    "SabbathCue listens to a live sermon audio feed, transcribes speech in real time, detects Bible verse references (both explicit citations and quoted passages), and renders them as broadcast-ready overlays via NDI for live production.",
+    "SabbathCue listens to a live sermon audio feed, transcribes speech in real time (offline with Vosk or via cloud STT), detects Bible and Ellen G. White references with hybrid semantic AI search, and renders them as broadcast-ready overlays via NDI and direct HDMI projector outputs.",
   url: "https://github.com/Bongisto/SabbathCue",
   locale: "en_US",
   twitterHandle: "",
@@ -32,8 +32,8 @@ export const SITE = {
     github: "https://github.com/Bongisto/SabbathCue",
   },
   stats: {
-    languages: "2+",
-    translations: "6+",
+    languages: "5+",
+    translations: "10+",
   },
 } as const;
 

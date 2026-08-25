@@ -40,13 +40,9 @@ Verses that aren't named — paraphrases, lyrical references, applied
 teaching — are caught by a vector retrieval pipeline. The
 **all-MiniLM-L6-v2** model (exported to INT8 ONNX during
 `setup:all` and run via the `ort` Rust crate) embeds every verse,
-and a **brute-force cosine-similarity scan** over ~31k vectors at
-1024 dims returns nearest neighbors in a few milliseconds on a
+and a **cosine-similarity scan** over 155k+ vectors at
+384 dims returns nearest neighbors in a few milliseconds on a
 modern CPU.
-
-The file is named `hnsw_index.rs` for historical reasons, but the
-implementation is currently brute-force — the dataset is small
-enough that an HNSW index isn't needed yet.
 
 The semantic strategy runs on a sliding window over the transcript
 so a phrase that lights up halfway through a sentence still triggers
@@ -77,12 +73,12 @@ like references but aren't, while the pastor is in expository mode.
   </Step>
 </Steps>
 
-<Callout title="No cloud booster yet" type="warn">
-Earlier copy described an optional OpenAI/Claude "cloud booster"
-that re-ranks ambiguous candidates. The settings store reserves
-fields for `openaiApiKey` / `claudeApiKey`, but the booster itself
-is not implemented in `rhema-detection` today. Detection runs
-entirely locally.
+<Callout title="Optional AI Candidate Ranking" type="info">
+SabbathCue supports optional candidate re-ranking powered by **DeepSeek** and
+**Cerebras (GPT-OSS-120B)** models. When an indirect reference or complex sermon
+analogy leaves multiple plausible verse candidates, the model evaluates the context
+and adds a recommendation badge to the operator view. It requires your own API key
+and is disabled by default.
 </Callout>
 
 ## Ensemble merging
@@ -90,7 +86,6 @@ entirely locally.
 ![Diagram of the four detection strategies feeding into the ensemble merger and out to a single ranked detection stream](/docs/diagrams/diagram-ensemble-merger.svg)
 
 *Four strategies (direct, semantic, quotation, reading mode) emit candidate detections in parallel; the merger deduplicates, weights, and time-decays them into a single ranked stream that feeds the queue. **Click to expand.***
-
 
 Each strategy emits candidate detections with confidence scores. The
 **ensemble merger** (`src-tauri/crates/detection/src/merger.rs`)

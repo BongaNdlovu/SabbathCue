@@ -33,22 +33,22 @@ on the right.
   <Card
     icon={<Mic />}
     title="Hear the sermon"
-    description="Capture audio from any input device and transcribe it locally with Vosk or via Deepgram's streaming WebSocket API."
+    description="Capture audio from any input device and transcribe it offline with local Vosk or via cloud streaming (Soniox, Deepgram, Speechmatics)."
   />
   <Card
     icon={<Search />}
-    title="Find the verse"
-    description="A multi-strategy detector combines Aho-Corasick reference parsing, Qwen3 ONNX semantic search, and quotation matching."
+    title="Find the verse & EGW"
+    description="A multi-strategy detector combines Aho-Corasick reference parsing, MiniLM-L6-v2 ONNX semantic search across 155k+ vectors, quotation matching, and Ellen G. White writings."
   />
   <Card
     icon={<Radio />}
-    title="Render broadcast overlays"
-    description="Send verse overlays to vMix, OBS, or any NDI consumer with the built-in theme designer for typography and backgrounds."
+    title="Render broadcast & projector"
+    description="Send verse overlays to vMix, OBS Studio, or physical HDMI projectors with Guided Projector Setup and built-in theme styling."
   />
   <Card
     icon={<Languages />}
     title="Switch translations on the fly"
-    description='Say "read in NIV" mid-sermon and SabbathCue swaps the active translation without breaking the queue.'
+    description='Say "read in NIV" or "switch to ESV" mid-sermon and SabbathCue swaps the active translation instantly.'
   />
 </Cards>
 
@@ -100,7 +100,7 @@ for a guided walkthrough.
   <Card
     icon={<Palette />}
     title="ONNX-quantized embeddings"
-    description="all-MiniLM-L6-v2 exported to INT8 ONNX with brute-force cosine similarity over ~31k verse vectors — fast enough on CPU without an HNSW index."
+    description="all-MiniLM-L6-v2 exported to INT8 ONNX with cosine similarity over 155k+ multi-vector public verse corpus — sub-10ms CPU inference."
     href="/docs/features/verse-detection"
   />
 </Cards>

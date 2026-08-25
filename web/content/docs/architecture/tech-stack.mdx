@@ -9,11 +9,12 @@ import { Card, Cards } from "fumadocs-ui/components/card"
 | Layer         | Technologies                                                                                           |
 | ------------- | ------------------------------------------------------------------------------------------------------ |
 | **Frontend**  | React 19, TypeScript, Tailwind CSS v4, shadcn/ui, Zustand, Vite 7                                      |
-| **Backend**   | Tauri v2, Rust workspace with six crates                                                               |
-| **AI / ML**   | ONNX Runtime (Qwen3-0.6B embeddings), Aho-Corasick, Fuse.js                                            |
-| **Database**  | SQLite via `rusqlite` (bundled) with FTS5                                                              |
-| **Broadcast** | NDI 6 SDK via dynamic loading (`libloading` FFI)                                                       |
-| **STT**       | Local Vosk worker (default), Deepgram WebSocket + REST (`tokio-tungstenite`), or Soniox live streaming |
+| **Backend**   | Tauri v2, Rust workspace with seven crates                                                             |
+| **AI / ML**   | ONNX Runtime (MiniLM-L6-v2 embeddings, 384 dims, 155k+ vectors), Aho-Corasick, Fuse.js                |
+| **Database**  | SQLite via `rusqlite` (bundled) with FTS5, 344k+ cross-references, and Ellen G. White writings         |
+| **Broadcast** | NDI 6 SDK via dynamic loading (`libloading` FFI) + Guided Projector display output                     |
+| **STT**       | Local Vosk worker (default), Soniox, Deepgram WebSocket + REST, or Speechmatics live streaming         |
+| **Cloud AI**  | DeepSeek and Cerebras candidate ranking (optional, user-configured API keys)                           |
 
 ![Layered architecture diagram — React frontend over Tauri IPC, Rust workspace below, with NDI / STT / SQLite as external surfaces](/docs/diagrams/diagram-stack-layers.svg)
 
@@ -58,17 +59,15 @@ The detection pipeline is intentionally heterogeneous:
   so a normal CPU keeps up.
 - **ONNX Runtime** through the `ort = "2.0.0-rc.12"` Rust crate for
   inference (gated behind the `onnx` feature on `rhema-detection`).
-- **Brute-force cosine similarity** over the embedded verses
-  (~31k × 1024 dims). The file `semantic/hnsw_index.rs` is named after
-  a future plan; today it scans linearly because the dataset is small
-  enough that the simpler approach wins.
+- **Cosine similarity** over the embedded verses
+  (155k+ vectors across public multi-vector corpus at 384 dims).
 - **Fuse.js** on the frontend for instant fuzzy search over the recent
   transcript context (`src/lib/context-search.ts`).
 
 ## Database
 
 A single SQLite database with FTS5 holds every translation, cross-
-reference, and metadata table. We use `rusqlite` with the `bundled`
+reference, Ellen G. White writings, and metadata table. We use `rusqlite` with the `bundled`
 feature so the binary is self-contained — no system SQLite required.
 
 ## Broadcast
@@ -76,19 +75,21 @@ feature so the binary is self-contained — no system SQLite required.
 The NDI 6 SDK is loaded **dynamically** via `libloading` so the binary
 doesn't depend on the SDK at link time. This keeps the app legally
 distributable and lets it run fine without NDI installed (the broadcast
-surface just doesn't appear).
+surface just doesn't appear). For direct venue projection, Guided Projector
+Setup controls multi-monitor HDMI and display outputs directly.
 
 ## STT
 
-Three engines, one transport:
+Four engines, one transport:
 
 - **Vosk** runs locally through the bundled worker with a verse-focused
   grammar. It is the default local engine and requires no API key.
+- **Soniox** streams audio over WebSocket with multilingual language hints
+  and endpoint detection, feeding live transcript events directly.
 - **Deepgram** streams over a WebSocket using `tokio-tungstenite`, with
   a REST fallback that uploads short windows when the socket drops.
-  Deepgram is the recommended option for full-sermon transcript fidelity.
-- **Soniox** streams audio over WebSocket with language hints and endpoint
-  detection, then emits the same transcript event type.
+- **Speechmatics** provides multilingual streaming transcription with partial
+  and final results.
 
 All providers feed a unified transcript stream so the rest of the pipeline
 doesn't care which engine is active.

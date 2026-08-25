@@ -7,18 +7,18 @@ import { SectionHeading } from "./section-heading";
 const STEPS = [
   {
     icon: IconMicrophone,
-    title: "Listen",
-    body: "SabbathCue connects to your sermon audio and transcribes it in real time.",
+    title: "1. Listen",
+    body: "Captures live sermon audio and transcribes in real time using local offline Vosk or streaming cloud STT (Soniox, Deepgram, Speechmatics).",
   },
   {
     icon: IconSearch,
-    title: "Detect",
-    body: "It identifies Bible verses — whether quoted or referenced.",
+    title: "2. Detect",
+    body: "Instantly matches spoken citations, paraphrased passages, and EGW writings using direct parsing and ONNX multi-vector semantic embeddings.",
   },
   {
     icon: IconScreenShare,
-    title: "Display",
-    body: "Verses appear instantly as broadcast-ready overlays via NDI.",
+    title: "3. Display",
+    body: "Projects scriptures seamlessly to HDMI screens with Guided Projector Setup and streams transparent overlays to OBS Studio & vMix via NDI 6.",
   },
 ] as const;
 

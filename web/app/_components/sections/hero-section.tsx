@@ -22,10 +22,9 @@ export function HeroSection({ stars }: { stars: number }) {
             <span className="text-accent">SabbathCue finds the verse.</span>
           </h1>
           <p className="text-pretty text-base leading-[1.5] text-muted-foreground sm:text-lg md:text-xl lg:text-2xl lg:leading-8">
-            SabbathCue listens to a live sermon audio feed, transcribes speech in
-            real time, detects Bible verse references (both explicit citations
-            and quoted passages), and renders them as broadcast-ready overlays
-            via NDI for live production.
+            SabbathCue listens to live sermon audio, transcribes speech in real time
+            (offline or cloud), detects scripture and Ellen G. White references automatically,
+            and renders broadcast overlays via NDI alongside direct HDMI projector displays.
           </p>
         </div>
 

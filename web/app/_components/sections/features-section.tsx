@@ -1,10 +1,15 @@
 import {
   IconAdjustmentsHorizontal,
-  IconLayoutBoard,
+  IconBook,
+  IconBooks,
+  IconDeviceTv,
+  IconLanguage,
   IconMicrophone,
   IconPlug,
+  IconPresentation,
   IconScreenShare,
   IconSearch,
+  IconSparkles,
 } from "@tabler/icons-react";
 import { Container } from "../ui/container";
 import { FeatureCard } from "../ui/feature-card";
@@ -22,33 +27,48 @@ type Feature = {
 const FEATURES: Feature[] = [
   {
     icon: IconMicrophone,
-    title: "Listens to Your Sermon Live",
-    body: "SabbathCue listens as the pastor speaks and turns the message into text instantly. No setup or typing needed. Just press start and let it run.",
+    title: "Offline & Cloud Speech-to-Text",
+    body: "Runs offline locally with bundled Vosk at zero API cost, or streams live with cloud providers like Soniox, Deepgram, and Speechmatics.",
   },
   {
     icon: IconSearch,
-    title: "Finds Bible Verses Automatically",
-    body: "Detects Bible verses from both direct references and spoken quotes. It understands imperfect speech and partial phrasing.",
+    title: "Hybrid Scripture & Quote Detection",
+    body: "Combines direct reference regex, MiniLM-L6-v2 ONNX multi-vector embeddings (155k+ vectors), and verbatim quotation matching for high accuracy.",
+  },
+  {
+    icon: IconBooks,
+    title: "Ellen G. White (EGW) Writings",
+    body: "Built-in full-text and semantic search across Patriarchs and Prophets, Desire of Ages, Great Controversy, Steps to Christ, and Education.",
+  },
+  {
+    icon: IconLanguage,
+    title: "Voice-Controlled Translation Switching",
+    body: "Say 'read in NIV' or 'switch to ESV' during your sermon to immediately reflow the live display without touching the mouse.",
+  },
+  {
+    icon: IconBook,
+    title: "Reading Mode with Voice Navigation",
+    body: "Locks context to the active book and chapter while reading, with natural voice navigation ('next verse', 'previous verse', 'chapter 5').",
+  },
+  {
+    icon: IconDeviceTv,
+    title: "Guided Projector & Screen Setup",
+    body: "One-tap live HDMI/projector output with screen identification, hot-plug display detection, and plain-language display mode guidance.",
   },
   {
     icon: IconScreenShare,
-    title: "Shows Verses On Screen Instantly",
-    body: "As soon as a verse is detected, it appears on screen right away. No delays. Your audience sees the scripture at the right moment.",
+    title: "NDI 6 Broadcast Overlays",
+    body: "Streams transparent lower-thirds directly to OBS Studio, vMix, and Wirecast with visual canvas theme styling and typography presets.",
   },
   {
-    icon: IconPlug,
-    title: "Works With Your Live Setup",
-    body: "SabbathCue connects easily to tools like OBS Studio and vMix. You don’t need to change how you already run your service. Just add it to your setup.",
+    icon: IconSparkles,
+    title: "Optional AI Candidate Ranking",
+    body: "Optional DeepSeek and Cerebras LLM ranking disambiguates complex sermon analogies and indirect scripture references.",
   },
   {
-    icon: IconLayoutBoard,
-    title: "Ready-to-Use Verse Designs",
-    body: "Choose from clean, pre-made styles for your verse overlays. Everything is already designed for you. Pick one and go live.",
-  },
-  {
-    icon: IconAdjustmentsHorizontal,
-    title: "Simple Control During Service",
-    body: "See all detected verses in one place. Reorder, skip, or show any verse with a click. Stay in control without stress or switching between apps.",
+    icon: IconPresentation,
+    title: "Remote Control & Slide Imports",
+    body: "Control via OSC and REST API (Stream Deck, tablet, phone) with built-in conversion of PowerPoint (.pptx) and PDF presentation slides.",
   },
 ];
 

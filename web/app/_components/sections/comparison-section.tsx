@@ -3,8 +3,21 @@ import { Container } from "../ui/container";
 import { Reveal } from "../ui/reveal";
 import { SectionHeading } from "./section-heading";
 
-const WITHOUT = ["Manual verse typing", "Delays", "Missed references"];
-const WITH = ["Automatic detection", "Instant display", "Smooth live flow"];
+const WITHOUT = [
+  "Frantic manual verse typing while the pastor speaks",
+  "Missed scripture citations and delayed screen projection",
+  "Awkward translation lookups and manual switching delays",
+  "Disruptive false matches during chapter expository readings",
+  "Complex multi-screen display and projector configuration errors",
+];
+
+const WITH = [
+  "Instant automatic detection of direct citations and recited quotes",
+  "Built-in Ellen G. White writings and cross-reference search",
+  "Voice-controlled translation switching ('read in NIV', 'switch to ESV')",
+  "Smart Reading Mode with voice navigation ('next verse', 'chapter 5')",
+  "One-tap Guided Projector Setup plus transparent NDI 6 overlays",
+];
 
 export function ComparisonSection() {
   return (
